@@ -1,0 +1,30 @@
+# Build stage
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# Copy solution and project files
+COPY *.sln .
+COPY src/ src/
+COPY tests/ tests/
+
+# Restore dependencies
+RUN dotnet restore
+
+# Build and publish Platform API
+RUN dotnet publish src/Platform.Engineering.Copilot.API/Platform.Engineering.Copilot.API.csproj \
+    -c Release -o /app/publish
+
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/publish .
+
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 5000
+EXPOSE 5001
+
+ENTRYPOINT ["dotnet", "Platform.Engineering.Copilot.API.dll"]

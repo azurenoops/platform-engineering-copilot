@@ -1,0 +1,621 @@
+/* Cost Insights Styles */
+.cost-insights {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.cost-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.cost-header h2 {
+  margin: 0 0 8px 0;
+  font-size: 32px;
+  color: #333;
+}
+
+.cost-subtitle {
+  margin: 0;
+  color: #666;
+  font-size: 16px;
+}
+
+/* Time Period Selector */
+.time-period-selector {
+  display: flex;
+  gap: 4px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.period-btn {
+  background: transparent;
+  border: none;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  color: #666;
+}
+
+.period-btn:hover {
+  background: #e9ecef;
+}
+
+.period-btn.active {
+  background: #667eea;
+  color: white;
+}
+
+/* Cost Summary Cards */
+.cost-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.summary-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.summary-label {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.9;
+  margin-bottom: 8px;
+}
+
+.summary-value {
+  font-size: 36px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.summary-subtitle {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+/* Cost Content Layout */
+.cost-content {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 24px;
+}
+
+/* Environment List */
+.cost-environments {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 20px;
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.section-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.section-count {
+  font-size: 13px;
+  color: #999;
+  background: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.environment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.environment-cost-item {
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.environment-cost-item:hover {
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+}
+
+.environment-cost-item.selected {
+  border-color: #667eea;
+  background: #f5f7ff;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.env-cost-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.env-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.env-trend {
+  font-size: 18px;
+}
+
+.env-cost-amount {
+  font-size: 24px;
+  font-weight: 700;
+  color: #667eea;
+  margin-bottom: 8px;
+}
+
+.env-cost-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #666;
+}
+
+.env-rg {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.env-budget {
+  color: #999;
+}
+
+.budget-warning {
+  margin-top: 8px;
+  padding: 8px;
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #856404;
+  font-weight: 500;
+}
+
+/* Cost Details */
+.cost-details {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 24px;
+  min-height: 400px;
+}
+
+.close-details-btn {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #999;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.close-details-btn:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.detail-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.detail-card {
+  background: #f8f9fa;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.detail-label {
+  font-size: 12px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.detail-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #333;
+}
+
+/* Cost Chart */
+.cost-chart {
+  margin-bottom: 24px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 12px;
+}
+
+.cost-chart h4 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.chart-container {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 200px;
+  padding: 10px 0;
+}
+
+.chart-bar-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.chart-bar {
+  width: 100%;
+  background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+  border-radius: 4px 4px 0 0;
+  transition: all 0.2s;
+  cursor: pointer;
+  min-height: 4px;
+}
+
+.chart-bar:hover {
+  opacity: 0.8;
+}
+
+.chart-label {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #999;
+  transform: rotate(-45deg);
+  white-space: nowrap;
+}
+
+/* Service Breakdown */
+.service-breakdown {
+  margin-bottom: 24px;
+}
+
+.service-breakdown h4 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.service-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.service-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.service-info {
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.service-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.service-cost {
+  font-size: 14px;
+  font-weight: 600;
+  color: #667eea;
+}
+
+.service-bar-container {
+  flex: 2;
+  height: 24px;
+  background: #f0f0f0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.service-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  transition: width 0.3s ease;
+}
+
+.service-percentage {
+  min-width: 60px;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+}
+
+/* Optimization Tips */
+.optimization-tips {
+  background: #e7f3ff;
+  border: 1px solid #90caf9;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.optimization-tips h4 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  color: #1976d2;
+}
+
+.optimization-tips ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.optimization-tips li {
+  margin-bottom: 12px;
+  color: #333;
+  line-height: 1.6;
+}
+
+.optimization-tips li:last-child {
+  margin-bottom: 0;
+}
+
+.optimization-tips strong {
+  color: #1976d2;
+}
+
+/* No Selection State */
+.no-selection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  color: #999;
+}
+
+.no-selection p {
+  font-size: 18px;
+  margin: 0;
+}
+
+/* Loading/Error States */
+.cost-loading,
+.cost-error {
+  text-align: center;
+  padding: 60px 20px;
+  font-size: 18px;
+  color: #666;
+}
+
+.cost-error {
+  color: #dc3545;
+}
+
+/* Dark Theme Support */
+[data-theme="dark"] .cost-header {
+  border-bottom-color: var(--border-color);
+}
+
+[data-theme="dark"] .cost-header h2 {
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .cost-subtitle {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .time-period-selector {
+  background: var(--navbar-bg);
+}
+
+[data-theme="dark"] .period-btn {
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .period-btn:hover {
+  background: var(--hover-bg);
+}
+
+[data-theme="dark"] .cost-environments {
+  background: var(--navbar-bg);
+}
+
+[data-theme="dark"] .section-header h3 {
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .section-count {
+  background: var(--surface-color);
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .environment-cost-item {
+  background: var(--surface-color);
+  border-color: var(--border-color);
+}
+
+[data-theme="dark"] .environment-cost-item:hover {
+  border-color: var(--primary-color);
+}
+
+[data-theme="dark"] .environment-cost-item.selected {
+  background: var(--navbar-bg);
+}
+
+[data-theme="dark"] .env-name {
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .env-cost-footer {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .cost-details {
+  background: var(--surface-color);
+  border-color: var(--border-color);
+}
+
+[data-theme="dark"] .close-details-btn {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .close-details-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .detail-card {
+  background: var(--navbar-bg);
+  border-color: var(--border-color);
+}
+
+[data-theme="dark"] .detail-label {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .detail-value {
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .cost-chart {
+  background: var(--navbar-bg);
+}
+
+[data-theme="dark"] .cost-chart h4 {
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .service-breakdown h4 {
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .service-name {
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .service-bar-container {
+  background: var(--navbar-bg);
+}
+
+[data-theme="dark"] .service-percentage {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .optimization-tips {
+  background: rgba(102, 126, 234, 0.1);
+  border-color: var(--primary-color);
+}
+
+[data-theme="dark"] .optimization-tips h4 {
+  color: var(--primary-color);
+}
+
+[data-theme="dark"] .optimization-tips li {
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .optimization-tips strong {
+  color: var(--primary-color);
+}
+
+[data-theme="dark"] .no-selection {
+  color: var(--text-secondary);
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .cost-content {
+    grid-template-columns: 1fr;
+  }
+
+  .cost-environments {
+    max-height: 400px;
+  }
+}
+
+@media (max-width: 768px) {
+  .cost-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .time-period-selector {
+    width: 100%;
+  }
+
+  .period-btn {
+    flex: 1;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .cost-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .service-item {
+    flex-wrap: wrap;
+  }
+
+  .service-info {
+    width: 100%;
+  }
+
+  .service-bar-container {
+    order: 3;
+    width: 100%;
+  }
+
+  .service-percentage {
+    order: 2;
+  }
+}

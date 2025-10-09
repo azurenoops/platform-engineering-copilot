@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.9" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Platform.Engineering.Copilot.Core\Platform.Engineering.Copilot.Core.csproj" />
+    <ProjectReference Include="..\Platform.Engineering.Copilot.Data\Platform.Engineering.Copilot.Data.csproj" />
+    <ProjectReference Include="..\Platform.Engineering.Copilot.Governance\Platform.Engineering.Copilot.Governance.csproj" />
+  </ItemGroup>
+
+</Project>

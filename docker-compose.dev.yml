@@ -1,0 +1,58 @@
+version: "3.9"
+
+# Development overrides for docker-compose.yml
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  platform-api:
+    build:
+      target: build  # Use build stage for hot reload
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://0.0.0.0:5000;https://0.0.0.0:5001
+      - ASPNETCORE_HTTPS_PORT=5001
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=supervisor
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
+    volumes:
+      - ./src:/src:ro  # Mount source for hot reload
+      - ./https:/https:ro  # Mount SSL certificate
+      - supervisor-logs:/app/logs
+    ports:
+      - "5000:5000"
+      - "5001:5001"
+    command: >
+      sh -c "dotnet watch run --project src/Platform.Engineering.Copilot.API/Platform.Engineering.Copilot.API.csproj --urls http://0.0.0.0:5000"
+
+  mcp-server:
+    build:
+      target: build  # Use build stage for hot reload
+    environment:
+      - DOTNET_ENVIRONMENT=Development
+      - DOTNET_USE_POLLING_FILE_WATCHER=true
+    volumes:
+      - ./src:/src:ro  # Mount source for hot reload
+      - supervisor-logs:/app/logs
+    command: >
+      sh -c "dotnet watch run --project src/Platform.Engineering.Copilot.McpServer/Platform.Engineering.Copilot.McpServer.csproj"
+
+  sqlserver:
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+      - ./scripts/sql:/scripts:ro  # Mount SQL scripts for development
+
+  # Development tools
+  adminer:
+    image: adminer:latest
+    container_name: supervisor-adminer
+    restart: unless-stopped
+    depends_on:
+      - sqlserver
+    ports:
+      - "8081:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=sqlserver
+      - ADMINER_DESIGN=hydra
+    networks:
+      - supervisor-network

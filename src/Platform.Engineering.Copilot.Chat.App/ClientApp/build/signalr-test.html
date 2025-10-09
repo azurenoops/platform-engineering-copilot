@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SignalR Test</title>
+    <script src="https://unpkg.com/@microsoft/signalr@8.0.0/dist/browser/signalr.min.js"></script>
+</head>
+<body>
+    <h1>SignalR Connection Test</h1>
+    <div id="status">Initializing...</div>
+    <div id="logs"></div>
+
+    <script>
+        const statusDiv = document.getElementById('status');
+        const logsDiv = document.getElementById('logs');
+        
+        function log(message) {
+            console.log(message);
+            const p = document.createElement('p');
+            p.textContent = new Date().toISOString() + ': ' + message;
+            logsDiv.appendChild(p);
+        }
+        
+        log('Starting SignalR test...');
+        statusDiv.textContent = 'Connecting...';
+        
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl("/chathub")
+            .withAutomaticReconnect()
+            .configureLogging(signalR.LogLevel.Information)
+            .build();
+        
+        connection.start()
+            .then(() => {
+                log('✅ SignalR connected successfully!');
+                statusDiv.textContent = 'Connected!';
+                statusDiv.style.color = 'green';
+            })
+            .catch(err => {
+                log('❌ SignalR connection failed: ' + err.toString());
+                statusDiv.textContent = 'Connection failed: ' + err.toString();
+                statusDiv.style.color = 'red';
+            });
+        
+        connection.onclose((error) => {
+            log('Connection closed: ' + (error ? error.toString() : 'No error'));
+            statusDiv.textContent = 'Disconnected';
+            statusDiv.style.color = 'orange';
+        });
+    </script>
+</body>
+</html>

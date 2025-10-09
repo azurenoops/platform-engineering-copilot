@@ -1,0 +1,150 @@
+.subnet-card {
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+  transition: all 0.2s ease;
+}
+
+.subnet-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.subnet-card-error {
+  border-color: #dc3545;
+  background: #fff5f5;
+}
+
+.subnet-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.subnet-card-header h4 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.remove-subnet-btn {
+  padding: 6px 12px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.remove-subnet-btn:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.remove-subnet-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.subnet-validation-error {
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+}
+
+.subnet-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.subnet-service-endpoints {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #dee2e6;
+}
+
+.service-endpoints-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+}
+
+.endpoint-option {
+  display: flex;
+  align-items: center;
+  padding: 6px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.endpoint-option:hover {
+  background: #f8f9fa;
+}
+
+.endpoint-option input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+.selected-endpoints-summary {
+  margin-top: 8px;
+  padding: 8px;
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  color: #155724;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.input-error {
+  border-color: #dc3545 !important;
+  background: #fff5f5;
+}
+
+.error-text {
+  color: #dc3545;
+  font-weight: 500;
+}
+
+.warning-text {
+  color: #856404;
+  font-weight: 500;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .subnet-form-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .service-endpoints-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .subnet-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .remove-subnet-btn {
+    width: 100%;
+  }
+}

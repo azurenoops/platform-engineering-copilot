@@ -1,0 +1,57 @@
+/* Insights Page Container */
+.insights-page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.insights-page-header {
+  margin-bottom: 30px;
+}
+
+.back-button {
+  padding: 10px 20px;
+  background: transparent;
+  border: 2px solid #007bff;
+  color: #007bff;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-bottom: 20px;
+}
+
+.back-button:hover {
+  background: #007bff;
+  color: white;
+  transform: translateX(-4px);
+}
+
+.insights-page-header h2 {
+  margin: 10px 0;
+  font-size: 32px;
+  color: #2c3e50;
+  font-weight: 800;
+}
+
+.page-subtitle {
+  font-size: 16px;
+  color: #6c757d;
+  margin: 10px 0 0 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .insights-page {
+    padding: 15px;
+  }
+
+  .insights-page-header h2 {
+    font-size: 24px;
+  }
+
+  .page-subtitle {
+    font-size: 14px;
+  }
+}

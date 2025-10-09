@@ -1,0 +1,145 @@
+version: "3.9"
+
+networks:
+  supervisor-network:
+    driver: bridge
+
+volumes:
+  sqlserver-data:
+  supervisor-logs:
+
+services:
+  # SQL Server Database
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: supervisor-sqlserver
+    hostname: sqlserver
+    restart: unless-stopped
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=SupervisorDB123!
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    networks:
+      - supervisor-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P SupervisorDB123! -Q 'SELECT 1' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Platform API Service
+  platform-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      target: runtime
+    image: supervisor-platform-api:latest
+    container_name: supervisor-platform-api
+    hostname: platform-api
+    restart: unless-stopped
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://0.0.0.0:5000
+      - ASPNETCORE_HTTP_PORTS=5000
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=SupervisorPlatformDb;User=sa;Password=SupervisorDB123!;TrustServerCertificate=true;MultipleActiveResultSets=true
+      - ConnectionStrings__SqlServerConnection=Server=sqlserver,1433;Database=SupervisorPlatformDb;User=sa;Password=SupervisorDB123!;TrustServerCertificate=true;MultipleActiveResultSets=true
+      - DatabaseProvider=SqlServer
+      - Gateway__AzureSubscriptionId=${AZURE_SUBSCRIPTION_ID:-}
+      - Gateway__AzureClientId=${AZURE_CLIENT_ID:-}
+      - Gateway__AzureClientSecret=${AZURE_CLIENT_SECRET:-}
+      - Gateway__AzureTenantId=${AZURE_TENANT_ID:-}
+      - Gateway__GitHubToken=${GITHUB_TOKEN:-}
+    ports:
+      - "5000:5000"
+    volumes:
+      - supervisor-logs:/app/logs
+    networks:
+      - supervisor-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Platform Chat Service
+  platform-chat:
+    build:
+      context: ./src/Platform.Engineering.Copilot.Chat
+      dockerfile: Dockerfile
+      target: runtime
+    image: supervisor-platform-chat:latest
+    container_name: supervisor-platform-chat
+    hostname: platform-chat
+    restart: unless-stopped
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      platform-api:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://0.0.0.0:3000
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=SupervisorPlatform;User Id=sa;Password=SupervisorDB123!;TrustServerCertificate=true;Encrypt=false;MultipleActiveResultSets=true
+      - PlatformServices__ApiBaseUrl=http://platform-api:7000
+      - OpenAI__ApiKey=${OPENAI_API_KEY}
+      - OpenAI__Endpoint=${OPENAI_ENDPOINT}
+      - OpenAI__Model=${OPENAI_MODEL:-gpt-4}
+      - Logging__LogLevel__Default=Information
+      - Logging__LogLevel__Microsoft=Warning
+    ports:
+      - "3000:3000"
+    volumes:
+      - supervisor-logs:/app/logs
+    networks:
+      - supervisor-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Reverse Proxy (Nginx)
+  nginx:
+    image: nginx:alpine
+    container_name: supervisor-nginx
+    hostname: nginx
+    restart: unless-stopped
+    depends_on:
+      platform-api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - supervisor-logs:/var/log/nginx
+    networks:
+      - supervisor-network
+    profiles:
+      - proxy
+
+  # Optional: Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: supervisor-redis
+    hostname: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis.conf:/etc/redis/redis.conf:ro
+    networks:
+      - supervisor-network
+    profiles:
+      - cache
+    command: redis-server /etc/redis/redis.conf

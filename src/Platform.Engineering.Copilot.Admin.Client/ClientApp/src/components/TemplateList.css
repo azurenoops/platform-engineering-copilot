@@ -1,0 +1,294 @@
+.template-list {
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.template-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.template-list-header h2 {
+  margin: 0;
+  color: #333;
+  font-size: 28px;
+}
+
+.search-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 20px;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.search-input {
+  flex: 1;
+  padding: 10px 15px;
+  font-size: 16px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.btn-search,
+.btn-clear {
+  padding: 10px 20px;
+  font-size: 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-search {
+  background: #007bff;
+  color: white;
+}
+
+.btn-search:hover {
+  background: #0056b3;
+}
+
+.btn-clear {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-clear:hover {
+  background: #545b62;
+}
+
+.template-list-loading {
+  text-align: center;
+  padding: 60px;
+  font-size: 20px;
+  color: #666;
+}
+
+.error-message {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.error-message button {
+  padding: 5px 15px;
+  background: #721c24;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.no-templates {
+  text-align: center;
+  padding: 60px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.no-templates p {
+  font-size: 18px;
+  color: #666;
+  margin-bottom: 20px;
+}
+
+.templates-table-container {
+  overflow-x: auto;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.templates-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.templates-table thead {
+  background: #f8f9fa;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.templates-table th {
+  padding: 15px;
+  text-align: left;
+  font-weight: 600;
+  color: #495057;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.templates-table td {
+  padding: 15px;
+  border-bottom: 1px solid #dee2e6;
+  vertical-align: top;
+}
+
+.templates-table tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.template-description {
+  font-size: 13px;
+  color: #666;
+  margin-top: 5px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.badge-type {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.badge-infrastructure {
+  background: #fff8e1;
+  color: #f57c00;
+  border: 1px solid #ffb74d;
+  font-weight: 600;
+}
+
+.badge-format {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.badge-public {
+  background: #fff3e0;
+  color: #f57c00;
+  margin-left: 5px;
+}
+
+/* Highlight infrastructure template rows */
+.infrastructure-template {
+  background: #fffef7;
+  border-left: 3px solid #ff9800;
+}
+
+.infrastructure-template:hover {
+  background: #fff9e6;
+}
+
+.date-info {
+  font-size: 14px;
+}
+
+.created-by {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+}
+
+.status {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.status-active {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-inactive {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.actions {
+  white-space: nowrap;
+}
+
+.btn-action {
+  padding: 6px 12px;
+  font-size: 13px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-right: 5px;
+  transition: all 0.3s;
+}
+
+.btn-view {
+  background: #17a2b8;
+  color: white;
+}
+
+.btn-view:hover {
+  background: #138496;
+}
+
+.btn-delete {
+  background: #dc3545;
+  color: white;
+}
+
+.btn-delete:hover {
+  background: #c82333;
+}
+
+.delete-confirm {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.btn-confirm-delete {
+  background: #dc3545;
+  color: white;
+}
+
+.btn-confirm-delete:hover {
+  background: #bd2130;
+}
+
+.btn-cancel {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-cancel:hover {
+  background: #545b62;
+}
+
+.template-list-summary {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+  font-size: 14px;
+}
+
+.btn-primary {
+  padding: 10px 20px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+
+.btn-primary:hover {
+  background: #218838;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}

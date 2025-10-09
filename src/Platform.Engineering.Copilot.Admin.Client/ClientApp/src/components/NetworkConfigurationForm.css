@@ -1,0 +1,491 @@
+/* NetworkConfigurationForm.css */
+
+.network-configuration-form {
+  padding: 24px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.network-configuration-form h3 {
+  margin-top: 0;
+  margin-bottom: 24px;
+  color: #333;
+  font-size: 1.5em;
+  border-bottom: 2px solid #0078d4;
+  padding-bottom: 12px;
+}
+
+.network-configuration-form h4 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #555;
+  font-size: 1.2em;
+}
+
+/* Network Mode Toggle */
+.network-mode-toggle {
+  margin-bottom: 32px;
+  padding: 20px;
+  background: #f5f5f5;
+  border-radius: 6px;
+}
+
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.radio-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: white;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.radio-option:hover {
+  border-color: #0078d4;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.radio-option-selected {
+  border-color: #0078d4;
+  background-color: #f0f8ff;
+  box-shadow: 0 2px 6px rgba(0, 120, 212, 0.2);
+}
+
+.radio-option input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.radio-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.radio-content strong {
+  color: #333;
+  font-size: 1.05em;
+}
+
+.radio-description {
+  color: #666;
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  padding: 24px;
+  border-radius: 8px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.modal-content h4 {
+  margin-top: 0;
+  color: #c00;
+}
+
+.modal-content p {
+  margin: 16px 0;
+  color: #666;
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+/* Alert Messages */
+.alert {
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+}
+
+.alert-error {
+  background-color: #fee;
+  color: #c00;
+  border: 1px solid #fcc;
+}
+
+.alert-warning {
+  background-color: #fff4e5;
+  color: #cc6600;
+  border: 1px solid #ffe0b2;
+}
+
+/* Form Sections */
+.create-new-section,
+.use-existing-section {
+  margin-top: 24px;
+}
+
+.vnet-config-section,
+.subnets-section,
+.dns-config-section {
+  margin-bottom: 32px;
+  padding: 20px;
+  background: #fafafa;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+}
+
+.security-features-section {
+  margin-bottom: 32px;
+  padding: 20px;
+  background: #f0f8ff;
+  border-radius: 6px;
+  border: 1px solid #b0d4ff;
+}
+
+.security-features-section h4 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #0066cc;
+}
+
+.form-group.indent {
+  margin-left: 28px;
+  margin-top: 12px;
+  padding-left: 16px;
+  border-left: 3px solid #0066cc;
+}
+
+/* VNet Peering Section */
+.vnet-peering-section {
+  margin-bottom: 32px;
+  padding: 20px;
+  background: #f9f0ff;
+  border-radius: 6px;
+  border: 1px solid #d4b0ff;
+}
+
+.vnet-peering-card {
+  background: white;
+  border: 1px solid #d4b0ff;
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.peering-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+}
+
+.peering-options .checkbox-label {
+  margin-bottom: 4px;
+}
+
+.peering-options .help-text {
+  margin-left: 24px;
+  margin-bottom: 8px;
+}
+
+.alert-info {
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  color: #1976d2;
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin: 12px 0;
+}
+
+/* Form Elements */
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-weight: 600;
+  color: #333;
+  font-size: 0.95em;
+}
+
+.form-group input,
+.form-group select {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #0078d4;
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.1);
+}
+
+.input-error {
+  border-color: #c00 !important;
+  background-color: #fff5f5 !important;
+}
+
+.error-text {
+  color: #c00;
+  font-size: 0.85em;
+  margin-top: 4px;
+}
+
+.help-text {
+  color: #666;
+  font-size: 0.85em;
+  font-style: italic;
+}
+
+/* Radio Button Group */
+.radio-group-inline {
+  display: flex;
+  gap: 24px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: normal;
+  color: #333;
+}
+
+.radio-label input[type="radio"] {
+  cursor: pointer;
+  width: auto;
+  margin: 0;
+}
+
+.radio-label:hover {
+  color: #0066cc;
+}
+
+/* Subnets Section */
+.subnets-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.subnets-header h4 {
+  margin: 0;
+}
+
+.section-description {
+  color: #666;
+  font-size: 0.9em;
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+.subnets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+/* Buttons */
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-primary {
+  background-color: #0078d4;
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: #005a9e;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background-color: #545b62;
+}
+
+.btn-danger {
+  background-color: #dc3545;
+  color: white;
+}
+
+.btn-danger:hover {
+  background-color: #c82333;
+}
+
+.btn-add-subnet {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Configuration Summary */
+.config-summary {
+  margin-top: 32px;
+  padding: 20px;
+  background: #f0f8ff;
+  border: 1px solid #b3d9ff;
+  border-radius: 6px;
+}
+
+.config-summary h4 {
+  margin-top: 0;
+  color: #0078d4;
+}
+
+.summary-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-item strong {
+  color: #666;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.summary-item:last-child {
+  color: #333;
+  font-size: 0.95em;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .network-configuration-form {
+    padding: 16px;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .subnets-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .btn-add-subnet {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .summary-content {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+  }
+
+  .modal-actions button {
+    width: 100%;
+  }
+
+  .radio-group {
+    gap: 10px;
+  }
+
+  .radio-option {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .network-configuration-form h3 {
+    font-size: 1.3em;
+  }
+
+  .network-mode-toggle {
+    padding: 16px;
+  }
+
+  .vnet-config-section,
+  .subnets-section,
+  .dns-config-section {
+    padding: 16px;
+  }
+}

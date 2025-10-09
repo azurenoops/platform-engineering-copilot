@@ -1,0 +1,524 @@
+.deployment-progress {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  max-width: 800px;
+  margin: 20px auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+}
+
+/* Header */
+.progress-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex: 1;
+}
+
+.state-icon {
+  font-size: 32px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.header-text h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.deployment-id {
+  font-size: 12px;
+  opacity: 0.9;
+  font-family: 'Courier New', monospace;
+}
+
+.close-button {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.close-button:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Body */
+.progress-body {
+  padding: 24px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+/* Progress Sections */
+.progress-section {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.progress-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: #333;
+}
+
+.section-value {
+  font-weight: 500;
+  color: #667eea;
+  font-size: 14px;
+}
+
+/* Progress Bar */
+.progress-bar-container {
+  width: 100%;
+  height: 12px;
+  background: #e0e0e0;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  transition: width 0.5s ease;
+  border-radius: 6px;
+}
+
+.progress-info {
+  display: flex;
+  gap: 8px;
+  font-size: 14px;
+  align-items: center;
+}
+
+.info-label {
+  color: #666;
+  font-weight: 500;
+}
+
+.info-value {
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+/* Current Operation */
+.current-operation {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #f5f5f5;
+  border-radius: 6px;
+  border-left: 3px solid #667eea;
+}
+
+.operation-icon {
+  font-size: 20px;
+}
+
+.operation-text {
+  color: #333;
+  font-weight: 500;
+  flex: 1;
+}
+
+/* Deployment Steps */
+.steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  background: #f9f9f9;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.step-item:hover {
+  background: #f0f0f0;
+}
+
+.step-icon {
+  font-size: 18px;
+  font-weight: bold;
+  min-width: 24px;
+  text-align: center;
+}
+
+.step-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.step-name {
+  font-weight: 600;
+  color: #333;
+  font-size: 14px;
+}
+
+.step-description {
+  font-size: 13px;
+  color: #666;
+}
+
+.step-duration {
+  font-size: 12px;
+  color: #999;
+  font-family: 'Courier New', monospace;
+}
+
+/* Step States */
+.step-completed {
+  border-left: 3px solid #4caf50;
+}
+
+.step-completed .step-icon {
+  color: #4caf50;
+}
+
+.step-in-progress {
+  border-left: 3px solid #667eea;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.step-in-progress .step-icon {
+  color: #667eea;
+  animation: spin 1s linear infinite;
+}
+
+.step-failed {
+  border-left: 3px solid #f44336;
+}
+
+.step-failed .step-icon {
+  color: #f44336;
+}
+
+.step-pending {
+  border-left: 3px solid #e0e0e0;
+}
+
+.step-pending .step-icon {
+  color: #999;
+}
+
+/* Resources List */
+.resources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.resource-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #f9f9f9;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.resource-icon {
+  font-size: 16px;
+}
+
+.resource-name {
+  color: #333;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+}
+
+/* Error Section */
+.error-section {
+  border-color: #ffebee;
+  background: #ffebee;
+  padding: 16px;
+  border-radius: 6px;
+}
+
+.error-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.error-icon {
+  font-size: 20px;
+}
+
+.error-text {
+  color: #c62828;
+  font-size: 14px;
+  line-height: 1.5;
+  flex: 1;
+}
+
+/* Timestamps */
+.timestamps {
+  border: none !important;
+  background: #f9f9f9;
+  padding: 16px;
+  border-radius: 6px;
+}
+
+.timestamp-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.timestamp-label {
+  color: #666;
+  font-weight: 500;
+}
+
+.timestamp-value {
+  color: #333;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+}
+
+/* Footer */
+.progress-footer {
+  padding: 20px;
+  background: #f9f9f9;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.btn-primary,
+.btn-secondary {
+  padding: 10px 20px;
+  border-radius: 6px;
+  border: none;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+.btn-secondary {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.btn-secondary:hover {
+  background: #d0d0d0;
+}
+
+/* State Classes */
+.state-success .state-icon {
+  color: #4caf50;
+}
+
+.state-success .info-value {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.state-error .state-icon {
+  color: #f44336;
+}
+
+.state-error .info-value {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.state-running .state-icon {
+  color: #2196f3;
+}
+
+.state-running .info-value {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.state-pending .state-icon {
+  color: #ff9800;
+}
+
+.state-pending .info-value {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.state-cancelled .state-icon {
+  color: #9e9e9e;
+}
+
+.state-cancelled .info-value {
+  background: #f5f5f5;
+  color: #616161;
+}
+
+/* Loading State */
+.deployment-progress.loading {
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.loading-spinner {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #e0e0e0;
+  border-top: 4px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* Error State */
+.deployment-progress.error {
+  border: 2px solid #f44336;
+}
+
+.error-content {
+  padding: 40px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.error-content .error-icon {
+  font-size: 48px;
+}
+
+.error-content p {
+  color: #c62828;
+  font-size: 16px;
+  margin: 0;
+}
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .deployment-progress {
+    margin: 10px;
+    border-radius: 0;
+  }
+
+  .progress-header {
+    padding: 16px;
+  }
+
+  .header-text h3 {
+    font-size: 18px;
+  }
+
+  .progress-body {
+    padding: 16px;
+    max-height: 500px;
+  }
+
+  .section-title {
+    font-size: 14px;
+  }
+
+  .step-item {
+    padding: 10px;
+  }
+
+  .progress-footer {
+    padding: 16px;
+    flex-direction: column;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    width: 100%;
+  }
+}

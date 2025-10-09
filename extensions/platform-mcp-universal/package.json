@@ -1,0 +1,114 @@
+{
+  "name": "platform-mcp-extension",
+  "displayName": "Platform Engineering Copilot",
+  "description": "Universal platform engineering assistant using MCP protocol",
+  "version": "0.2.4",
+  "publisher": "Microsoft",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jrspinella/platform-mcp-Platform.Engineering.Copilot.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Other"
+  ],
+  "keywords": [
+    "platform engineering",
+    "infrastructure",
+    "azure",
+    "mcp",
+    "copilot"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "platform",
+        "name": "platform",
+        "fullName": "Platform Engineering Copilot",
+        "description": "Platform engineering assistant for infrastructure, deployments, and monitoring",
+        "isSticky": true
+      }
+    ],
+    "commands": [
+      {
+        "command": "platform-mcp-universal.checkServer",
+        "title": "Check MCP Server Status",
+        "category": "Platform MCP Universal"
+      },
+      {
+        "command": "platform-mcp-universal.configure",
+        "title": "Configure MCP Server",
+        "category": "Platform MCP Universal"
+      },
+      {
+        "command": "platform.testFileCreation",
+        "title": "Test File Creation Functionality",
+        "category": "Platform MCP Universal"
+      },
+      {
+        "command": "platform.runManualFileTest",
+        "title": "Run Manual File Creation Test",
+        "category": "Platform MCP Universal"
+      },
+      {
+        "command": "platform.testUniversalParser",
+        "title": "Test Universal MCP Parser",
+        "category": "Platform MCP Universal"
+      },
+      {
+        "command": "platform.testUserScenario",
+        "title": "Test User Scenario (Debug)",
+        "category": "Platform MCP Universal"
+      }
+    ],
+    "configuration": {
+      "title": "Platform MCP Universal",
+      "properties": {
+        "platform-mcp-universal.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:8080",
+          "description": "Platform MCP Server URL"
+        },
+        "platform-mcp-universal.timeout": {
+          "type": "number",
+          "default": 30000,
+          "description": "Request timeout in milliseconds"
+        },
+        "platform-mcp-universal.enableLogging": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable debug logging"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "vscode-test",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@types/node": "20.x",
+    "@typescript-eslint/eslint-plugin": "^7.14.1",
+    "@typescript-eslint/parser": "^7.11.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.5",
+    "@vscode/test-cli": "^0.0.9",
+    "@vscode/test-electron": "^2.4.0",
+    "@vscode/vsce": "^2.29.0"
+  },
+  "dependencies": {}
+}

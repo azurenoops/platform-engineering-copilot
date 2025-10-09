@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Platform Engineering Copilot App</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: white;
+        }
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .container {
+            flex: 1;
+            display: flex;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+            gap: 20px;
+            padding: 20px;
+        }
+        .sidebar {
+            width: 300px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 20px;
+            height: fit-content;
+        }
+        .main-content {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        .messages {
+            flex: 1;
+            padding: 20px 0;
+            min-height: 400px;
+            overflow-y: auto;
+        }
+        .message {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            font-size: 16px;
+        }
+        input[type="text"]::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+        button {
+            padding: 15px 25px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.3);
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: rgba(255, 255, 255, 0.4);
+        }
+        .conversation-item {
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .conversation-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .status {
+            text-align: center;
+            padding: 10px;
+            background: rgba(0, 255, 0, 0.2);
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 Platform Engineering Copilot App</h1>
+        <p>Enhanced Chat Application with Context-Aware Conversations</p>
+    </div>
+    
+    <div class="container">
+        <div class="sidebar">
+            <h3>💬 Conversations</h3>
+            <button onclick="createNewConversation()" style="width: 100%; margin-bottom: 15px;">
+                ➕ New Conversation
+            </button>
+            <div id="conversations">
+                <div class="conversation-item" onclick="selectConversation('sample')">
+                    <strong>Sample Conversation</strong>
+                    <div style="font-size: 0.9em; opacity: 0.8;">Click to start chatting</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="status" id="status">
+                ✅ Backend connected to http://localhost:5000
+            </div>
+            
+            <div class="messages" id="messages">
+                <div class="message">
+                    <strong>🤖 Assistant:</strong>
+                    <p>Welcome to the enhanced Platform Engineering Copilot! I'm ready to help with context-aware ATO conversations, compliance scans, and platform engineering tasks.</p>
+                    <p>Key features:</p>
+                    <ul>
+                        <li>📊 Context-aware ATO compliance conversations</li>
+                        <li>💾 Persistent chat history with SQLite</li>
+                        <li>🔗 Full integration with Platform API (localhost:7001)</li>
+                        <li>📁 Document upload and attachment support</li>
+                        <li>⚡ Real-time messaging with SignalR</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="input-area">
+                <input type="text" id="messageInput" placeholder="Type your message here..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentConversationId = null;
+        
+        async function testBackendConnection() {
+            try {
+                const response = await fetch('/api/conversations');
+                if (response.ok) {
+                    document.getElementById('status').innerHTML = '✅ Backend API connected successfully';
+                    document.getElementById('status').style.background = 'rgba(0, 255, 0, 0.2)';
+                } else {
+                    throw new Error('API not responding');
+                }
+            } catch (error) {
+                document.getElementById('status').innerHTML = '❌ Backend API connection failed - ' + error.message;
+                document.getElementById('status').style.background = 'rgba(255, 0, 0, 0.2)';
+            }
+        }
+        
+        async function createNewConversation() {
+            try {
+                const response = await fetch('/api/conversations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: 'New Conversation', userId: 'demo-user' })
+                });
+                
+                if (response.ok) {
+                    const conversation = await response.json();
+                    currentConversationId = conversation.id;
+                    addMessage('✅ New conversation created: ' + conversation.title);
+                    loadConversations();
+                } else {
+                    throw new Error('Failed to create conversation');
+                }
+            } catch (error) {
+                addMessage('❌ Error creating conversation: ' + error.message);
+            }
+        }
+        
+        async function loadConversations() {
+            try {
+                const response = await fetch('/api/conversations?userId=demo-user');
+                if (response.ok) {
+                    const conversations = await response.json();
+                    const conversationsDiv = document.getElementById('conversations');
+                    conversationsDiv.innerHTML = conversations.map(conv => 
+                        `<div class="conversation-item" onclick="selectConversation('${conv.id}')">
+                            <strong>${conv.title}</strong>
+                            <div style="font-size: 0.9em; opacity: 0.8;">${new Date(conv.updatedAt).toLocaleDateString()}</div>
+                        </div>`
+                    ).join('');
+                }
+            } catch (error) {
+                console.error('Error loading conversations:', error);
+            }
+        }
+        
+        function selectConversation(id) {
+            currentConversationId = id;
+            addMessage('📂 Selected conversation: ' + id);
+        }
+        
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            if (!currentConversationId) {
+                addMessage('❌ Please create or select a conversation first');
+                return;
+            }
+            
+            addMessage('👤 You: ' + message);
+            input.value = '';
+            
+            try {
+                const response = await fetch('/api/messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        conversationId: currentConversationId,
+                        message: message,
+                        attachmentIds: [],
+                        context: {}
+                    })
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    addMessage('🤖 Assistant: Processing your request...');
+                    // Load messages to get the assistant response
+                    setTimeout(() => loadMessages(currentConversationId), 1000);
+                } else {
+                    throw new Error('Failed to send message');
+                }
+            } catch (error) {
+                addMessage('❌ Error sending message: ' + error.message);
+            }
+        }
+        
+        async function loadMessages(conversationId) {
+            try {
+                const response = await fetch(`/api/messages?conversationId=${conversationId}`);
+                if (response.ok) {
+                    const messages = await response.json();
+                    const messagesDiv = document.getElementById('messages');
+                    messagesDiv.innerHTML = messages.map(msg => 
+                        `<div class="message">
+                            <strong>${msg.role === 'User' ? '👤 You' : '🤖 Assistant'}:</strong>
+                            <p>${msg.content}</p>
+                            <small style="opacity: 0.7;">${new Date(msg.timestamp).toLocaleString()}</small>
+                        </div>`
+                    ).join('');
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                }
+            } catch (error) {
+                console.error('Error loading messages:', error);
+            }
+        }
+        
+        function addMessage(text) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            messageDiv.innerHTML = `<p>${text}</p><small style="opacity: 0.7;">${new Date().toLocaleString()}</small>`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+        
+        // Initialize
+        window.onload = function() {
+            testBackendConnection();
+            loadConversations();
+        };
+    </script>
+</body>
+</html>
