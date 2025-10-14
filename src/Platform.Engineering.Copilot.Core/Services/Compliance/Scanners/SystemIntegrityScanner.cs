@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Interfaces;
+using Platform.Engineering.Copilot.Core.Extensions;
 
 namespace Platform.Engineering.Copilot.Core.Services.Compliance;
 
@@ -28,39 +29,59 @@ public class SystemIntegrityScanner : IComplianceScanner
         NistControl control, 
         CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Scanning SI control {ControlId} for subscription {SubscriptionId}", 
-            control.Id, subscriptionId);
+        return await ScanControlAsync(subscriptionId, null, control, cancellationToken);
+    }
+
+    /// <summary>
+    /// Resource group-scoped scanning
+    /// </summary>
+    public async Task<List<AtoFinding>> ScanControlAsync(
+        string subscriptionId,
+        string? resourceGroupName,
+        NistControl control,
+        CancellationToken cancellationToken = default)
+    {
+        var scope = string.IsNullOrEmpty(resourceGroupName) ? "subscription" : $"resource group '{resourceGroupName}'";
+        _logger.LogDebug("Scanning SI control {ControlId} for {Scope} in subscription {SubscriptionId}", 
+            control.Id, scope, subscriptionId);
 
         var findings = new List<AtoFinding>();
 
-        switch (control.Id)
+        // CRITICAL: Control IDs from NIST catalog are lowercase (si-2, si-3, etc.)
+        // Use case-insensitive comparison
+        var controlId = control.Id?.ToUpperInvariant();
+
+        switch (controlId)
         {
             case "SI-2":
-                findings.AddRange(await ScanFlawRemediationAsync(subscriptionId, control, cancellationToken));
+                findings.AddRange(await ScanFlawRemediationAsync(subscriptionId, resourceGroupName, control, cancellationToken));
                 break;
 
             case "SI-3":
-                findings.AddRange(await ScanMaliciousCodeProtectionAsync(subscriptionId, control, cancellationToken));
+                findings.AddRange(await ScanMaliciousCodeProtectionAsync(subscriptionId, resourceGroupName, control, cancellationToken));
                 break;
 
             case "SI-4":
-                findings.AddRange(await ScanSystemMonitoringAsync(subscriptionId, control, cancellationToken));
+                findings.AddRange(await ScanSystemMonitoringAsync(subscriptionId, resourceGroupName, control, cancellationToken));
                 break;
 
             case "SI-5":
-                findings.AddRange(await ScanSecurityAlertsAsync(subscriptionId, control, cancellationToken));
+                findings.AddRange(await ScanSecurityAlertsAsync(subscriptionId, resourceGroupName, control, cancellationToken));
                 break;
 
             default:
-                findings.AddRange(await ScanGenericIntegrityAsync(subscriptionId, control, cancellationToken));
+                findings.AddRange(await ScanGenericIntegrityAsync(subscriptionId, resourceGroupName, control, cancellationToken));
                 break;
         }
 
-        return findings;
+        // Enrich all findings with auto-remediation information
+        return findings.WithAutoRemediationInfo();
     }
 
+
     private async Task<List<AtoFinding>> ScanFlawRemediationAsync(
-        string subscriptionId, 
+        string subscriptionId,
+        string? resourceGroupName,
         NistControl control, 
         CancellationToken cancellationToken)
     {
@@ -91,7 +112,8 @@ public class SystemIntegrityScanner : IComplianceScanner
     }
 
     private async Task<List<AtoFinding>> ScanMaliciousCodeProtectionAsync(
-        string subscriptionId, 
+        string subscriptionId,
+        string? resourceGroupName,
         NistControl control, 
         CancellationToken cancellationToken)
     {
@@ -122,7 +144,8 @@ public class SystemIntegrityScanner : IComplianceScanner
     }
 
     private async Task<List<AtoFinding>> ScanSystemMonitoringAsync(
-        string subscriptionId, 
+        string subscriptionId,
+        string? resourceGroupName,
         NistControl control, 
         CancellationToken cancellationToken)
     {
@@ -153,7 +176,8 @@ public class SystemIntegrityScanner : IComplianceScanner
     }
 
     private async Task<List<AtoFinding>> ScanSecurityAlertsAsync(
-        string subscriptionId, 
+        string subscriptionId,
+        string? resourceGroupName,
         NistControl control, 
         CancellationToken cancellationToken)
     {
@@ -184,7 +208,8 @@ public class SystemIntegrityScanner : IComplianceScanner
     }
 
     private async Task<List<AtoFinding>> ScanGenericIntegrityAsync(
-        string subscriptionId, 
+        string subscriptionId,
+        string? resourceGroupName,
         NistControl control, 
         CancellationToken cancellationToken)
     {

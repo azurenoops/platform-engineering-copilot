@@ -146,3 +146,15 @@ internal static class ContextExtensions
         return context.TryGetValue(LoggerKey, out var logger) ? logger as ILogger : null;
     }
 }
+
+public class DocumentProcessingOptions
+{
+    public string UploadsPath { get; set; } = "uploads";
+    public long MaxFileSizeBytes { get; set; } = 50 * 1024 * 1024; // 50MB
+    public int ProcessingTimeoutMinutes { get; set; } = 30;
+    public bool EnableAdvancedAnalysis { get; set; } = true;
+    public string[] SupportedFileTypes { get; set; } = {
+        ".pdf", ".docx", ".doc", ".vsdx", ".vsd", ".pptx", ".ppt", 
+        ".xlsx", ".xls", ".txt", ".md", ".png", ".jpg", ".jpeg"
+    };
+}

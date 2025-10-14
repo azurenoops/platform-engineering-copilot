@@ -91,6 +91,9 @@ public static class ServiceCollectionExtensions
         // Register Azure resource service (stub implementation for DI resolution)
         services.AddScoped<IAzureResourceService, Platform.Engineering.Copilot.Core.Services.AzureServices.AzureResourceService>();
         
+        // Register Azure resource health service (stub implementation for DI resolution)
+        services.AddScoped<IAzureResourceHealthService, Platform.Engineering.Copilot.Core.Services.AzureServices.AzureResourceHealthService>();
+        
         // Register cost management services
         services.AddHttpClient<AzureCostManagementService>();
         services.AddScoped<AzureCostManagementService>();
@@ -101,6 +104,9 @@ public static class ServiceCollectionExtensions
         
         // Register environment management engine
         services.AddScoped<IEnvironmentManagementEngine, EnvironmentManagementEngine>();
+        
+        // Register environment storage service (required by EnvironmentManagementPlugin)
+        services.AddScoped<EnvironmentStorageService>();
         
         // Register onboarding services
         services.AddScoped<IOnboardingService, FlankspeedOnboardingService>();

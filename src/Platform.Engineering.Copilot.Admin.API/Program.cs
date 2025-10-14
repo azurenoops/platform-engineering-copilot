@@ -138,7 +138,7 @@ builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.IInfrast
 builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.IGovernanceEngine, Platform.Engineering.Copilot.Core.Services.Governance.GovernanceEngine>();
 
 // Azure Policy Service (for Azure policy evaluation)
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.IAzurePolicyService, Platform.Engineering.Copilot.Core.Services.AzurePolicyService>();
+builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.IAzurePolicyService, Platform.Engineering.Copilot.Core.Services.AzurePolicyEngine>();
 
 // ATO Compliance Engine (for security scanning) - Will be registered as optional for now
 // builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.IAtoComplianceEngine, Platform.Engineering.Copilot.Core.Services.Compliance.AtoComplianceEngine>();

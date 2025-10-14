@@ -10,15 +10,15 @@ using System.Text.Json;
 
 namespace Platform.Engineering.Copilot.Core.Services;
 
-public class AzurePolicyService : IAzurePolicyService
+public class AzurePolicyEngine : IAzurePolicyService
 {
-    private readonly ILogger<AzurePolicyService> _logger;
+    private readonly ILogger<AzurePolicyEngine> _logger;
     private readonly ArmClient _armClient;
     // private readonly PolicyInsightsClient _policyInsightsClient;
     private readonly Dictionary<string, ApprovalWorkflow> _approvalWorkflows;
     private readonly Dictionary<string, List<AzurePolicyEvaluation>> _policyEvaluationCache;
 
-    public AzurePolicyService(ILogger<AzurePolicyService> logger)
+    public AzurePolicyEngine(ILogger<AzurePolicyEngine> logger)
     {
         _logger = logger;
         
@@ -38,7 +38,7 @@ public class AzurePolicyService : IAzurePolicyService
         var result = new PreFlightGovernanceResult
         {
             RequestId = Guid.NewGuid().ToString(),
-            EvaluatedBy = "AzurePolicyService"
+            EvaluatedBy = "AzurePolicyEngine"
         };
 
         try
@@ -116,7 +116,7 @@ public class AzurePolicyService : IAzurePolicyService
         var governanceResult = new PostFlightGovernanceResult
         {
             RequestId = Guid.NewGuid().ToString(),
-            EvaluatedBy = "AzurePolicyService",
+            EvaluatedBy = "AzurePolicyEngine",
             PolicyDecision = GovernancePolicyDecision.Allow,
             IsApproved = true
         };

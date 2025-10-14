@@ -3,7 +3,6 @@ using Platform.Engineering.Copilot.Core.Extensions;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Data.Context;
 using Platform.Engineering.Copilot.Core.Services;
-using Platform.Engineering.Copilot.DocumentProcessing.Extensions;
 
 namespace Platform.Engineering.Copilot.API;
 
@@ -79,13 +78,10 @@ public class Program
         // Note: Gateway project was removed during refactoring - these services may need to be registered individually
         // builder.Services.AddGatewayServices(builder.Configuration);
 
-        // Register Document Processing Services
-        builder.Services.AddDocumentProcessing(builder.Configuration);
-
         // Register other core services
         builder.Services.AddSingleton<GitHubGatewayService>();
         builder.Services.AddSingleton<IGitHubServices>(provider => provider.GetRequiredService<GitHubGatewayService>());
-        builder.Services.AddSingleton<AzurePolicyService>();
+        builder.Services.AddSingleton<AzurePolicyEngine>();
 
         // NOTE: Dynamic PluginSystem removed - using Semantic Kernel plugins instead
         

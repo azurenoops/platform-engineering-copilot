@@ -158,7 +158,13 @@ public enum AtoFindingType
     Backup,
     Encryption,
     PatchManagement,
-    ResourceManagement
+    ResourceManagement,
+    ContingencyPlanning,
+    IdentityManagement,
+    ConfigurationManagement,
+    IncidentResponse,
+    RiskAssessment,
+    SecurityAssessment
 }
 
 public enum AtoFindingSeverity
@@ -176,7 +182,8 @@ public enum AtoComplianceStatus
     NonCompliant,
     PartiallyCompliant,
     Unknown,
-    NotApplicable
+    NotApplicable,
+    ManualReviewRequired
 }
 
 public enum AtoScanStatus

@@ -93,8 +93,25 @@ FedRAMP High compliance with zero-trust networking."
 | **Mission** | Mission name, purpose, classification | "Secure Comms Platform, CUI" |
 | **Cloud** | Provider, environment, region | "Azure Government, US Gov Virginia" |
 | **Services** | Compute, database, storage, networking | "AKS, SQL Server, Blob Storage, VNet" |
-| **Compliance** | Framework, level | "FedRAMP High, NIST 800-53" |
+| **Compliance** | Framework, level | "FedRAMP High (NIST 800-53)" |
 | **Scale** | Size, traffic, users | "10 nodes, 50K users, HA required" |
+
+### Understanding Compliance Frameworks
+
+The system uses **NIST 800-53 Rev 5** as the foundation for all compliance assessments:
+
+- **NIST 800-53 Rev 5**: Comprehensive security control catalog (1000+ controls and enhancements)
+- **FedRAMP** (Federal Risk and Authorization Management Program):
+  - **High**: ~421 NIST controls (high-impact systems, classified data)
+  - **Moderate**: ~325 NIST controls (moderate-impact systems)
+  - **Low**: ~125 NIST controls (low-impact systems, public data)
+- **DoD Impact Levels**: NIST 800-53 controls + DoD-specific requirements
+  - IL2-IL6 for different classification levels
+- **CMMC**: Derived from NIST 800-171 (which is subset of NIST 800-53)
+
+**Key Point**: When you specify "FedRAMP High," the system assesses your resources against 
+the NIST 800-53 controls required by that baseline. All federal compliance frameworks use 
+NIST 800-53 as the control catalog.
 
 ---
 
@@ -348,34 +365,74 @@ When onboarding a mission, you can describe your infrastructure needs. The syste
 
 #### Compliance Scanning
 
-**Basic Compliance Check**:
+**Basic Compliance Check - Subscription Scope**:
 ```
-"Check FedRAMP compliance for my production environment"
+"Check FedRAMP compliance for my production subscription"
 ```
 
-**Detailed Compliance Scan**:
+**Basic Compliance Check - Resource Group Scope**:
 ```
-"Run comprehensive compliance scan for resource group 'mission-prod-rg' with:
-- Framework: FedRAMP High (325 controls)
-- Include: All resources (VMs, storage, networking, databases)
-- Severity: Report all findings (critical, high, medium, low)
-- Output: Detailed report with remediation steps
-- Auto-fix: Where possible, automatically remediate low-risk issues
-- Schedule: Run weekly, alert on new critical findings
-- Evidence: Collect artifacts for ATO package"
+"Check FedRAMP compliance for resource group 'mission-prod-rg'"
+```
+
+**Detailed Compliance Scan - Subscription**:
+```
+"Run comprehensive compliance scan for subscription '453c2549-4cc5-464f-ba66-acad920823e8'"
+
+OR with more details:
+
+"Check compliance for subscription '453c2549-4cc5-464f-ba66-acad920823e8' against FedRAMP High 
+(NIST 800-53 Rev 5 baseline). Show me all findings with severity levels and remediation 
+recommendations."
+```
+
+**Note**: FedRAMP High is a baseline that uses a specific subset of **NIST 800-53 Rev 5** controls. 
+The system assesses your resources against NIST 800-53 controls and determines FedRAMP compliance 
+by checking if the required controls are satisfied. The scan produces a detailed assessment report. 
+To actually execute remediation, use a separate command like "generate remediation plan" or 
+"execute remediation for [finding-id]" after reviewing the assessment.
+
+**Detailed Compliance Scan - Resource Group**:
+```
+"Check compliance for resource group 'mission-prod-rg' in subscription '453c2549-4cc5-464f-ba66-acad920823e8' 
+against FedRAMP High (NIST 800-53 baseline). Show all findings with remediation guidance."
+```
+
+**Understanding Compliance Frameworks**:
+- **NIST 800-53 Rev 5**: Comprehensive security control catalog (1000+ controls)
+- **FedRAMP High**: Requires ~421 specific NIST 800-53 controls + enhancements
+- **FedRAMP Moderate**: Requires ~325 NIST 800-53 controls
+- **FedRAMP Low**: Requires ~125 NIST 800-53 controls
+
+The system assesses against NIST 800-53 and maps results to FedRAMP baselines.
+
+**Remediation Workflow**:
+```
+Step 1: "Run compliance assessment for subscription [id]"
+        → Review the assessment report
+
+Step 2: "Generate remediation plan for the assessment"
+        → Get prioritized remediation steps
+
+Step 3: "Execute remediation for finding [finding-id]" (optional: add "dry-run mode")
+        → Apply automated fixes for specific findings
 ```
 
 **Multi-Framework Compliance**:
 ```
 "Validate compliance against multiple frameworks:
-- FedRAMP High (for government authorization)
-- NIST 800-53 Rev 5 (security controls)
+- FedRAMP High (NIST 800-53 Rev 5 baseline - ~421 controls)
+- NIST 800-53 Rev 5 (complete catalog assessment)
 - ISO 27001 (information security management)
 - SOC 2 Type II (trust service criteria)
 - Scope: Entire Azure Government subscription
 - Priority: Identify gaps blocking ATO approval
 - Timeline: Need ATO within 60 days, prioritize critical gaps"
 ```
+
+**Note**: All federal compliance frameworks (FedRAMP, DoD IL levels, CMMC) are based on 
+NIST 800-53 controls. The system uses NIST 800-53 as the foundation and can report 
+compliance for any framework that uses these controls.
 
 #### Security Hardening
 
@@ -811,8 +868,14 @@ Express complex requirements with conditions:
 
 ✅ **Good**:
 ```
-"Must meet FedRAMP High compliance with all 325 controls implemented"
+"Must meet FedRAMP High compliance (NIST 800-53 Rev 5 baseline)"
 ```
+
+**Compliance Framework Options**:
+- FedRAMP High: ~421 NIST 800-53 controls (high-impact systems)
+- FedRAMP Moderate: ~325 NIST 800-53 controls (moderate-impact systems)  
+- DoD IL4/IL5: NIST 800-53 + DoD-specific requirements
+- CMMC Level 3: NIST 800-171 derived from NIST 800-53
 
 ### 4. Provide Cost Constraints
 
@@ -901,11 +964,21 @@ Express complex requirements with conditions:
 **Fix Compliance Issues**:
 ```
 @platform auto-remediate compliance failures in resource group "prod-rg":
-- Framework: FedRAMP High
+- Framework: FedRAMP High (NIST 800-53 baseline)
 - Severity: Critical and High only (don't touch Low/Medium)
 - Dry run first: Show what will be changed
 - After approval: Execute remediation
 - Report: Before/after compliance scores
+```
+
+**Available Compliance Frameworks**:
+```
+- NIST 800-53 Rev 5 (foundation - 1000+ controls)
+- FedRAMP High (~421 controls)
+- FedRAMP Moderate (~325 controls)
+- FedRAMP Low (~125 controls)
+- DoD IL2-IL6 (NIST 800-53 + DoD requirements)
+- CMMC (derived from NIST 800-171/800-53)
 ```
 
 ---

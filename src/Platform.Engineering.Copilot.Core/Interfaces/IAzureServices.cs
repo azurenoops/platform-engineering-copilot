@@ -45,6 +45,7 @@ namespace Platform.Engineering.Copilot.Core.Interfaces
     {
         // Original methods
         Task<List<AzureResource>> ListAllResourcesAsync(string subscriptionId);
+        Task<List<AzureResource>> ListAllResourcesAsync(string subscriptionId, string resourceGroupName);
         Task<AzureResource?> GetResourceAsync(string resourceId);
 
         // Resource Group operations
@@ -114,6 +115,14 @@ namespace Platform.Engineering.Copilot.Core.Interfaces
         Task<AzureSubscriptionInfo> GetSubscriptionAsync(string subscriptionId);
 
         /// <summary>
+        /// Gets subscription details by display name.
+        /// </summary>
+        /// <param name="subscriptionName">Subscription display name</param>
+        /// <returns>Subscription information</returns>
+        /// <exception cref="InvalidOperationException">Thrown when subscription not found or multiple matches exist</exception>
+        Task<AzureSubscriptionInfo> GetSubscriptionByNameAsync(string subscriptionName);
+
+        /// <summary>
         /// Deletes a subscription (for cleanup/rollback).
         /// </summary>
         /// <param name="subscriptionId">Subscription ID</param>
@@ -139,6 +148,15 @@ namespace Platform.Engineering.Copilot.Core.Interfaces
         // Monitoring & Alerts
         Task<object> CreateAlertRuleAsync(string subscriptionId, string resourceGroupName, string alertRuleName, CancellationToken cancellationToken = default);
         Task<IEnumerable<object>> ListAlertRulesAsync(string subscriptionId, string? resourceGroupName = null, CancellationToken cancellationToken = default);
+        
+        /// <summary>
+        /// Lists diagnostic settings for a specific resource.
+        /// Used to check for NSG flow logs, activity logs, and other diagnostic configurations.
+        /// </summary>
+        /// <param name="resourceId">Full Azure resource ID</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>List of diagnostic settings with their log categories</returns>
+        Task<IEnumerable<DiagnosticSettingInfo>> ListDiagnosticSettingsForResourceAsync(string resourceId, CancellationToken cancellationToken = default);
 
         // ARM Client access for advanced operations
         ArmClient? GetArmClient();
@@ -308,6 +326,18 @@ namespace Platform.Engineering.Copilot.Core.Interfaces
         public bool DenyAllInboundInternet { get; set; } = true;
         public bool AllowAzureServices { get; set; } = true;
         public string BastionSubnetCidr { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Diagnostic setting information for a resource
+    /// </summary>
+    public class DiagnosticSettingInfo
+    {
+        public string Name { get; set; } = "";
+        public List<string> Categories { get; set; } = new();
+        public string? WorkspaceId { get; set; }
+        public string? StorageAccountId { get; set; }
+        public string? EventHubName { get; set; }
     }
 
     /// <summary>

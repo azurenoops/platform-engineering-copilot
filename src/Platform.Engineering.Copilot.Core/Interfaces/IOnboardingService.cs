@@ -36,6 +36,14 @@ public interface IOnboardingService
     Task<bool> SubmitRequestAsync(string requestId, string? submittedBy = null, CancellationToken cancellationToken = default);
     
     /// <summary>
+    /// Validates a request for submission and returns any validation errors
+    /// </summary>
+    /// <param name="requestId">The request ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>List of validation errors (empty if valid)</returns>
+    Task<List<string>> ValidateForSubmissionAsync(string requestId, CancellationToken cancellationToken = default);
+    
+    /// <summary>
     /// Gets a specific onboarding request by ID
     /// </summary>
     /// <param name="requestId">The request ID</param>

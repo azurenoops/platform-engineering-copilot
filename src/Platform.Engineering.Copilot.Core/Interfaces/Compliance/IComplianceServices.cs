@@ -16,6 +16,12 @@ public interface IAtoComplianceEngine
         string subscriptionId, 
         IProgress<AssessmentProgress>? progress = null,
         CancellationToken cancellationToken = default);
+
+    Task<AtoComplianceAssessment> RunComprehensiveAssessmentAsync(
+        string subscriptionId,
+        string? resourceGroupName,
+        IProgress<AssessmentProgress>? progress = null,
+        CancellationToken cancellationToken = default);
     
     Task<ContinuousComplianceStatus> GetContinuousComplianceStatusAsync(string subscriptionId, CancellationToken cancellationToken = default);
     

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Platform.Engineering.Copilot.Core.Interfaces;
+using Platform.Engineering.Copilot.Core.Services.Onboarding.Parsing;
 using Platform.Engineering.Copilot.Data.Entities;
 using System;
 using System.Collections.Generic;
@@ -33,7 +34,12 @@ public class OnboardingPlugin : BaseSupervisorPlugin
     public async Task<string> CaptureOnboardingRequirementsAsync(
         [Description("Mission name")] string missionName,
         [Description("Organization")] string organization,
-        [Description("All other requirements as JSON string with keys: classificationLevel, environmentType, region, requiredServices, networkRequirements, computeRequirements, databaseRequirements, complianceFrameworks, securityControls, targetDeploymentDate, expectedGoLiveDate")] string? additionalRequirements = null,
+        [Description(@"Additional requirements in any format:
+- JSON: {""classificationLevel"": ""Secret"", ""environmentType"": ""Production"", ...}
+- Bullet list: ""- Classification: Secret\n- Environment: Production\n...""
+- Comma-separated: ""Classification is Secret, environment is Production, ...""
+- Natural language: ""We need a Secret classification production environment in East US...""
+The AI will automatically parse and extract: classificationLevel, environmentType, region, requiredServices, networkRequirements, computeRequirements, databaseRequirements, complianceFrameworks, securityControls, targetDeploymentDate, expectedGoLiveDate")] string? additionalRequirements = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -50,26 +56,55 @@ public class OnboardingPlugin : BaseSupervisorPlugin
                 ["organization"] = organization
             };
 
-            // Parse additional requirements if provided
+            // Parse additional requirements using multi-strategy parser
             if (!string.IsNullOrWhiteSpace(additionalRequirements))
             {
-                try
+                // Create logger for parser using logger factory
+                var loggerFactory = LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Debug));
+                var parserLogger = loggerFactory.CreateLogger<RequirementsParser>();
+                var parser = new RequirementsParser(parserLogger, _kernel);
+                var parsed = await parser.ParseAsync(additionalRequirements);
+                
+                if (parsed == null || parsed.Count == 0)
                 {
-                    var additional = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(additionalRequirements);
-                    if (additional != null)
-                    {
-                        foreach (var kvp in additional)
-                        {
-                            context[kvp.Key] = kvp.Value.ValueKind == JsonValueKind.String 
-                                ? kvp.Value.GetString() 
-                                : kvp.Value.ToString();
-                        }
-                    }
+                    _logger.LogWarning("Could not parse any requirements from input: {Input}", 
+                        additionalRequirements.Substring(0, Math.Min(100, additionalRequirements.Length)));
+                    
+                    return $@"⚠️  Could not parse requirements. Please provide in one of these formats:
+
+**1. JSON:**
+```json
+{{""classificationLevel"": ""Secret"", ""environmentType"": ""Production"", ""region"": ""US Gov Virginia""}}
+```
+
+**2. Bullet list:**
+```
+- Classification: Secret
+- Environment: Production
+- Region: US Gov Virginia
+```
+
+**3. Comma-separated:**
+```
+Classification is Secret, environment is Production, region is US Gov Virginia
+```
+
+**4. Natural language:**
+```
+We need a Secret classification production environment in US Gov Virginia
+```
+
+Or I can guide you through the requirements step-by-step. Just say **'help me with requirements'**.";
                 }
-                catch (Exception ex)
+                
+                // Log what was successfully parsed
+                _logger.LogInformation("Successfully parsed {Count} requirements: {Keys}", 
+                    parsed.Count, string.Join(", ", parsed.Keys));
+                
+                // Merge parsed data into context
+                foreach (var kvp in parsed)
                 {
-                    _logger.LogWarning(ex, "Failed to parse additional requirements, using raw string");
-                    context["additionalRequirements"] = additionalRequirements;
+                    context[kvp.Key] = kvp.Value;
                 }
             }
 
@@ -165,10 +200,12 @@ public class OnboardingPlugin : BaseSupervisorPlugin
             summary.AppendLine();
             summary.AppendLine("⚠️ **IMPORTANT:** Please review the above configuration carefully.");
             summary.AppendLine();
-            summary.AppendLine("**To submit for platform team approval, respond with:**");
+            summary.AppendLine($"**To submit for platform team approval, respond with one of these phrases:**");
             summary.AppendLine("- 'Yes, proceed'");
             summary.AppendLine("- 'Confirm and submit'");
             summary.AppendLine("- 'Go ahead'");
+            summary.AppendLine();
+            summary.AppendLine($"_(I will automatically use request ID `{requestId}` when you confirm)_");
             summary.AppendLine();
             summary.AppendLine("ℹ️ **Note:** Your request will be submitted to the NAVWAR Platform Engineering team for review.");
             summary.AppendLine("Provisioning will begin automatically once approved by the platform team.");
@@ -207,12 +244,42 @@ public class OnboardingPlugin : BaseSupervisorPlugin
                 return $"❌ **Error:** Onboarding request `{requestId}` not found. Please verify the request ID.";
             }
 
+            // First validate the request
+            var validationErrors = await _onboardingService.ValidateForSubmissionAsync(requestId, cancellationToken);
+            
+            if (validationErrors.Count > 0)
+            {
+                var errorResponse = new StringBuilder();
+                errorResponse.AppendLine("❌ **SUBMISSION BLOCKED - Required Information Missing**");
+                errorResponse.AppendLine();
+                errorResponse.AppendLine($"I cannot submit request `{requestId}` for approval because the following required information is missing:");
+                errorResponse.AppendLine();
+                foreach (var error in validationErrors)
+                {
+                    errorResponse.AppendLine($"❌ {error}");
+                }
+                errorResponse.AppendLine();
+                errorResponse.AppendLine("📝 **What you need to do:**");
+                errorResponse.AppendLine();
+                errorResponse.AppendLine("Please provide the missing information so I can complete your onboarding request. For example:");
+                errorResponse.AppendLine();
+                errorResponse.AppendLine("*\"For Mission Alpha onboarding:*");
+                errorResponse.AppendLine($"*- Mission owner is John Doe*");
+                errorResponse.AppendLine($"*- Email is john.doe@navy.mil*");
+                errorResponse.AppendLine($"*- Command is NAVSEA*");
+                errorResponse.AppendLine($"*- Subscription name should be mission-alpha-prod*");
+                errorResponse.AppendLine($"*- VNet CIDR should be 10.0.0.0/16\"*");
+                errorResponse.AppendLine();
+                errorResponse.AppendLine("Once you provide this information, I'll update the request and submit it for approval.");
+                return errorResponse.ToString();
+            }
+
             // Submit for approval
             var success = await _onboardingService.SubmitRequestAsync(requestId, submittedBy, cancellationToken);
 
             if (!success)
             {
-                return $"❌ **Error:** Failed to submit request `{requestId}` for approval. The request may already be submitted or may have validation errors.";
+                return $"❌ **Error:** Failed to submit request `{requestId}` for approval. The request may already be submitted.";
             }
 
             // Build success response
@@ -241,444 +308,6 @@ public class OnboardingPlugin : BaseSupervisorPlugin
         catch (Exception ex)
         {
             return CreateErrorResponse("submit onboarding request for approval", ex);
-        }
-    }
-
-    [KernelFunction("process_onboarding_query")]
-    [Description("Process any Navy Flankspeed onboarding query using natural language. Handles draft creation, updates, submission, approval workflow, cancellations, status checks, provisioning updates, reporting, and history requests.")]
-    public async Task<string> ProcessOnboardingQueryAsync(
-        [Description("Natural language onboarding query (e.g., 'start a new onboarding draft', 'submit request 123', 'show pending onboarding requests').")] string query,
-        [Description("Optional onboarding request ID when already known (GUID format). If not supplied, the plugin attempts to extract it from the query text.")] string? requestId = null,
-        [Description("Optional JSON blob with extra context (e.g., approvals, rejection reasons, field updates). Useful when structured data is required.")] string? additionalContext = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            _logger.LogInformation("Processing onboarding query: {Query}", query);
-
-            var normalizedQuery = query.ToLowerInvariant();
-            var intent = DetermineIntent(normalizedQuery);
-            var contextData = ParseContext(additionalContext);
-            requestId ??= ExtractRequestId(query);
-
-            return intent switch
-            {
-                OnboardingIntent.CreateDraft => await HandleCreateDraftAsync(cancellationToken),
-                OnboardingIntent.UpdateDraft => await HandleUpdateDraftAsync(requestId, contextData, cancellationToken),
-                OnboardingIntent.SubmitRequest => await HandleSubmitRequestAsync(requestId, cancellationToken),
-                OnboardingIntent.CancelRequest => await HandleCancelRequestAsync(requestId, contextData, cancellationToken),
-                OnboardingIntent.CheckStatus => await HandleRequestStatusAsync(requestId, contextData, cancellationToken),
-                OnboardingIntent.ListPending => await HandlePendingRequestsAsync(cancellationToken),
-                OnboardingIntent.ListOwnerRequests => await HandleOwnerRequestsAsync(normalizedQuery, contextData, cancellationToken),
-                OnboardingIntent.ApproveRequest => await HandleApproveRequestAsync(requestId, contextData, cancellationToken),
-                OnboardingIntent.RejectRequest => await HandleRejectRequestAsync(requestId, contextData, cancellationToken),
-                OnboardingIntent.ProvisioningStatus => await HandleProvisioningStatusAsync(query, contextData, cancellationToken),
-                OnboardingIntent.ProvisioningRequests => await HandleProvisioningRequestsAsync(cancellationToken),
-                OnboardingIntent.Stats => await HandleStatsAsync(cancellationToken),
-                OnboardingIntent.History => await HandleHistoryAsync(contextData, cancellationToken),
-                _ => ProvideUsageGuidance()
-            };
-        }
-        catch (Exception ex)
-        {
-            return CreateErrorResponse("process onboarding query", ex);
-        }
-    }
-
-    private async Task<string> HandleCreateDraftAsync(CancellationToken cancellationToken)
-    {
-        var requestId = await _onboardingService.CreateDraftRequestAsync(cancellationToken);
-        return $"✅ Created new onboarding draft request with ID `{requestId}`. You can now provide details or submit when ready.";
-    }
-
-    private async Task<string> HandleUpdateDraftAsync(
-        string? requestId,
-        Dictionary<string, object?> context,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(requestId))
-        {
-            return "Please provide the onboarding request ID to update (e.g., include the GUID in your request).";
-        }
-
-        if (context.Count == 0)
-        {
-            return "No updates were supplied. Provide a JSON payload in `additionalContext` describing the fields to change (e.g., `{ \"missionName\": \"Project Triton\" }`).";
-        }
-
-        var updated = await _onboardingService.UpdateDraftAsync(requestId, context, cancellationToken);
-        return updated
-            ? $"✅ Updated onboarding draft `{requestId}` with the supplied changes."
-            : $"Unable to update onboarding draft `{requestId}`. Ensure the request exists and is still in draft status.";
-    }
-
-    private async Task<string> HandleSubmitRequestAsync(string? requestId, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(requestId))
-        {
-            return "Please provide the onboarding request ID you want to submit.";
-        }
-
-        var submitted = await _onboardingService.SubmitRequestAsync(requestId, submittedBy: null, cancellationToken);
-        return submitted
-            ? $"✅ Submitted onboarding request `{requestId}` for NNWC review."
-            : $"Unable to submit onboarding request `{requestId}`. Verify the request exists and is still a draft.";
-    }
-
-    private async Task<string> HandleCancelRequestAsync(
-        string? requestId,
-        Dictionary<string, object?> context,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(requestId))
-        {
-            return "Please specify the onboarding request ID to cancel.";
-        }
-
-        var reason = context.TryGetValue("reason", out var value) ? Convert.ToString(value) : null;
-        if (string.IsNullOrWhiteSpace(reason))
-        {
-            return "Cancelling a request requires a reason. Provide `{ \"reason\": \"duplicate submission\" }` in `additionalContext`.";
-        }
-
-        var cancelled = await _onboardingService.CancelRequestAsync(requestId, reason!, cancellationToken);
-        return cancelled
-            ? $"✅ Cancelled onboarding request `{requestId}`.{Environment.NewLine}Reason: {reason}"
-            : $"Unable to cancel onboarding request `{requestId}`. It may already be completed or cancelled.";
-    }
-
-    private async Task<string> HandleRequestStatusAsync(
-        string? requestId,
-        Dictionary<string, object?> context,
-        CancellationToken cancellationToken)
-    {
-        if (!string.IsNullOrWhiteSpace(requestId))
-        {
-            var request = await _onboardingService.GetRequestAsync(requestId, cancellationToken);
-            return request != null
-                ? FormatRequestDetail(request)
-                : $"No onboarding request found with ID `{requestId}`.";
-        }
-
-        var ownerEmail = ExtractEmailFromContext(context);
-        if (!string.IsNullOrWhiteSpace(ownerEmail))
-        {
-            var requests = await _onboardingService.GetRequestsByOwnerAsync(ownerEmail!, cancellationToken);
-            return requests.Count > 0
-                ? FormatRequestList($"Onboarding requests for {ownerEmail}", requests)
-                : $"No onboarding requests found for {ownerEmail}.";
-        }
-
-        return "Provide a request ID or mission owner email (via `additionalContext` with `ownerEmail`) to check status.";
-    }
-
-    private async Task<string> HandlePendingRequestsAsync(CancellationToken cancellationToken)
-    {
-        var requests = await _onboardingService.GetPendingRequestsAsync(cancellationToken);
-        return requests.Count > 0
-            ? FormatRequestList("Pending onboarding requests awaiting review", requests)
-            : "No onboarding requests are currently pending review.";
-    }
-
-    private async Task<string> HandleOwnerRequestsAsync(
-        string normalizedQuery,
-        Dictionary<string, object?> context,
-        CancellationToken cancellationToken)
-    {
-        var ownerEmail = ExtractEmailFromContext(context) ?? ExtractEmailFromText(normalizedQuery);
-        if (string.IsNullOrWhiteSpace(ownerEmail))
-        {
-            return "Provide the mission owner email to list their onboarding requests (e.g., `additionalContext` with `{ \"ownerEmail\": \"captain@example.mil\" }`).";
-        }
-
-        var requests = await _onboardingService.GetRequestsByOwnerAsync(ownerEmail, cancellationToken);
-        return requests.Count > 0
-            ? FormatRequestList($"Onboarding requests for {ownerEmail}", requests)
-            : $"No onboarding requests found for {ownerEmail}.";
-    }
-
-    private async Task<string> HandleApproveRequestAsync(
-        string? requestId,
-        Dictionary<string, object?> context,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(requestId))
-        {
-            return "Provide the onboarding request ID to approve.";
-        }
-
-        var approvedBy = context.TryGetValue("approvedBy", out var approverObj)
-            ? Convert.ToString(approverObj)
-            : "NNWC Reviewer";
-        var comments = context.TryGetValue("comments", out var commentsObj)
-            ? Convert.ToString(commentsObj)
-            : null;
-
-        var result = await _onboardingService.ApproveRequestAsync(requestId, approvedBy ?? "NNWC Reviewer", comments, cancellationToken);
-
-        if (!result.Success)
-        {
-            return $"Unable to approve onboarding request `{requestId}`. {result.Message ?? "Check that the request is pending review."}";
-        }
-
-        var sb = new StringBuilder();
-        sb.AppendLine($"✅ Approved onboarding request `{requestId}`.");
-        if (!string.IsNullOrWhiteSpace(result.JobId))
-        {
-            sb.AppendLine($"Provisioning job `{result.JobId}` started. Use 'check provisioning status {result.JobId}' to monitor progress.");
-        }
-        if (!string.IsNullOrWhiteSpace(comments))
-        {
-            sb.AppendLine($"Reviewer comments: {comments}");
-        }
-
-        return sb.ToString();
-    }
-
-    private async Task<string> HandleRejectRequestAsync(
-        string? requestId,
-        Dictionary<string, object?> context,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(requestId))
-        {
-            return "Provide the onboarding request ID to reject.";
-        }
-
-        var rejectedBy = context.TryGetValue("rejectedBy", out var rejectedByObj)
-            ? Convert.ToString(rejectedByObj)
-            : null;
-        var reason = context.TryGetValue("reason", out var reasonObj)
-            ? Convert.ToString(reasonObj)
-            : null;
-
-        if (string.IsNullOrWhiteSpace(rejectedBy) || string.IsNullOrWhiteSpace(reason))
-        {
-            return "Rejecting a request requires both `rejectedBy` and `reason` in `additionalContext`.";
-        }
-
-        var rejected = await _onboardingService.RejectRequestAsync(requestId, rejectedBy!, reason!, cancellationToken);
-        return rejected
-            ? $"✅ Rejected onboarding request `{requestId}`. Reason: {reason}"
-            : $"Unable to reject onboarding request `{requestId}`. Ensure it is pending review.";
-    }
-
-    private async Task<string> HandleProvisioningStatusAsync(
-        string query,
-        Dictionary<string, object?> context,
-        CancellationToken cancellationToken)
-    {
-        var jobId = context.TryGetValue("jobId", out var jobObj)
-            ? Convert.ToString(jobObj)
-            : ExtractProvisioningJobId(query);
-
-        if (string.IsNullOrWhiteSpace(jobId))
-        {
-            return "Provide the provisioning job ID to check status (e.g., include the GUID or `jobId` in `additionalContext`).";
-        }
-
-        var status = await _onboardingService.GetProvisioningStatusAsync(jobId!, cancellationToken);
-
-        var sb = new StringBuilder();
-        sb.AppendLine($"Provisioning status for job `{status.JobId}` (request `{status.RequestId}`):");
-        sb.AppendLine($"Status: {status.Status} | {status.PercentComplete}% complete");
-        if (!string.IsNullOrWhiteSpace(status.CurrentStep))
-        {
-            sb.AppendLine($"Current step: {status.CurrentStep}");
-        }
-
-        if (status.CompletedSteps.Any())
-        {
-            sb.AppendLine("Completed steps:");
-            foreach (var step in status.CompletedSteps)
-            {
-                sb.AppendLine($"  - {step}");
-            }
-        }
-
-        if (status.FailedSteps.Any())
-        {
-            sb.AppendLine("Failed steps:");
-            foreach (var step in status.FailedSteps)
-            {
-                sb.AppendLine($"  - {step}");
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(status.ErrorMessage))
-        {
-            sb.AppendLine($"Error: {status.ErrorMessage}");
-        }
-
-        if (status.ProvisionedResources.Any())
-        {
-            sb.AppendLine("Provisioned resources:");
-            foreach (var kvp in status.ProvisionedResources)
-            {
-                sb.AppendLine($"  - {kvp.Key}: {kvp.Value}");
-            }
-        }
-
-        return sb.ToString();
-    }
-
-    private async Task<string> HandleProvisioningRequestsAsync(CancellationToken cancellationToken)
-    {
-        var requests = await _onboardingService.GetProvisioningRequestsAsync(cancellationToken);
-        return requests.Count > 0
-            ? FormatRequestList("Requests currently in provisioning", requests)
-            : "No onboarding requests are currently provisioning.";
-    }
-
-    private async Task<string> HandleStatsAsync(CancellationToken cancellationToken)
-    {
-        var stats = await _onboardingService.GetStatsAsync(cancellationToken);
-
-        var sb = new StringBuilder();
-        sb.AppendLine("📊 Onboarding statistics");
-        sb.AppendLine($"Total requests: {stats.TotalRequests} | Pending review: {stats.PendingReview} | Approved: {stats.Approved}");
-        sb.AppendLine($"Rejected: {stats.Rejected} | Provisioning: {stats.InProvisioning} | Completed: {stats.Completed} | Failed: {stats.Failed}");
-        sb.AppendLine($"Average approval time: {stats.AverageApprovalTimeHours:N1} hrs | Average provisioning time: {stats.AverageProvisioningTimeHours:N1} hrs");
-        sb.AppendLine($"Success rate: {stats.SuccessRate:P1}");
-
-        if (stats.Trends.Any())
-        {
-            sb.AppendLine("Recent trends:");
-            foreach (var trend in stats.Trends.Take(5))
-            {
-                sb.AppendLine($"  {trend.Date:yyyy-MM-dd}: submitted {trend.RequestsSubmitted}, completed {trend.RequestsCompleted}, rejected {trend.RequestsRejected}");
-            }
-        }
-
-        return sb.ToString();
-    }
-
-    private async Task<string> HandleHistoryAsync(
-        Dictionary<string, object?> context,
-        CancellationToken cancellationToken)
-    {
-        var endDate = context.TryGetValue("endDate", out var endObj) && TryConvertToDateTime(endObj, out var parsedEnd)
-            ? parsedEnd
-            : DateTime.UtcNow;
-
-        var startDate = context.TryGetValue("startDate", out var startObj) && TryConvertToDateTime(startObj, out var parsedStart)
-            ? parsedStart
-            : endDate.AddDays(-90);
-
-        var history = await _onboardingService.GetHistoryAsync(startDate, endDate, cancellationToken);
-
-        if (history.Count == 0)
-        {
-            return $"No onboarding activity recorded between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}.";
-        }
-
-        return FormatRequestList($"Onboarding history from {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd}", history);
-    }
-
-    private static OnboardingIntent DetermineIntent(string normalizedQuery)
-    {
-        if (normalizedQuery.Contains("start onboarding") ||
-            normalizedQuery.Contains("begin onboarding") ||
-            normalizedQuery.Contains("create") ||
-            normalizedQuery.Contains("start a new") ||
-            normalizedQuery.Contains("new draft"))
-        {
-            return OnboardingIntent.CreateDraft;
-        }
-
-        if (normalizedQuery.Contains("update") || normalizedQuery.Contains("modify"))
-        {
-            return OnboardingIntent.UpdateDraft;
-        }
-
-        if (normalizedQuery.Contains("submit") || normalizedQuery.Contains("finalize"))
-        {
-            return OnboardingIntent.SubmitRequest;
-        }
-
-        if (normalizedQuery.Contains("cancel"))
-        {
-            return OnboardingIntent.CancelRequest;
-        }
-
-        if (normalizedQuery.Contains("approve"))
-        {
-            return OnboardingIntent.ApproveRequest;
-        }
-
-        if (normalizedQuery.Contains("reject"))
-        {
-            return OnboardingIntent.RejectRequest;
-        }
-
-        if (normalizedQuery.Contains("pending"))
-        {
-            return OnboardingIntent.ListPending;
-        }
-
-        if (normalizedQuery.Contains("owner") || normalizedQuery.Contains("my requests"))
-        {
-            return OnboardingIntent.ListOwnerRequests;
-        }
-
-        if (normalizedQuery.Contains("provisioning status") || normalizedQuery.Contains("job status"))
-        {
-            return OnboardingIntent.ProvisioningStatus;
-        }
-
-        if (normalizedQuery.Contains("provisioning") && normalizedQuery.Contains("requests"))
-        {
-            return OnboardingIntent.ProvisioningRequests;
-        }
-
-        if (normalizedQuery.Contains("stat") || normalizedQuery.Contains("metric") || normalizedQuery.Contains("dashboard"))
-        {
-            return OnboardingIntent.Stats;
-        }
-
-        if (normalizedQuery.Contains("history") || normalizedQuery.Contains("trend"))
-        {
-            return OnboardingIntent.History;
-        }
-
-        if (normalizedQuery.Contains("status") || normalizedQuery.Contains("progress") || normalizedQuery.Contains("check"))
-        {
-            return OnboardingIntent.CheckStatus;
-        }
-
-        return OnboardingIntent.Unknown;
-    }
-
-    private static Dictionary<string, object?> ParseContext(string? additionalContext)
-    {
-        if (string.IsNullOrWhiteSpace(additionalContext))
-        {
-            return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        }
-
-        try
-        {
-            var raw = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(additionalContext, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
-
-            if (raw == null)
-            {
-                return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            }
-
-            var converted = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var kvp in raw)
-            {
-                converted[kvp.Key] = ConvertJsonElement(kvp.Value);
-            }
-
-            return converted;
-        }
-        catch
-        {
-            return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         }
     }
 
@@ -738,121 +367,5 @@ public class OnboardingPlugin : BaseSupervisorPlugin
             default:
                 return element.GetRawText();
         }
-    }
-
-    private static string? ExtractRequestId(string query)
-    {
-        var match = Regex.Match(query, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
-        return match.Success ? match.Value : null;
-    }
-
-    private static string? ExtractProvisioningJobId(string query)
-    {
-        return ExtractRequestId(query);
-    }
-
-    private static string? ExtractEmailFromText(string normalizedQuery)
-    {
-        var match = Regex.Match(normalizedQuery, "[a-z0-9_.+-]+@[a-z0-9.-]+\\.[a-z]{2,}");
-        return match.Success ? match.Value : null;
-    }
-
-    private static string? ExtractEmailFromContext(Dictionary<string, object?> context)
-    {
-        return context.TryGetValue("ownerEmail", out var value) ? Convert.ToString(value) : null;
-    }
-
-    private static bool TryConvertToDateTime(object? value, out DateTime dateTime)
-    {
-        switch (value)
-        {
-            case DateTime dt:
-                dateTime = dt;
-                return true;
-            case string str when DateTime.TryParse(str, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed):
-                dateTime = parsed;
-                return true;
-            default:
-                dateTime = default;
-                return false;
-        }
-    }
-
-    private static string FormatRequestDetail(OnboardingRequest request)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine($"Onboarding request `{request.Id}`");
-        sb.AppendLine($"Status: {request.Status} | Mission: {request.MissionName}");
-        sb.AppendLine($"Owner: {request.MissionOwner} ({request.MissionOwnerEmail}) | Command: {request.Command}");
-        sb.AppendLine($"Classification: {request.ClassificationLevel} | Region: {request.Region}");
-        sb.AppendLine($"Created: {request.CreatedAt:yyyy-MM-dd} | Last updated: {request.LastUpdatedAt:yyyy-MM-dd}");
-
-        if (!string.IsNullOrWhiteSpace(request.ProvisioningJobId))
-        {
-            sb.AppendLine($"Provisioning job: {request.ProvisioningJobId}");
-        }
-        if (!string.IsNullOrWhiteSpace(request.ApprovedBy))
-        {
-            sb.AppendLine($"Approved by {request.ApprovedBy} at {request.ReviewedAt:yyyy-MM-dd}");
-        }
-        if (!string.IsNullOrWhiteSpace(request.RejectedBy))
-        {
-            sb.AppendLine($"Rejected by {request.RejectedBy}: {request.RejectionReason}");
-        }
-        if (!string.IsNullOrWhiteSpace(request.ProvisioningError))
-        {
-            sb.AppendLine($"Provisioning error: {request.ProvisioningError}");
-        }
-
-        return sb.ToString();
-    }
-
-    private static string FormatRequestList(string title, IReadOnlyCollection<OnboardingRequest> requests)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine(title);
-
-        foreach (var request in requests.OrderByDescending(r => r.LastUpdatedAt).Take(10))
-        {
-            sb.AppendLine($"- `{request.Id}` | {request.Status} | Mission: {request.MissionName} | Owner: {request.MissionOwnerEmail} | Updated {request.LastUpdatedAt:yyyy-MM-dd}");
-        }
-
-        if (requests.Count > 10)
-        {
-            sb.AppendLine($"(+ {requests.Count - 10} more requests)");
-        }
-
-        return sb.ToString();
-    }
-
-    private static string ProvideUsageGuidance()
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("I can help with Flankspeed onboarding operations. Try queries like:");
-        sb.AppendLine("- 'Start a new onboarding draft'");
-        sb.AppendLine("- 'Update request <GUID> with new mission owner email' (include updates in additionalContext)");
-        sb.AppendLine("- 'Submit onboarding request <GUID>'");
-        sb.AppendLine("- 'Approve onboarding request <GUID>' (include approvedBy)");
-        sb.AppendLine("- 'Show pending onboarding requests' or 'Show provisioning status for job <GUID>'");
-        sb.AppendLine("- 'Show onboarding stats' or 'Show onboarding history' (include start/end dates if needed)");
-        return sb.ToString();
-    }
-
-    private enum OnboardingIntent
-    {
-        Unknown,
-        CreateDraft,
-        UpdateDraft,
-        SubmitRequest,
-        CancelRequest,
-        CheckStatus,
-        ListPending,
-        ListOwnerRequests,
-        ApproveRequest,
-        RejectRequest,
-        ProvisioningStatus,
-        ProvisioningRequests,
-        Stats,
-        History
     }
 }

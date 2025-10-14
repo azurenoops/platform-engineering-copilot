@@ -72,8 +72,27 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         IProgress<AssessmentProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        return await RunComprehensiveAssessmentAsync(subscriptionId, null, progress, cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs a comprehensive ATO compliance assessment across all NIST control families
+    /// Supports optional resource group-level scoping
+    /// </summary>
+    /// <param name="subscriptionId">Azure subscription ID to assess</param>
+    /// <param name="resourceGroupName">Optional resource group name to scope assessment</param>
+    /// <param name="progress">Optional progress reporter for real-time status updates</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    public async Task<AtoComplianceAssessment> RunComprehensiveAssessmentAsync(
+        string subscriptionId,
+        string? resourceGroupName,
+        IProgress<AssessmentProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
         var stopwatch = Stopwatch.StartNew();
-        _logger.LogInformation("Starting comprehensive ATO compliance assessment for subscription {SubscriptionId}", subscriptionId);
+        var scope = string.IsNullOrEmpty(resourceGroupName) ? "subscription" : $"resource group '{resourceGroupName}'";
+        _logger.LogInformation("Starting comprehensive ATO compliance assessment for {Scope} in subscription {SubscriptionId}", 
+            scope, subscriptionId);
 
         var assessment = new AtoComplianceAssessment
         {
@@ -87,10 +106,13 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         {
             // Pre-warm cache with Azure resources for performance
             var cacheWarmupStopwatch = Stopwatch.StartNew();
+            
+            // For RG-scoped assessments, we still cache all subscription resources
+            // but scanners will filter to RG-specific resources
             await GetCachedAzureResourcesAsync(subscriptionId, cancellationToken);
             cacheWarmupStopwatch.Stop();
-            _logger.LogInformation("Cache warmup completed in {ElapsedMs}ms for subscription {SubscriptionId}", 
-                cacheWarmupStopwatch.ElapsedMilliseconds, subscriptionId);
+            _logger.LogInformation("Cache warmup completed in {ElapsedMs}ms for {Scope} in subscription {SubscriptionId}", 
+                cacheWarmupStopwatch.ElapsedMilliseconds, scope, subscriptionId);
 
             // Get all NIST control families - using known families
             var controlFamilies = new List<string> 
@@ -126,7 +148,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
                     Message = $"Assessing control family {family}"
                 });
 
-                var familyAssessment = await AssessControlFamilyAsync(subscriptionId, family, cancellationToken);
+                var familyAssessment = await AssessControlFamilyAsync(subscriptionId, resourceGroupName, family, cancellationToken);
                 familyAssessments.Add(familyAssessment);
                 
                 completedCount++;
@@ -176,10 +198,10 @@ public class AtoComplianceEngine : IAtoComplianceEngine
 
             stopwatch.Stop();
             _logger.LogInformation(
-                "Completed ATO compliance assessment for subscription {SubscriptionId}. " +
+                "Completed ATO compliance assessment for {Scope} in subscription {SubscriptionId}. " +
                 "Overall score: {Score}%, Total findings: {Findings}, Duration: {TotalMs}ms " +
                 "(Cache: {CacheMs}ms, Scanning: {ScanMs}ms, Risk: {RiskMs}ms)", 
-                subscriptionId, assessment.OverallComplianceScore, assessment.TotalFindings,
+                scope, subscriptionId, assessment.OverallComplianceScore, assessment.TotalFindings,
                 stopwatch.ElapsedMilliseconds, cacheWarmupStopwatch.ElapsedMilliseconds,
                 scanningStopwatch.ElapsedMilliseconds, riskAssessmentStopwatch.ElapsedMilliseconds);
 
@@ -187,7 +209,8 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during ATO compliance assessment for subscription {SubscriptionId}", subscriptionId);
+            _logger.LogError(ex, "Error during ATO compliance assessment for {Scope} in subscription {SubscriptionId}", 
+                scope, subscriptionId);
             assessment.Error = ex.Message;
             assessment.EndTime = DateTimeOffset.UtcNow;
             throw;
@@ -692,6 +715,12 @@ public class AtoComplianceEngine : IAtoComplianceEngine
             { "AU", new AuditScanner(_logger, _azureResourceService) },
             { "SC", new SystemCommunicationScanner(_logger, _azureResourceService) },
             { "SI", new SystemIntegrityScanner(_logger, _azureResourceService) },
+            { "CP", new ContingencyPlanningScanner(_logger, _azureResourceService) },
+            { "IA", new IdentificationAuthenticationScanner(_logger, _azureResourceService) },
+            { "CM", new ConfigurationManagementScanner(_logger, _azureResourceService) },
+            { "IR", new IncidentResponseScanner(_logger, _azureResourceService) },
+            { "RA", new RiskAssessmentScanner(_logger, _azureResourceService) },
+            { "CA", new SecurityAssessmentScanner(_logger, _azureResourceService) },
             { "Default", new DefaultComplianceScanner(_logger) }
         };
     }
@@ -703,12 +732,20 @@ public class AtoComplianceEngine : IAtoComplianceEngine
             { "AC", new AccessControlEvidenceCollector(_logger, _azureResourceService) },
             { "AU", new AuditEvidenceCollector(_logger, _azureResourceService) },
             { "SC", new SecurityEvidenceCollector(_logger, _azureResourceService) },
+            { "CP", new ContingencyPlanningEvidenceCollector(_logger, _azureResourceService) },
+            { "IA", new IdentificationAuthenticationEvidenceCollector(_logger, _azureResourceService) },
+            { "CM", new ConfigurationManagementEvidenceCollector(_logger, _azureResourceService) },
+            { "IR", new IncidentResponseEvidenceCollector(_logger, _azureResourceService) },
+            { "SI", new SystemIntegrityEvidenceCollector(_logger, _azureResourceService) },
+            { "RA", new RiskAssessmentEvidenceCollector(_logger, _azureResourceService) },
+            { "CA", new SecurityAssessmentEvidenceCollector(_logger, _azureResourceService) },
             { "Default", new DefaultEvidenceCollector(_logger) }
         };
     }
 
     private async Task<ControlFamilyAssessment> AssessControlFamilyAsync(
-        string subscriptionId, 
+        string subscriptionId,
+        string? resourceGroupName,
         string family, 
         CancellationToken cancellationToken)
     {
@@ -729,21 +766,26 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         // Get controls for this family
         var controls = await _nistControlsService.GetControlsByFamilyAsync(family, cancellationToken);
 
-        // Scan each control
+        // Scan each control - use RG-aware method if resourceGroupName is provided
         foreach (var control in controls)
         {
-            var findings = await scanner.ScanControlAsync(subscriptionId, control, cancellationToken);
+            var findings = string.IsNullOrEmpty(resourceGroupName)
+                ? await scanner.ScanControlAsync(subscriptionId, control, cancellationToken)
+                : await scanner.ScanControlAsync(subscriptionId, resourceGroupName, control, cancellationToken);
             assessment.Findings.AddRange(findings);
         }
 
         // Calculate family compliance score
         assessment.TotalControls = controls.Count;
         // Calculate passed controls by counting controls without findings
+        // Only count affected controls that belong to THIS control family
+        var controlIds = controls.Select(c => c.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var affectedControlIds = assessment.Findings
             .SelectMany(f => f.AffectedNistControls)
-            .Distinct()
+            .Where(controlId => controlIds.Contains(controlId)) // Only count controls in THIS family
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
-        assessment.PassedControls = controls.Count - affectedControlIds;
+        assessment.PassedControls = Math.Max(0, controls.Count - affectedControlIds);
         assessment.ComplianceScore = assessment.TotalControls > 0 
             ? (double)assessment.PassedControls / assessment.TotalControls * 100 
             : 0;
@@ -1064,23 +1106,58 @@ public class AtoComplianceEngine : IAtoComplianceEngine
 
     private double CalculateEvidenceCompleteness(string controlFamily, List<Platform.Engineering.Copilot.Core.Models.ComplianceEvidence> evidence)
     {
-        // Calculate based on required evidence types for control family
-        var requiredTypes = GetRequiredEvidenceTypes(controlFamily);
-        var collectedTypes = evidence.Select(e => e.EvidenceType).Distinct().ToList();
+        // If no evidence collected, 0% complete
+        if (evidence == null || evidence.Count == 0)
+            return 0;
+
+        // Calculate based on number of unique evidence types collected
+        var collectedTypes = evidence.Select(e => e.EvidenceType).Distinct().Count();
         
-        return requiredTypes.Count > 0 
-            ? (double)collectedTypes.Intersect(requiredTypes).Count() / requiredTypes.Count * 100 
-            : 0;
+        // Get target number of evidence types for this control family
+        var targetTypes = GetTargetEvidenceTypeCount(controlFamily);
+        
+        // Calculate percentage: (collected types / target types) * 100
+        // Cap at 100% if we exceed target
+        var completeness = Math.Min(100.0, (double)collectedTypes / targetTypes * 100);
+        
+        return Math.Round(completeness, 2);
+    }
+
+    private int GetTargetEvidenceTypeCount(string controlFamily)
+    {
+        // Target number of different evidence types we expect for each control family
+        return controlFamily switch
+        {
+            "AC" => 5,  // Access Control: NSGs, Key Vaults, Log Analytics, RBAC, Conditional Access
+            "AU" => 4,  // Audit: Logs, Retention, Protection, Monitoring
+            "SC" => 5,  // System Communications: Network, Encryption, Certificates, Firewalls, DDoS
+            "IA" => 4,  // Identification & Authentication: MFA, Identity, Access Policies, Authentication
+            "CM" => 4,  // Configuration Management: Config, Baselines, Change Control, Inventory
+            "IR" => 3,  // Incident Response: Response Plans, Detection, Monitoring
+            "RA" => 3,  // Risk Assessment: Assessments, Vulnerabilities, Risks
+            "CA" => 4,  // Security Assessment: Continuous Monitoring, Assessments, Testing, Reviews
+            "SI" => 4,  // System Integrity: Integrity Checks, Malware Protection, Updates, Monitoring
+            "CP" => 3,  // Contingency Planning: Backups, Recovery, Business Continuity
+            _ => 3      // Default: expect at least 3 different types of evidence
+        };
     }
 
     private List<string> GetRequiredEvidenceTypes(string controlFamily)
     {
+        // Updated to match actual evidence type names being collected
         return controlFamily switch
         {
-            "AC" => new List<string> { "Configuration", "AccessLogs", "Permissions", "MFA" },
-            "AU" => new List<string> { "AuditLogs", "LogRetention", "LogProtection" },
-            "SC" => new List<string> { "NetworkConfig", "Encryption", "Certificates" },
-            _ => new List<string> { "Configuration", "Logs", "Metrics" }
+            "AC" => new List<string> { "Configuration", "AuditLog", "Policies", "Access Control" },
+            "AU" => new List<string> { "AuditLog", "Configuration", "Metrics" },
+            "SC" => new List<string> { "Configuration", "Policies", "Metrics" },
+            "IA" => new List<string> { "Configuration", "AuditLog", "Access Control" },
+            "CM" => new List<string> { "Configuration", "Policies", "Metrics" },
+            "IR" => new List<string> { "AuditLog", "Metrics", "Policies" },
+            "RA" => new List<string> { "Metrics", "AuditLog", "Configuration" },
+            "CA" => new List<string> { "Configuration", "Policies", "Metrics" },
+            "SI" => new List<string> { "Configuration", "Metrics", "AuditLog" },
+            "CP" => new List<string> { "Configuration", "Policies", "Metrics" },
+            _ => new List<string> { "Configuration", "AuditLog", "Metrics", "Policies", "Access Control" }
         };
     }
 

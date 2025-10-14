@@ -10,8 +10,20 @@ namespace Platform.Engineering.Copilot.Core.Services.Compliance;
 /// </summary>
 public interface IComplianceScanner
 {
+    /// <summary>
+    /// Scans a control at subscription level
+    /// </summary>
     Task<List<AtoFinding>> ScanControlAsync(
         string subscriptionId, 
+        NistControl control, 
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Scans a control at resource group level for more targeted compliance checks
+    /// </summary>
+    Task<List<AtoFinding>> ScanControlAsync(
+        string subscriptionId,
+        string resourceGroupName,
         NistControl control, 
         CancellationToken cancellationToken = default);
 }

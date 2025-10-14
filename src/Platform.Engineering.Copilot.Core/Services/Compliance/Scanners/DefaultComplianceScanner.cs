@@ -24,21 +24,38 @@ public class DefaultComplianceScanner : IComplianceScanner
         NistControl control, 
         CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Running default scan for control {ControlId} in subscription {SubscriptionId}", 
-            control.Id, subscriptionId);
+        return await ScanControlAsync(subscriptionId, null, control, cancellationToken);
+    }
+
+    /// <summary>
+    /// Resource group-scoped scanning with optional RG parameter
+    /// </summary>
+    public async Task<List<AtoFinding>> ScanControlAsync(
+        string subscriptionId,
+        string? resourceGroupName,
+        NistControl control,
+        CancellationToken cancellationToken = default)
+    {
+        var scope = string.IsNullOrEmpty(resourceGroupName) ? "subscription" : $"resource group '{resourceGroupName}'";
+        _logger.LogDebug("Running default scan for control {ControlId} in {Scope} in subscription {SubscriptionId}", 
+            control.Id, scope, subscriptionId);
 
         var findings = new List<AtoFinding>();
 
         // Basic compliance check - simulate finding issues 10% of the time
         if (Random.Shared.Next(100) < 10)
         {
+            var resourceId = string.IsNullOrEmpty(resourceGroupName) 
+                ? $"/subscriptions/{subscriptionId}" 
+                : $"/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}";
+            
             findings.Add(new AtoFinding
             {
                 Id = Guid.NewGuid().ToString(),
                 SubscriptionId = subscriptionId,
-                ResourceId = $"/subscriptions/{subscriptionId}",
-                ResourceType = "Subscription",
-                ResourceName = "Subscription",
+                ResourceId = resourceId,
+                ResourceType = string.IsNullOrEmpty(resourceGroupName) ? "Subscription" : "ResourceGroup",
+                ResourceName = string.IsNullOrEmpty(resourceGroupName) ? "Subscription" : resourceGroupName,
                 Title = "Control Implementation Gap",
                 FindingType = AtoFindingType.Compliance,
                 Severity = AtoFindingSeverity.Low,

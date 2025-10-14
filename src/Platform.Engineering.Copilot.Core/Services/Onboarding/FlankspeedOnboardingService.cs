@@ -178,6 +178,39 @@ public class FlankspeedOnboardingService : IOnboardingService
         return true;
     }
 
+    public async Task<List<string>> ValidateForSubmissionAsync(string requestId, CancellationToken cancellationToken = default)
+    {
+        var request = await _context.OnboardingRequests
+            .FindAsync(new[] { requestId }, cancellationToken);
+
+        if (request == null)
+        {
+            return new List<string> { $"Request {requestId} not found" };
+        }
+
+        var errors = new List<string>();
+        
+        if (string.IsNullOrWhiteSpace(request.MissionName))
+            errors.Add("Mission name is required");
+
+        if (string.IsNullOrWhiteSpace(request.MissionOwner))
+            errors.Add("Mission owner name is required");
+
+        if (string.IsNullOrWhiteSpace(request.MissionOwnerEmail))
+            errors.Add("Mission owner email is required");
+
+        if (string.IsNullOrWhiteSpace(request.Command))
+            errors.Add("Command/Organization is required");
+
+        if (string.IsNullOrWhiteSpace(request.RequestedSubscriptionName))
+            errors.Add("Subscription name is required");
+
+        if (string.IsNullOrWhiteSpace(request.RequestedVNetCidr))
+            errors.Add("VNet CIDR is required");
+
+        return errors;
+    }
+
     public async Task<bool> SubmitRequestAsync(string requestId, string? submittedBy = null, CancellationToken cancellationToken = default)
     {
         var request = await _context.OnboardingRequests
@@ -197,7 +230,8 @@ public class FlankspeedOnboardingService : IOnboardingService
         }
 
         // Validate required fields
-        if (!ValidateRequest(request, out var validationErrors))
+        var validationErrors = await ValidateForSubmissionAsync(requestId, cancellationToken);
+        if (validationErrors.Count > 0)
         {
             _logger.LogWarning("Request {RequestId} validation failed: {Errors}", 
                 requestId, string.Join(", ", validationErrors));

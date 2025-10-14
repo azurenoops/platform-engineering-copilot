@@ -1,122 +1,96 @@
+using Microsoft.AspNetCore.Http;
+using Platform.Engineering.Copilot.DocumentProcessing.Models;
 using Platform.Engineering.Copilot.Core.Models;
 
-namespace Platform.Engineering.Copilot.Core.Interfaces;
+namespace Platform.Engineering.Copilot.DocumentProcessing.Services;
 
 /// <summary>
-/// Interface for document processing and text extraction
+/// Service interface for document processing and compliance analysis operations.
+/// Provides document upload, content extraction, and RMF compliance assessment capabilities
+/// integrated with the unified compliance service from the Governance project.
 /// </summary>
-public interface IDocumentProcessor
+public interface IDocumentProcessingService
 {
     /// <summary>
-    /// Extracts text content from various document types
+    /// Processes an uploaded document through the complete analysis pipeline.
     /// </summary>
-    Task<string> ExtractTextAsync(AnalysisDocument document, CancellationToken cancellationToken = default);
-
+    /// <param name="file">Document file to process</param>
+    /// <param name="analysisType">Type of analysis to perform</param>
+    /// <param name="conversationId">Optional conversation tracking ID</param>
+    /// <returns>Processing result with document ID and status</returns>
+    Task<DocumentProcessingResult> ProcessDocumentAsync(IFormFile file, DocumentAnalysisType analysisType, string? conversationId = null);
+    
     /// <summary>
-    /// Processes architecture diagrams and extracts component information
+    /// Retrieves the current processing status for a document.
     /// </summary>
-    Task<ArchitectureAnalysisResult> ProcessArchitectureDiagramAsync(
-        AnalysisDocument document, 
-        CancellationToken cancellationToken = default);
-
+    /// <param name="documentId">Unique document identifier</param>
+    /// <returns>Current processing status and progress information</returns>
+    Task<DocumentProcessingStatus> GetProcessingStatusAsync(string documentId);
+    
     /// <summary>
-    /// Gets supported document types
+    /// Gets the complete analysis results for a processed document.
     /// </summary>
-    IEnumerable<string> GetSupportedFileTypes();
+    /// <param name="documentId">Unique document identifier</param>
+    /// <returns>Detailed document analysis including content and architecture information</returns>
+    Task<DocumentAnalysis> GetDocumentAnalysisAsync(string documentId);
+    
+    /// <summary>
+    /// Performs RMF (Risk Management Framework) compliance analysis on a processed document
+    /// using the IAtoComplianceEngine and IAtoRemediationEngine from Core.
+    /// Converts document security findings into compliance assessments and generates remediation recommendations.
+    /// </summary>
+    /// <param name="documentId">Unique document identifier</param>
+    /// <param name="frameworkType">Compliance framework to use (default: NIST-800-53)</param>
+    /// <returns>Compliance analysis results with findings and recommendations</returns>
+    Task<ComplianceAnalysisResult> PerformRmfAnalysisAsync(string documentId, string frameworkType = "NIST-800-53");
 }
 
 /// <summary>
-/// Interface for vector-based search of NIST standards
+/// Interface for analyzing architecture diagrams from various document formats.
+/// Extracts visual representations and converts them into structured architecture data.
 /// </summary>
-public interface IVectorSearchService
+public interface IArchitectureDiagramAnalyzer
 {
     /// <summary>
-    /// Searches for relevant NIST standards using semantic similarity
+    /// Extracts architecture diagrams from document files.
     /// </summary>
-    Task<IEnumerable<NistStandard>> SearchRelevantStandardsAsync(
-        string query,
-        int maxResults = 10,
-        CancellationToken cancellationToken = default);
-
+    /// <param name="filePath">Path to the document containing diagrams</param>
+    /// <returns>List of extracted diagrams with metadata</returns>
+    Task<List<ExtractedDiagram>> ExtractDiagramsAsync(string filePath);
+    
     /// <summary>
-    /// Performs hybrid search combining vector and keyword search
+    /// Analyzes extracted content to identify architecture patterns and components.
     /// </summary>
-    Task<IEnumerable<NistStandard>> HybridSearchAsync(
-        string query,
-        int maxResults = 10,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Indexes NIST standards for search
-    /// </summary>
-    Task IndexStandardsAsync(
-        IEnumerable<NistStandard> standards,
-        CancellationToken cancellationToken = default);
+    /// <param name="content">Extracted document content including diagrams</param>
+    /// <returns>Structured architecture analysis results</returns>
+    Task<ArchitectureAnalysis> AnalyzeArchitectureAsync(ExtractedContent content);
 }
 
 /// <summary>
-/// Interface for NIST standards repository
+/// Interface for Navy Flankspeed platform compatibility analysis.
+/// Evaluates system architecture for compatibility with Navy's Microsoft-based collaboration platform.
+/// Note: RMF compliance analysis is handled through IAtoComplianceEngine and IAtoRemediationEngine from Core.
 /// </summary>
-public interface INistStandardsRepository
+public interface INavyFlankspeedAnalyzer
 {
     /// <summary>
-    /// Gets all NIST 800-53 standards
+    /// Analyzes document for compatibility with Navy Flankspeed platform.
     /// </summary>
-    Task<IEnumerable<NistStandard>> GetAllStandardsAsync(CancellationToken cancellationToken = default);
-
+    /// <param name="documentAnalysis">Document analysis containing system architecture</param>
+    /// <returns>Compliance analysis result with Flankspeed-specific findings</returns>
+    Task<ComplianceAnalysisResult> AnalyzeFlankspeedCompatibilityAsync(DocumentAnalysis documentAnalysis);
+    
     /// <summary>
-    /// Gets standards by control family
+    /// Identifies Flankspeed-compatible architecture patterns in the system.
     /// </summary>
-    Task<IEnumerable<NistStandard>> GetStandardsByFamilyAsync(
-        string family,
-        CancellationToken cancellationToken = default);
-
+    /// <param name="architectureAnalysis">Architecture analysis with system components</param>
+    /// <returns>List of identified Flankspeed patterns</returns>
+    Task<List<string>> IdentifyFlankspeedPatternsAsync(ArchitectureAnalysis architectureAnalysis);
+    
     /// <summary>
-    /// Gets a specific standard by ID
+    /// Assesses effort required to integrate with Flankspeed platform.
     /// </summary>
-    Task<NistStandard?> GetStandardByIdAsync(
-        string id,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Searches standards by text query
-    /// </summary>
-    Task<IEnumerable<NistStandard>> SearchStandardsAsync(
-        string query,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets standards for a specific baseline (Low, Moderate, High)
-    /// </summary>
-    Task<IEnumerable<NistStandard>> GetStandardsByBaselineAsync(
-        string baseline,
-        CancellationToken cancellationToken = default);
-}
-
-/// <summary>
-/// Interface for architecture analysis capabilities
-/// </summary>
-public interface IArchitectureAnalyzer
-{
-    /// <summary>
-    /// Analyzes architecture diagrams for component identification
-    /// </summary>
-    Task<ArchitectureAnalysisResult> AnalyzeArchitectureAsync(
-        AnalysisDocument document,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Identifies security gaps in architecture
-    /// </summary>
-    Task<IEnumerable<ComplianceGap>> IdentifySecurityGapsAsync(
-        ArchitectureAnalysisResult architecture,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Generates platform integration recommendations
-    /// </summary>
-    Task<IEnumerable<ArchitectureRecommendation>> GeneratePlatformRecommendationsAsync(
-        ArchitectureAnalysisResult architecture,
-        string platformType = "FlankSpeed",
-        CancellationToken cancellationToken = default);
+    /// <param name="documentAnalysis">Document analysis with system details</param>
+    /// <returns>Integration assessment with effort estimates and compatibility issues</returns>
+    Task<Dictionary<string, object>> AssessIntegrationEffortAsync(DocumentAnalysis documentAnalysis);
 }

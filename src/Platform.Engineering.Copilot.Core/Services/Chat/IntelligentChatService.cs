@@ -120,14 +120,16 @@ public class IntelligentChatService : IIntelligentChatService
             {
                 var complianceEngine = _serviceProvider.GetService<IAtoComplianceEngine>();
                 var remediationEngine = _serviceProvider.GetService<IAtoRemediationEngine>();
-                if (complianceEngine != null && remediationEngine != null)
+                var azureResourceService = _serviceProvider.GetService<IAzureResourceService>();
+                if (complianceEngine != null && remediationEngine != null && azureResourceService != null)
                 {
                     _kernel.Plugins.AddFromObject(
                         new CompliancePlugin(
                             _serviceProvider.GetRequiredService<ILogger<CompliancePlugin>>(),
                             _kernel,
                             complianceEngine,
-                            remediationEngine),
+                            remediationEngine,
+                            azureResourceService),
                         "Compliance");
                     pluginsRegistered++;
                     _logger.LogInformation("✅ Registered CompliancePlugin");
@@ -192,6 +194,48 @@ public class IntelligentChatService : IIntelligentChatService
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to register EnvironmentManagementPlugin");
+            }
+            
+            // ResourceDiscoveryPlugin
+            try
+            {
+                var azureResourceService = _serviceProvider.GetService<IAzureResourceService>();
+                if (azureResourceService != null)
+                {
+                    _kernel.Plugins.AddFromObject(
+                        new ResourceDiscoveryPlugin(
+                            _serviceProvider.GetRequiredService<ILogger<ResourceDiscoveryPlugin>>(),
+                            _kernel,
+                            azureResourceService),
+                        "ResourceDiscovery");
+                    pluginsRegistered++;
+                    _logger.LogInformation("✅ Registered ResourceDiscoveryPlugin");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to register ResourceDiscoveryPlugin");
+            }
+            
+            // DeploymentPlugin (NEW - for Bicep/Terraform template deployment)
+            try
+            {
+                var deploymentOrchestrator = _serviceProvider.GetService<IDeploymentOrchestrationService>();
+                if (deploymentOrchestrator != null)
+                {
+                    _kernel.Plugins.AddFromObject(
+                        new DeploymentPlugin(
+                            _serviceProvider.GetRequiredService<ILogger<DeploymentPlugin>>(),
+                            _kernel,
+                            deploymentOrchestrator),
+                        "Deployment");
+                    pluginsRegistered++;
+                    _logger.LogInformation("✅ Registered DeploymentPlugin");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to register DeploymentPlugin");
             }
             
             _logger.LogInformation("✅ All plugins registered: {PluginCount} total", pluginsRegistered);
@@ -265,15 +309,49 @@ public class IntelligentChatService : IIntelligentChatService
             _logger.LogInformation("⏱️ Starting SK GetChatMessageContentAsync...");
             var skStopwatch = System.Diagnostics.Stopwatch.StartNew();
             
-            var result = await _chatCompletion.GetChatMessageContentAsync(
-                chatHistory,
-                executionSettings: settings,
-                kernel: _kernel,
-                cancellationToken: cancellationToken);
+            // Retry logic for rate limiting (HTTP 429) with exponential backoff
+            ChatMessageContent? result = null;
+            int maxRetries = 3;
+            int retryDelayMs = 1000; // Start with 1 second
+            
+            for (int attempt = 0; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    result = await _chatCompletion.GetChatMessageContentAsync(
+                        chatHistory,
+                        executionSettings: settings,
+                        kernel: _kernel,
+                        cancellationToken: cancellationToken);
+                    
+                    break; // Success - exit retry loop
+                }
+                catch (Microsoft.SemanticKernel.HttpOperationException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    if (attempt < maxRetries)
+                    {
+                        var delay = retryDelayMs * (int)Math.Pow(2, attempt); // Exponential backoff: 1s, 2s, 4s
+                        _logger.LogWarning("⚠️ Rate limit hit (HTTP 429). Retrying in {DelayMs}ms (attempt {Attempt}/{MaxRetries})", 
+                            delay, attempt + 1, maxRetries);
+                        await Task.Delay(delay, cancellationToken);
+                    }
+                    else
+                    {
+                        _logger.LogError(ex, "❌ Rate limit exceeded after {MaxRetries} retries", maxRetries);
+                        throw; // Re-throw after max retries
+                    }
+                }
+            }
             
             skStopwatch.Stop();
             _logger.LogInformation("✅ [STEP 6/6] SK execution completed in {ElapsedMs}ms. Response length: {Length} chars", 
-                skStopwatch.ElapsedMilliseconds, result.Content?.Length ?? 0);
+                skStopwatch.ElapsedMilliseconds, result?.Content?.Length ?? 0);
+
+            // Ensure we got a result after retries
+            if (result == null)
+            {
+                throw new InvalidOperationException("Failed to get response from Azure OpenAI after retries");
+            }
 
             // Update context with assistant response
             var userSnapshot = new MessageSnapshot
@@ -369,73 +447,118 @@ public class IntelligentChatService : IIntelligentChatService
         // Comprehensive system prompt for all platform engineering capabilities
         history.AddSystemMessage(@"You are an expert Azure cloud platform assistant for US Navy Platform Engineering.
 
+**System Architecture:**
+You have access to Semantic Kernel plugins that provide comprehensive platform capabilities:
+- OnboardingPlugin: Mission onboarding workflows and approvals
+- InfrastructurePlugin: Natural language infrastructure provisioning (quick resource creation)
+- DeploymentPlugin: Template-based deployments (Bicep/Terraform files)
+- CompliancePlugin: ATO compliance assessments and security controls
+- CostManagementPlugin: Cost analysis, optimization, and budget monitoring
+- EnvironmentManagementPlugin: Environment lifecycle operations
+- ResourceDiscoveryPlugin: Resource discovery and inventory management
+
 **Core Responsibilities:**
-- Mission onboarding and environment provisioning
-- Infrastructure management and optimization
+- Mission onboarding and approval workflows
+- Infrastructure provisioning and management
 - ATO (Authority to Operate) compliance and security
-- Cost analysis and optimization
+- Cost analysis, optimization, and forecasting
 - Environment lifecycle operations
+- Azure resource discovery and inventory
 
 **Key Workflows:**
 
-1. **Mission Onboarding** (CRITICAL - Read Carefully):
-   STEP 1: Gather requirements
-   - Call capture_onboarding_requirements(missionName, organization, details)
-   - Show detailed review summary to user
-   
-   STEP 2: Get user confirmation
-   - Wait for user to confirm ('yes', 'proceed', 'confirm', 'go ahead')
-   
-   STEP 3: Submit for platform team approval
-   - Call submit_for_approval(requestId, userEmail)
-   - DO NOT call create_environment at this step!
-   - The request enters admin approval queue
-   
-   STEP 4: Platform team reviews in Admin Console
-   - Team reviews requirements and approves/denies
-   - If approved, provisioning starts AUTOMATICALLY
-   
-   STEP 5: User receives email notification
-   - Notified when approved or if changes needed
-   
-   IMPORTANT: NEVER call create_environment directly during onboarding!
-   The submit_for_approval function handles the approval workflow.
-   Only platform team can trigger provisioning via admin console.
+1. **Mission Onboarding**:
+   Use capture_onboarding_requirements() to gather mission details, then submit_for_approval() for platform team review.
+   Functions: capture_onboarding_requirements, submit_for_approval, get_onboarding_status
 
 2. **Environment Management**:
-   - create_environment: Provision new environments (platform team or direct requests)
-   - clone_environment: Clone existing environments
-   - scale_environment: Scale resources up/down
-   - delete_environment: Remove environments (with backup)
-   - get_environment_status: Check health and metrics
+   Use process_environment_query() for all environment operations with natural language.
+   Examples:
+   * 'Create dev environment for Mission Alpha'
+   * 'Clone production to staging'
+   * 'Scale up Mission Beta resources'
+   * 'Delete test environment xyz'
+   * 'Check health status of Mission Gamma'
 
-3. **Infrastructure Operations**:
-   - provision_infrastructure: Deploy Azure resources
-   - list_resource_groups: View resource groups
-   - delete_resource_group: Remove resource groups
+3. **Template-Based Deployment (USE THIS FOR BICEP/TERRAFORM FILES)**:
+   **CRITICAL: Use DeploymentPlugin.deploy_bicep_template() when user provides a file path to a Bicep template. Use DeploymentPlugin.deploy_terraform_template() when user provides a file path to a Terraform template.**
+   
+   **When to use DeploymentPlugin:**
+   - User mentions a specific .bicep or .tf file path (e.g., '/path/to/main.bicep')
+   - User says 'deploy this template' or 'run this Bicep file'
+   - User wants to deploy existing infrastructure-as-code
+   
+   **Functions:**
+   - deploy_bicep_template(templatePath, resourceGroup, location, parameters) - Deploy Bicep templates
+   - validate_bicep_template(templatePath, resourceGroup, parameters) - Validate before deploying
+   - deploy_terraform(terraformPath, resourceGroup, variables) - Deploy Terraform
+   - get_deployment_status(deploymentId) - Check deployment status
+   - cancel_deployment(deploymentId) - Cancel in-progress deployment
+   
+   **Examples:**
+   * 'Deploy infrastructure using bicep template at /infra/bicep/main.bicep to rg-mission-alpha'
+   * 'Validate the Bicep template at /path/to/template.bicep'
+   * 'Deploy Terraform from /infra/terraform/ to rg-prod'
+   * 'Check status of deployment abc-123-def'
 
-4. **ATO Compliance & Security**:
-   - process_compliance_query: Run assessments, collect evidence, generate reports
-     Examples:
-     * 'Run compliance assessment for subscription xyz'
-     * 'Collect evidence for AC-2 control'
-     * 'Generate FedRAMP report in PDF format'
-     * 'Check compliance status for DoD IL5'
-     * 'Assess risks for NIST 800-53 controls'
-     * 'Generate ATO compliance certificate'
-     * 'Monitor continuous compliance'
-     * 'Remediate security findings'
+4. **Natural Language Infrastructure Provisioning**:
+   Use InfrastructurePlugin.provision_infrastructure() for quick resource creation from natural language (NO file paths).
+   
+   **When to use InfrastructurePlugin:**
+   - User describes infrastructure in plain English (no template files)
+   - Quick, single-resource provisioning
+   - Examples: 'Create a storage account in usgovvirginia', 'Provision a Key Vault with soft delete in usgovvirginia'
+   
+   Functions: provision_infrastructure, list_resource_groups, delete_resource_group
+
+            4. **ATO Compliance & Security**:
+               Use CompliancePlugin functions for compliance operations.
+               
+               **IMPORTANT: When displaying compliance results from these functions:**
+               - If the response JSON contains a 'formatted_output' field, display ONLY that field's content
+               - The formatted_output is pre-formatted markdown with visual elements already included
+               - Do NOT try to reformat or summarize - just display it as-is
+               - If there's no formatted_output field, format the JSON as structured data
+               
+               Functions:
+               * run_compliance_assessment(subscriptionId, resourceGroupName) - Run full assessment
+               * get_control_family_details(subscriptionId, controlFamily, resourceGroupName) - Detailed family breakdown
+               * get_compliance_status(assessmentId) - Check status
+               * collect_evidence(subscriptionId, controlFamily) - Collect evidence
+               * generate_remediation_plan(assessmentId) - Generate remediation plan
+               * execute_remediation(findingId, dryRun) - Execute fixes   Examples:
+   * 'Run compliance assessment for subscription xyz'
+   * 'Get control family details for CM in subscription xyz'
+   * 'Collect evidence for AC-2 control'
+   * 'Generate remediation plan for assessment abc-123'
 
 5. **Cost Management**:
-   - analyze_cost_query: Cost analysis and recommendations
+   Use process_cost_management_query() for all cost operations with natural language.
+   Examples:
+   * 'Analyze costs for subscription 1234'
+   * 'Recommend savings opportunities'
+   * 'Show budget status'
+   * 'Forecast next month spending'
+   * 'Export cost summary by resource group'
+
+6. **Resource Discovery**:
+   Use discover_azure_resources() to find and inventory Azure resources.
+   Examples:
+   * 'List all resources in subscription xyz'
+   * 'Find storage accounts in East US'
+   * 'Discover resources tagged environment=prod'
+   * 'Get resource health for resource group abc'
 
 **Important Rules:**
 - ALWAYS get user confirmation before creating/deleting environments or provisioning infrastructure
 - Use capture_onboarding_requirements FIRST for new mission onboarding
 - After user confirms onboarding, use submit_for_approval (NOT create_environment)
-- For ATO/compliance requests, use process_compliance_query with natural language
+- **CRITICAL:** When user says 'Yes, proceed', 'Confirm and submit', 'Go ahead', or similar confirmation phrases after seeing an onboarding request summary, you MUST call submit_for_approval() with the request ID from the previous message. Look for the request ID (GUID format) in the conversation history.
+- For compliance/cost/environment queries, use the respective process_*_query() functions with natural language
+- When displaying compliance results, preserve all visual formatting from JSON responses
 - Be concise, technical, and security-conscious
-- Provide clear next steps and estimated timeframes");
+- Provide clear next steps and estimated timeframes
+- All functions are provided by Semantic Kernel plugins with automatic function calling");
 
         // Add recent conversation history (last 10 messages for context)
         foreach (var msg in context.MessageHistory.TakeLast(10))

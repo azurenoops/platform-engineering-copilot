@@ -661,20 +661,36 @@ User Query: "Create storage account mydata in eastus with Standard_LRS"
 
 ### Semantic Kernel Plugins
 
-The platform uses **8 Semantic Kernel plugins** for AI-powered operations. Two plugins have been refactored to the "Option C" architecture (AI-powered query-based interface).
+The platform uses **Semantic Kernel plugins exclusively** for AI-powered operations. All legacy plugin systems (IPlugin, IMcpToolHandler) have been removed in favor of Semantic Kernel's native plugin architecture.
 
-#### Plugin Inventory
+#### Plugin System Modernization (Oct 11, 2025)
+
+**Removed**:
+- ❌ `IPlugin`, `IToolPlugin`, `IResourcePlugin`, `IGatewayPlugin` interfaces
+- ❌ `IMcpToolHandler`, `IMcpResourceHandler` interfaces
+- ❌ `PlatformToolService` (obsolete)
+- ❌ `Contracts/` directory (empty after cleanup)
+
+**Current Architecture**:
+- ✅ All plugins inherit from `BaseSupervisorPlugin`
+- ✅ Registered via `IntelligentChatService.EnsurePluginsRegistered()`
+- ✅ Use Semantic Kernel's `[KernelFunction]` and `[Description]` attributes
+- ✅ Support automatic function calling via Azure OpenAI
+
+#### Active Plugin Inventory
 
 | Plugin | Functions | Pattern | Status |
 |--------|-----------|---------|--------|
 | **BaseSupervisorPlugin** | N/A | Base class | ✅ Base |
 | **CompliancePlugin** | 1 (`process_compliance_query`) | Option C | ✅ Refactored |
 | **InfrastructurePlugin** | 4 | Option C | ✅ Refactored |
-| **CostManagementPlugin** | Multiple | Legacy | ⏳ Pending |
-| **DocumentPlugin** | Multiple | Legacy | ⏳ Pending |
-| **OnboardingPlugin** | Multiple | Legacy | ⏳ Pending |
-| **ResourceDiscoveryPlugin** | Multiple | Legacy | ⏳ Pending |
-| **SecurityPlugin** | Multiple | Legacy | ⏳ Pending |
+| **OnboardingPlugin** | Multiple | Legacy | ✅ Active |
+| **CostManagementPlugin** | Multiple | Legacy | ✅ Active |
+| **EnvironmentManagementPlugin** | Multiple | Legacy | ✅ Active |
+| **ResourceDiscoveryPlugin** | Multiple | Legacy | ✅ Active |
+| **DocumentPlugin** | 5 | Direct Service | ✅ Active |
+
+**Note**: SecurityPlugin was removed (stub with no implementation).
 
 #### Option C Architecture Pattern
 
