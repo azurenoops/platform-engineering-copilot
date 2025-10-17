@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using System.Web;
 using Microsoft.Extensions.Logging;
 
-namespace Platform.Engineering.Copilot.Core.Services.Cost;
+namespace Platform.Engineering.Copilot.Core.Services.Azure.Cost;
 
 public interface IAzurePricingService
 {

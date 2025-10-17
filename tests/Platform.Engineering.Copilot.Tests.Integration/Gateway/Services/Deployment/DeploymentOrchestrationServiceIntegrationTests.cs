@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
-using Platform.Engineering.Copilot.Core.Services;
+using Platform.Engineering.Copilot.Core.Services.Deployment;
 using Xunit;
 
 namespace Platform.Engineering.Copilot.Tests.Integration.Core.Services.Deployment

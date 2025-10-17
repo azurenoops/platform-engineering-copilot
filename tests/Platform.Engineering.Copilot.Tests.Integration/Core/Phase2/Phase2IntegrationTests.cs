@@ -11,7 +11,7 @@ using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Services.Compliance;
 using Platform.Engineering.Copilot.Core.Services.Infrastructure;
-using Platform.Engineering.Copilot.Core.Services.Security;
+using Platform.Engineering.Copilot.Core.Services.Azure.Security;
 using Platform.Engineering.Copilot.Core.Services.TemplateGeneration;
 using Xunit;
 

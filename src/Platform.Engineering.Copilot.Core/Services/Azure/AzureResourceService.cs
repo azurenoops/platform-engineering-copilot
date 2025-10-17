@@ -20,7 +20,7 @@ using Azure.ResourceManager.Storage.Models;
 using Azure.ResourceManager.Storage;
 using Azure.ResourceManager.Network.Models;
 
-namespace Platform.Engineering.Copilot.Core.Services.AzureServices;
+namespace Platform.Engineering.Copilot.Core.Services.Azure;
 
 /// <summary>
 /// Azure Resource Service that provides comprehensive Azure resource management capabilities.

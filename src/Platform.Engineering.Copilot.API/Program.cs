@@ -3,6 +3,8 @@ using Platform.Engineering.Copilot.Core.Extensions;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Data.Context;
 using Platform.Engineering.Copilot.Core.Services;
+using Platform.Engineering.Copilot.Core.Services.Compliance;
+using Platform.Engineering.Copilot.Core.Services.Azure.Cost;
 
 namespace Platform.Engineering.Copilot.API;
 
@@ -92,7 +94,7 @@ public class Program
         builder.Services.AddScoped<IInfrastructureProvisioningService, Platform.Engineering.Copilot.Core.Services.Infrastructure.InfrastructureProvisioningService>();
 
         // Register Azure Pricing Service for real-time cost estimates
-        builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.Cost.IAzurePricingService, Platform.Engineering.Copilot.Core.Services.Cost.AzurePricingService>();
+        builder.Services.AddScoped<IAzurePricingService, AzurePricingService>();
 
         // NOTE: DynamicTemplateGenerator is registered in AddSupervisorCore() extension method
         // NOTE: All legacy IMcpToolHandler tool registrations removed - functionality now provided by SK plugins

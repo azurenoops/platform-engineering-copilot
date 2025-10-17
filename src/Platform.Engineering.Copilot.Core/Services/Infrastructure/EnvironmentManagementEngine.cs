@@ -7,6 +7,14 @@ using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Models.EnvironmentManagement;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
 
 namespace Platform.Engineering.Copilot.Core.Services.Infrastructure
 {
@@ -288,7 +296,7 @@ namespace Platform.Engineering.Copilot.Core.Services.Infrastructure
                         });
                     }
                 }
-                catch (Azure.RequestFailedException ex) when (ex.Status == 404)
+                catch (RequestFailedException ex) when (ex.Status == 404)
                 {
                     _logger.LogWarning("Resource group {ResourceGroup} not found - considering environment deleted", resourceGroup);
                     result.DeletedResources.Add(new DeletedResource

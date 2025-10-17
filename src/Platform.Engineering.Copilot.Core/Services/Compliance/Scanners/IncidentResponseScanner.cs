@@ -8,6 +8,14 @@ using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Extensions;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
 
 namespace Platform.Engineering.Copilot.Core.Services.Compliance;
 
@@ -304,7 +312,7 @@ REFERENCES:
                 {
                     try
                     {
-                        var resourceId = Azure.Core.ResourceIdentifier.Parse(workspace.Id ?? "");
+                        var resourceId = ResourceIdentifier.Parse(workspace.Id ?? "");
                         
                         // Try to get Sentinel solution (Microsoft.OperationsManagement/solutions/SecurityInsights)
                         var workspaceResourceGroupName = resourceId.ResourceGroupName;
@@ -313,7 +321,7 @@ REFERENCES:
                         
                         try
                         {
-                            var sentinelResourceId = Azure.Core.ResourceIdentifier.Parse(sentinelSolutionId);
+                            var sentinelResourceId = ResourceIdentifier.Parse(sentinelSolutionId);
                             var sentinelResource = armClient.GetGenericResource(sentinelResourceId);
                             var sentinelData = await sentinelResource.GetAsync(cancellationToken);
                             
@@ -345,7 +353,7 @@ REFERENCES:
                 {
                     try
                     {
-                        var resourceId = Azure.Core.ResourceIdentifier.Parse(actionGroup.Id ?? "");
+                        var resourceId = ResourceIdentifier.Parse(actionGroup.Id ?? "");
                         var agResource = armClient.GetGenericResource(resourceId);
                         var agData = await agResource.GetAsync(cancellationToken);
                         
@@ -781,7 +789,7 @@ REFERENCES:
                 {
                     try
                     {
-                        var resourceId = Azure.Core.ResourceIdentifier.Parse(kv.Id ?? "");
+                        var resourceId = ResourceIdentifier.Parse(kv.Id ?? "");
                         var diagnosticSettingsId = $"{kv.Id}/providers/Microsoft.Insights/diagnosticSettings";
                         
                         try

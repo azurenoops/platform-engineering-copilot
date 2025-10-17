@@ -14,7 +14,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Platform.Engineering.Copilo
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Platform.Engineering.Copilot.API", "src\Platform.Engineering.Copilot.API\Platform.Engineering.Copilot.API.csproj", "{C5F9E3B6-A8D2-4F1A-9E6B-2F3E4A5B6C7D}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Platform.Engineering.Copilot.Chat.App", "src\Platform.Engineering.Copilot.Chat.App\Platform.Engineering.Copilot.Chat.App.csproj", "{D6FA1F9B-B2D3-4F2B-AF7C-3F4E5A6B7C8D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Platform.Engineering.Copilot.Chat.App", "src\Platform.Engineering.Copilot.Chat\Platform.Engineering.Copilot.Chat.App.csproj", "{D6FA1F9B-B2D3-4F2B-AF7C-3F4E5A6B7C8D}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Platform.Engineering.Copilot.Admin.Client", "src\Platform.Engineering.Copilot.Admin.Client\Platform.Engineering.Copilot.Admin.Client.csproj", "{BC4D79FA-6733-449A-B5B0-AC4E00B43271}"
 EndProject

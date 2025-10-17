@@ -16,13 +16,13 @@ using ForecastAccuracy = Platform.Engineering.Copilot.Core.Models.ForecastAccura
 using ForecastDataPoint = Platform.Engineering.Copilot.Core.Models.ForecastDataPoint;
 using ForecastAssumption = Platform.Engineering.Copilot.Core.Models.ForecastAssumption;
 
-namespace Platform.Engineering.Copilot.Core.Services
+namespace Platform.Engineering.Copilot.Core.Services.Azure.Cost;
+
+public interface ICostOptimizationEngine
 {
-    public interface ICostOptimizationEngine
-    {
-        Task<CostAnalysisResult> AnalyzeSubscriptionAsync(string subscriptionId);
-        Task<List<CostOptimizationRecommendation>> GenerateRecommendationsAsync(string resourceId);
-        Task<ResourceUsagePattern> AnalyzeUsagePatternsAsync(string resourceId, string metricName, DateTime startDate, DateTime endDate);
+    Task<CostAnalysisResult> AnalyzeSubscriptionAsync(string subscriptionId);
+    Task<List<CostOptimizationRecommendation>> GenerateRecommendationsAsync(string resourceId);
+    Task<ResourceUsagePattern> AnalyzeUsagePatternsAsync(string resourceId, string metricName, DateTime startDate, DateTime endDate);
         Task<bool> ApplyRecommendationAsync(string recommendationId, Dictionary<string, object>? parameters = null);
         Task<Dictionary<string, decimal>> CalculateSavingsPotentialAsync(List<CostOptimizationRecommendation> recommendations);
         
@@ -907,4 +907,3 @@ namespace Platform.Engineering.Copilot.Core.Services
             return (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
         }
     }
-}

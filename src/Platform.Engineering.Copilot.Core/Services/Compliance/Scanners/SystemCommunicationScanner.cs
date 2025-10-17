@@ -9,6 +9,14 @@ using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Extensions;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
 
 namespace Platform.Engineering.Copilot.Core.Services.Compliance;
 
@@ -152,7 +160,7 @@ public class SystemCommunicationScanner : IComplianceScanner
             {
                 try
                 {
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(nsg.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(nsg.Id ?? "");
                     var nsgResource = armClient.GetGenericResource(resourceId);
                     var nsgData = await nsgResource.GetAsync(cancellationToken);
 
@@ -684,7 +692,7 @@ Deploy with encryption-in-transit enabled by default.",
             {
                 try
                 {
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(storage.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(storage.Id ?? "");
                     var storageResource = armClient.GetGenericResource(resourceId);
                     var storageData = await storageResource.GetAsync(cancellationToken);
                     
@@ -716,7 +724,7 @@ Deploy with encryption-in-transit enabled by default.",
             {
                 try
                 {
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(app.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(app.Id ?? "");
                     var appResource = armClient.GetGenericResource(resourceId);
                     var appData = await appResource.GetAsync(cancellationToken);
                     
@@ -762,7 +770,7 @@ Deploy with encryption-in-transit enabled by default.",
             {
                 try
                 {
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(sql.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(sql.Id ?? "");
                     var sqlResource = armClient.GetGenericResource(resourceId);
                     var sqlData = await sqlResource.GetAsync(cancellationToken);
                     
@@ -794,7 +802,7 @@ Deploy with encryption-in-transit enabled by default.",
             {
                 try
                 {
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(redis.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(redis.Id ?? "");
                     var redisResource = armClient.GetGenericResource(resourceId);
                     var redisData = await redisResource.GetAsync(cancellationToken);
                     

@@ -5,7 +5,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.Http;
-using Platform.Engineering.Copilot.Core.Services.Cost;
+using Platform.Engineering.Copilot.Core.Services.Azure.Cost;
 
 namespace Platform.Engineering.Copilot.Tests.Integration.Core.Services.Cost;
 

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
-using Platform.Engineering.Copilot.Core.Services.Security;
+using Platform.Engineering.Copilot.Core.Services.Azure.Security;
 using Xunit;
 
 namespace Platform.Engineering.Copilot.Tests.Unit.Core.Services.Security;

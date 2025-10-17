@@ -162,11 +162,18 @@ public class BudgetScope
 public class CostOptimizationRecommendation
 {
     public string RecommendationId { get; set; } = Guid.NewGuid().ToString();
+    public string Id { get; set; } = Guid.NewGuid().ToString(); // Alias for compatibility
+    public string ResourceId { get; set; } = string.Empty;
+    public string ResourceName { get; set; } = string.Empty;
+    public string ResourceType { get; set; } = string.Empty;
+    public string ResourceGroup { get; set; } = string.Empty;
     public OptimizationType Type { get; set; }
     public OptimizationPriority Priority { get; set; }
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+    public string Impact { get; set; } = string.Empty;
     public decimal PotentialMonthlySavings { get; set; }
+    public decimal EstimatedMonthlySavings { get; set; } // Alias for compatibility
     public decimal PotentialAnnualSavings { get; set; }
     public decimal ImplementationCost { get; set; }
     public TimeSpan PaybackPeriod { get; set; }
@@ -174,12 +181,14 @@ public class CostOptimizationRecommendation
     public OptimizationRisk Risk { get; set; }
     public List<string> AffectedResources { get; set; } = new();
     public List<OptimizationAction> RecommendedActions { get; set; } = new();
+    public List<OptimizationAction> Actions { get; set; } = new(); // Alias for compatibility
     public OptimizationCategory Category { get; set; }
     public DateTime DetectedAt { get; set; } = DateTime.UtcNow;
     public string Evidence { get; set; } = string.Empty;
     public Dictionary<string, object> Metadata { get; set; } = new();
     public bool IsAutomatable { get; set; }
     public string AutomationScript { get; set; } = string.Empty;
+    public object? ScheduleDetails { get; set; } // For auto-shutdown recommendations
 }
 
 /// <summary>
@@ -188,14 +197,18 @@ public class CostOptimizationRecommendation
 public class OptimizationAction
 {
     public string ActionId { get; set; } = Guid.NewGuid().ToString();
+    public string ActionType { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public List<string> Steps { get; set; } = new();
     public decimal EstimatedSavings { get; set; }
     public TimeSpan EstimatedImplementationTime { get; set; }
+    public string EstimatedDuration { get; set; } = string.Empty; // String representation
     public bool RequiresDowntime { get; set; }
+    public bool Automated { get; set; }
     public List<string> Prerequisites { get; set; } = new();
     public List<string> RisksAndConsiderations { get; set; } = new();
+    public List<string> Resources { get; set; } = new();
     public string DocumentationLink { get; set; } = string.Empty;
 }
 
@@ -266,6 +279,13 @@ public class CostAnomaly
     public AnomalyStatus Status { get; set; } = AnomalyStatus.Open;
     public string Resolution { get; set; } = string.Empty;
     public DateTime? ResolvedAt { get; set; }
+    
+    // ML-specific properties
+    public string DetectionMethod { get; set; } = "Statistical"; // Isolation Forest, DBSCAN, ARIMA, Seasonal, etc.
+    public double Confidence { get; set; } // Detection confidence level (0.0 - 1.0)
+    public string? ForecastedRange { get; set; } // For ARIMA: expected cost range
+    public decimal SeasonalComponent { get; set; } // For seasonal decomposition
+    public decimal TrendComponent { get; set; } // For time series trend
 }
 
 #endregion
@@ -277,6 +297,7 @@ public class CostAnomaly
 /// </summary>
 public class ResourceCostBreakdown
 {
+    public string SubscriptionId { get; set; } = string.Empty;
     public string ResourceId { get; set; } = string.Empty;
     public string ResourceName { get; set; } = string.Empty;
     public string ResourceType { get; set; } = string.Empty;
@@ -455,7 +476,8 @@ public enum OptimizationCategory
     Analytics,
     Security,
     Monitoring,
-    Integration
+    Integration,
+    AutoShutdown
 }
 
 public enum OptimizationRisk
@@ -497,7 +519,10 @@ public enum AnomalyType
     ServiceCostIncrease,
     ResourceCostIncrease,
     BillingAnomaly,
-    UsagePatternChange
+    UsagePatternChange,
+    UnexpectedIncrease,
+    UnexpectedDecrease,
+    SeasonalDeviation
 }
 
 public enum AnomalyStatus

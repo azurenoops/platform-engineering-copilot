@@ -30,6 +30,7 @@ public class AtoComplianceEngineIntegrationTests
     private readonly Mock<ComplianceMetricsService> _mockMetricsService;
     private readonly IMemoryCache _memoryCache;
     private readonly IOptions<GovernanceOptions> _options;
+    private readonly IOptions<GatewayOptions> _gatewayOptions;
 
     public AtoComplianceEngineIntegrationTests()
     {
@@ -45,6 +46,14 @@ public class AtoComplianceEngineIntegrationTests
         {
             EnforcePolicies = true,
             RequireApproval = false
+        });
+        
+        _gatewayOptions = Options.Create(new GatewayOptions
+        {
+            Azure = new AzureGatewayOptions
+            {
+                CloudEnvironment = "AzureGovernment"
+            }
         });
     }
 
@@ -69,7 +78,8 @@ public class AtoComplianceEngineIntegrationTests
             _mockCostService.Object,
             _memoryCache,
             _mockMetricsService.Object,
-            _options);
+            _options,
+            _gatewayOptions);
 
         // Act
         var result = await engine.RunComprehensiveAssessmentAsync(subscriptionId, null, CancellationToken.None);
@@ -143,7 +153,8 @@ public class AtoComplianceEngineIntegrationTests
             _mockCostService.Object,
             _memoryCache,
             _mockMetricsService.Object,
-            _options);
+            _options,
+            _gatewayOptions);
 
         // Act
         var result = await engine.RunComprehensiveAssessmentAsync(subscriptionId, null, CancellationToken.None);
@@ -202,7 +213,8 @@ public class AtoComplianceEngineIntegrationTests
             _mockCostService.Object,
             _memoryCache,
             _mockMetricsService.Object,
-            _options);
+            _options,
+            _gatewayOptions);
 
         // Act
         var result = await engine.RunComprehensiveAssessmentAsync(subscriptionId, null, CancellationToken.None);
@@ -241,7 +253,8 @@ public class AtoComplianceEngineIntegrationTests
             _mockCostService.Object,
             _memoryCache,
             _mockMetricsService.Object,
-            _options);
+            _options,
+            _gatewayOptions);
 
         // Act
         var result = await engine.RunComprehensiveAssessmentAsync(subscriptionId, null, CancellationToken.None);
@@ -284,7 +297,8 @@ public class AtoComplianceEngineIntegrationTests
             _mockCostService.Object,
             _memoryCache,
             _mockMetricsService.Object,
-            _options);
+            _options,
+            _gatewayOptions);
 
         // Act
         var result = await engine.CollectComplianceEvidenceAsync(subscriptionId, controlFamily, null, CancellationToken.None);
@@ -327,7 +341,8 @@ public class AtoComplianceEngineIntegrationTests
             _mockCostService.Object,
             _memoryCache,
             _mockMetricsService.Object,
-            _options);
+            _options,
+            _gatewayOptions);
 
         // Act
         var result = await engine.RunComprehensiveAssessmentAsync(subscriptionId, null, CancellationToken.None);
@@ -355,7 +370,8 @@ public class AtoComplianceEngineIntegrationTests
             _mockCostService.Object,
             _memoryCache,
             _mockMetricsService.Object,
-            _options);
+            _options,
+            _gatewayOptions);
 
         // Act & Assert
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
@@ -382,7 +398,8 @@ public class AtoComplianceEngineIntegrationTests
             _mockCostService.Object,
             _memoryCache,
             _mockMetricsService.Object,
-            _options);
+            _options,
+            _gatewayOptions);
 
         // Act
         var result = await engine.RunComprehensiveAssessmentAsync(subscriptionId, progress, CancellationToken.None);
@@ -434,7 +451,8 @@ public class AtoComplianceEngineIntegrationTests
             _mockCostService.Object,
             _memoryCache,
             _mockMetricsService.Object,
-            _options);
+            _options,
+            _gatewayOptions);
 
         // Act
         var result = await engine.CollectComplianceEvidenceAsync(subscriptionId, controlFamily, progress, CancellationToken.None);

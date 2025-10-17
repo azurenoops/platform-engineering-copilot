@@ -8,7 +8,7 @@ using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Interfaces;
 
-namespace Platform.Engineering.Copilot.Core.Services;
+namespace Platform.Engineering.Copilot.Core.Services.Azure.Cost;
 
 
 /// <summary>
@@ -23,23 +23,40 @@ public class AzureCostManagementService : IAzureCostManagementService
     private readonly TokenCredential _credential;
     private readonly GovernanceOptions _options;
     private readonly string _baseUrl;
+    private readonly AdvancedAnomalyDetectionService? _advancedAnomalyService;
+    private readonly AutoShutdownAutomationService? _autoShutdownService;
 
     public AzureCostManagementService(
         HttpClient httpClient,
         ILogger<AzureCostManagementService> logger,
-        IOptions<GovernanceOptions> options)
+        IOptions<GovernanceOptions> options,
+        IOptions<GatewayOptions> gatewayOptions,
+        AdvancedAnomalyDetectionService? advancedAnomalyService = null,
+        AutoShutdownAutomationService? autoShutdownService = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        _advancedAnomalyService = advancedAnomalyService;
+        _autoShutdownService = autoShutdownService;
 
         // Initialize Azure credentials with default authentication
         _credential = new ChainedTokenCredential(
             new AzureCliCredential(),
             new DefaultAzureCredential());
 
-        // Set base URL for Azure Government
-        _baseUrl = "https://management.usgovcloudapi.net";
+        // Determine Azure environment from configuration
+        var cloudEnvironment = gatewayOptions?.Value?.Azure?.CloudEnvironment ?? "AzureCloud";
+        var isGovernment = cloudEnvironment.Equals("AzureGovernment", StringComparison.OrdinalIgnoreCase) ||
+                          cloudEnvironment.Equals("AzureUSGovernment", StringComparison.OrdinalIgnoreCase);
+
+        // Set base URL based on environment
+        _baseUrl = isGovernment 
+            ? "https://management.usgovcloudapi.net" 
+            : "https://management.azure.com";
+        
+        _logger.LogInformation("AzureCostManagementService initialized for {Environment} with endpoint {BaseUrl}", 
+            cloudEnvironment, _baseUrl);
 
         ConfigureHttpClient();
     }
@@ -223,10 +240,18 @@ public class AzureCostManagementService : IAzureCostManagementService
             // Get historical cost data
             var costTrends = await GetCostTrendsAsync(subscriptionId, startDate.AddDays(-30), endDate, cancellationToken);
             
-            // Apply anomaly detection algorithms
+            // Use advanced ML-based anomaly detection if available
+            if (_advancedAnomalyService != null)
+            {
+                _logger.LogInformation("Using ML-based anomaly detection with multiple algorithms");
+                return await _advancedAnomalyService.DetectAnomaliesAsync(costTrends, startDate, endDate, cancellationToken);
+            }
+            
+            // Fallback to simple statistical anomaly detection
+            _logger.LogInformation("Using simple statistical anomaly detection (ML service not configured)");
             var anomalies = new List<CostAnomaly>();
 
-            // Simple statistical anomaly detection (would use ML in production)
+            // Simple statistical anomaly detection
             var dailyCosts = costTrends.Select(t => t.DailyCost).ToList();
             if (dailyCosts.Count > 7)
             {
@@ -255,7 +280,9 @@ public class AzureCostManagementService : IAzureCostManagementService
                             "New resource deployments",
                             "Changed usage patterns",
                             "Billing calculation changes"
-                        }
+                        },
+                        DetectionMethod = "Statistical (2 Std Dev)",
+                        Confidence = 0.75
                     });
                 }
             }
@@ -574,13 +601,32 @@ public class AzureCostManagementService : IAzureCostManagementService
         return new List<ResourceCostBreakdown>();
     }
 
-    private Task<List<CostOptimizationRecommendation>> GenerateCustomOptimizationRecommendationsAsync(
+    private async Task<List<CostOptimizationRecommendation>> GenerateCustomOptimizationRecommendationsAsync(
         string subscriptionId, 
         CancellationToken cancellationToken)
     {
-        // TODO: Implement custom optimization logic based on actual resource analysis
         _logger.LogInformation("GenerateCustomOptimizationRecommendationsAsync called for subscription {SubscriptionId}", subscriptionId);
-        return Task.FromResult(new List<CostOptimizationRecommendation>());
+        
+        // Use auto-shutdown automation service if available
+        if (_autoShutdownService != null)
+        {
+            _logger.LogInformation("Using AutoShutdownAutomationService for advanced cost optimization recommendations");
+            
+            // Get resource cost breakdown for analysis
+            var endDate = DateTimeOffset.UtcNow;
+            var startDate = endDate.AddDays(-30);
+            var resourceBreakdown = await GetResourceCostBreakdownAsync(subscriptionId, startDate, endDate, cancellationToken);
+            
+            // Generate auto-shutdown recommendations
+            return await _autoShutdownService.GenerateAutoShutdownRecommendationsAsync(
+                subscriptionId, 
+                resourceBreakdown, 
+                cancellationToken);
+        }
+        
+        // Fallback to empty list if service not configured
+        _logger.LogInformation("AutoShutdownAutomationService not configured - no custom optimization recommendations");
+        return new List<CostOptimizationRecommendation>();
     }
 
     private List<BudgetAlert> GenerateBudgetAlerts(List<BudgetStatus> budgets)

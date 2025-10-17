@@ -4,7 +4,7 @@ using Platform.Engineering.Copilot.DocumentProcessing.Models;
 using Platform.Engineering.Copilot.DocumentProcessing.Services;
 using Platform.Engineering.Copilot.Core.Models;
 
-namespace Platform.Engineering.Copilot.DocumentProcessing.Analyzers;
+namespace Platform.Engineering.Copilot.Services.DocumentProcessing.Analyzers;
 
 /// <summary>
 /// Analyzer for Navy Flankspeed platform compatibility assessment.

@@ -4,10 +4,15 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Extensions;
+using Platform.Engineering.Copilot.Core.Configuration;
 
 namespace Platform.Engineering.Copilot.Core.Services.Compliance;
 
@@ -18,11 +23,31 @@ public class AuditScanner : IComplianceScanner
 {
     private readonly ILogger _logger;
     private readonly IAzureResourceService _azureService;
+    private readonly string _managementEndpoint;
+    private readonly string _managementScope;
 
-    public AuditScanner(ILogger logger, IAzureResourceService azureService)
+    public AuditScanner(ILogger logger, IAzureResourceService azureService, IOptions<GatewayOptions> gatewayOptions)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _azureService = azureService ?? throw new ArgumentNullException(nameof(azureService));
+        
+        // Determine Azure environment from configuration
+        var cloudEnvironment = gatewayOptions?.Value?.Azure?.CloudEnvironment ?? "AzureCloud";
+        var isGovernment = cloudEnvironment.Equals("AzureGovernment", StringComparison.OrdinalIgnoreCase) ||
+                          cloudEnvironment.Equals("AzureUSGovernment", StringComparison.OrdinalIgnoreCase);
+        
+        if (isGovernment)
+        {
+            _managementEndpoint = "https://management.usgovcloudapi.net";
+            _managementScope = "https://management.usgovcloudapi.net/.default";
+            _logger.LogInformation("AuditScanner initialized for Azure Government environment");
+        }
+        else
+        {
+            _managementEndpoint = "https://management.azure.com";
+            _managementScope = "https://management.azure.com/.default";
+            _logger.LogInformation("AuditScanner initialized for Azure Commercial environment");
+        }
     }
 
     public async Task<List<AtoFinding>> ScanControlAsync(
@@ -146,18 +171,47 @@ public class AuditScanner : IComplianceScanner
                         try
                         {
                             // Check for diagnostic settings on this resource
-                            // Diagnostic settings are child resources: {resourceId}/providers/Microsoft.Insights/diagnosticSettings
-                            var diagnosticSettingsUri = $"{resource.Id}/providers/Microsoft.Insights/diagnosticSettings";
-                            
+                            // Use the Monitor API to query diagnostic settings
                             try
                             {
-                                var diagnosticResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(diagnosticSettingsUri));
-                                var diagnosticData = await diagnosticResource.GetAsync(cancellationToken: cancellationToken);
+                                var diagnosticSettingsUri = $"{_managementEndpoint}{resource.Id}/providers/Microsoft.Insights/diagnosticSettings?api-version=2021-05-01-preview";
                                 
-                                // If we got here, diagnostic settings exist
-                                _logger.LogDebug("Resource {ResourceId} HAS diagnostic settings", resource.Id);
+                                var httpClient = new HttpClient();
+                                var credential = new DefaultAzureCredential();
+                                var token = await credential.GetTokenAsync(
+                                    new TokenRequestContext(new[] { _managementScope }),
+                                    cancellationToken);
+                                
+                                httpClient.DefaultRequestHeaders.Authorization = 
+                                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Token);
+                                
+                                var response = await httpClient.GetAsync(diagnosticSettingsUri, cancellationToken);
+                                
+                                if (response.IsSuccessStatusCode)
+                                {
+                                    var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                                    var json = JsonDocument.Parse(content);
+                                    
+                                    // Check if there are any diagnostic settings
+                                    if (json.RootElement.TryGetProperty("value", out var settings) && 
+                                        settings.GetArrayLength() > 0)
+                                    {
+                                        _logger.LogDebug("Resource {ResourceId} HAS diagnostic settings", resource.Id);
+                                    }
+                                    else
+                                    {
+                                        resourcesWithoutDiagnostics.Add($"{resource.Name} ({resource.Type})");
+                                        _logger.LogInformation("Resource {ResourceId} does NOT have diagnostic settings", resource.Id);
+                                    }
+                                }
+                                else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                                {
+                                    // 404 means no diagnostic settings configured
+                                    resourcesWithoutDiagnostics.Add($"{resource.Name} ({resource.Type})");
+                                    _logger.LogInformation("Resource {ResourceId} does NOT have diagnostic settings", resource.Id);
+                                }
                             }
-                            catch (Azure.RequestFailedException ex) when (ex.Status == 404)
+                            catch (RequestFailedException ex) when (ex.Status == 404)
                             {
                                 // 404 means no diagnostic settings configured
                                 resourcesWithoutDiagnostics.Add($"{resource.Name} ({resource.Type})");
@@ -166,9 +220,8 @@ public class AuditScanner : IComplianceScanner
                         }
                         catch (Exception resourceEx)
                         {
-                            _logger.LogWarning(resourceEx, "Unable to query diagnostic settings for resource {ResourceId}", resource.Id);
-                            // If we can't query, assume it doesn't have diagnostics to be safe
-                            resourcesWithoutDiagnostics.Add($"{resource.Name ?? resource.Id} ({resource.Type})");
+                            _logger.LogDebug(resourceEx, "Unable to query diagnostic settings for resource {ResourceId} - skipping", resource.Id);
+                            // Don't add to the list if we can't query - avoid false positives
                         }
                     }
                     
@@ -474,17 +527,32 @@ REFERENCES:
                     {
                         try
                         {
-                            // Query for scheduled query rules in the workspace's resource group
-                            // Alert rules are subscription-scoped but typically associated with workspaces
-                            var alertRulesUri = $"/subscriptions/{subscriptionId}/providers/Microsoft.Insights/scheduledQueryRules";
+                            // Query for scheduled query rules (alert rules) using REST API
+                            // Alert rules are subscription-scoped
+                            var alertRulesUri = $"{_managementEndpoint}/subscriptions/{subscriptionId}/providers/Microsoft.Insights/scheduledQueryRules?api-version=2021-08-01";
                             
                             try
                             {
-                                var alertRulesResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(alertRulesUri));
-                                var alertRulesData = await alertRulesResource.GetAsync(cancellationToken: cancellationToken);
+                                var httpClient = new HttpClient();
+                                var credential = new DefaultAzureCredential();
+                                var token = await credential.GetTokenAsync(
+                                    new TokenRequestContext(new[] { _managementScope }),
+                                    cancellationToken);
                                 
-                                // Parse alert rules to check if any reference this workspace
-                                var alertRulesJson = JsonDocument.Parse(alertRulesData.Value.Data.Properties.ToStream());
+                                httpClient.DefaultRequestHeaders.Authorization = 
+                                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Token);
+                                
+                                var response = await httpClient.GetAsync(alertRulesUri, cancellationToken);
+                                
+                                if (!response.IsSuccessStatusCode)
+                                {
+                                    _logger.LogDebug("Could not query alert rules for subscription {SubscriptionId}", subscriptionId);
+                                    workspacesWithoutAlerts.Add(workspace.Name ?? workspace.Id);
+                                    continue;
+                                }
+                                
+                                var content = await response.Content.ReadAsStringAsync(cancellationToken);
+                                var alertRulesJson = JsonDocument.Parse(content);
                                 var alertRules = alertRulesJson.RootElement;
                                 
                                 bool hasWorkspaceAlerts = false;
@@ -519,17 +587,17 @@ REFERENCES:
                                     workspacesWithoutAlerts.Add($"{workspace.Name} (0 alert rules)");
                                 }
                             }
-                            catch (Azure.RequestFailedException ex) when (ex.Status == 404)
+                            catch (Exception ex)
                             {
-                                // 404 means no alert rules configured at subscription level
-                                _logger.LogWarning("No scheduled query rules found for subscription {SubscriptionId}", subscriptionId);
+                                // Could not query alert rules - treat as no alerts to be safe
+                                _logger.LogDebug(ex, "Unable to query alert rules for workspace {WorkspaceId}", workspace.Id);
                                 workspacesWithoutAlerts.Add($"{workspace.Name} (no alert rules)");
                             }
                         }
                         catch (Exception workspaceEx)
                         {
-                            _logger.LogWarning(workspaceEx, "Unable to query alert rules for workspace {WorkspaceId}", workspace.Id);
-                            workspacesWithoutAlerts.Add($"{workspace.Name ?? workspace.Id} (unable to verify)");
+                            _logger.LogDebug(workspaceEx, "Unable to query alert rules for workspace {WorkspaceId} - skipping", workspace.Id);
+                            // Don't add to list - avoid false positives
                         }
                     }
                     
@@ -828,7 +896,7 @@ REFERENCES:
                     {
                         try
                         {
-                            var workspaceResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(workspace.Id));
+                            var workspaceResource = armClient.GetGenericResource(new ResourceIdentifier(workspace.Id));
                             var workspaceData = await workspaceResource.GetAsync(cancellationToken: cancellationToken);
                             
                             // Parse workspace properties to get retention

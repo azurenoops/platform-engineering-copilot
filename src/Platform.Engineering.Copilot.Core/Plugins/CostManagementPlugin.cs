@@ -9,6 +9,7 @@ using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Models.CostOptimization;
 using Platform.Engineering.Copilot.Core.Services;
+using Platform.Engineering.Copilot.Core.Services.Azure.Cost;
 using DetailedCostOptimizationRecommendation = Platform.Engineering.Copilot.Core.Models.CostOptimization.CostOptimizationRecommendation;
 
 namespace Platform.Engineering.Copilot.Core.Plugins;

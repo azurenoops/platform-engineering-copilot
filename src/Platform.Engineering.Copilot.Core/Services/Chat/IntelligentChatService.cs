@@ -9,12 +9,13 @@ using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Models.IntelligentChat;
 using Platform.Engineering.Copilot.Core.Plugins;
-using Platform.Engineering.Copilot.Core.Services.AzureServices;
+using Platform.Engineering.Copilot.Core.Services.Azure;
+using Platform.Engineering.Copilot.Core.Services.Azure.Cost;
 using Platform.Engineering.Copilot.Core.Services.Cache;
 using Platform.Engineering.Copilot.Core.Services.Compliance;
 using Platform.Engineering.Copilot.Core.Services.Infrastructure;
 
-namespace Platform.Engineering.Copilot.Core.Services;
+namespace Platform.Engineering.Copilot.Core.Services.Chat;
 
 /// <summary>
 /// AI-powered intelligent chat service using Semantic Kernel automatic function calling
@@ -309,10 +310,10 @@ public class IntelligentChatService : IIntelligentChatService
             _logger.LogInformation("⏱️ Starting SK GetChatMessageContentAsync...");
             var skStopwatch = System.Diagnostics.Stopwatch.StartNew();
             
-            // Retry logic for rate limiting (HTTP 429) with exponential backoff
+            // Retry logic for rate limiting (HTTP 429) and timeout errors with exponential backoff
             ChatMessageContent? result = null;
             int maxRetries = 3;
-            int retryDelayMs = 1000; // Start with 1 second
+            int baseRetryDelayMs = 10000; // Start with 10 seconds as Azure suggests
             
             for (int attempt = 0; attempt <= maxRetries; attempt++)
             {
@@ -330,16 +331,74 @@ public class IntelligentChatService : IIntelligentChatService
                 {
                     if (attempt < maxRetries)
                     {
-                        var delay = retryDelayMs * (int)Math.Pow(2, attempt); // Exponential backoff: 1s, 2s, 4s
-                        _logger.LogWarning("⚠️ Rate limit hit (HTTP 429). Retrying in {DelayMs}ms (attempt {Attempt}/{MaxRetries})", 
+                        var delay = baseRetryDelayMs * (attempt + 1); // Linear: 10s, 20s, 30s (Azure asks for 10s minimum)
+                        _logger.LogWarning("⚠️ Rate limit hit (HTTP 429). Azure OpenAI token rate limit exceeded. Retrying in {DelayMs}ms (attempt {Attempt}/{MaxRetries})", 
                             delay, attempt + 1, maxRetries);
-                        await Task.Delay(delay, cancellationToken);
+                        await Task.Delay(delay, CancellationToken.None); // Don't use cancellationToken for retry delay
                     }
                     else
                     {
                         _logger.LogError(ex, "❌ Rate limit exceeded after {MaxRetries} retries", maxRetries);
-                        throw; // Re-throw after max retries
+                        
+                        // Return a helpful error message instead of throwing
+                        return new IntelligentChatResponse
+                        {
+                            Response = "⚠️ **Azure OpenAI Rate Limit Exceeded**\n\n" +
+                                      "The request exceeded the token rate limit for your Azure OpenAI tier. This can happen with:\n" +
+                                      "- Complex compliance assessments with many resources\n" +
+                                      "- Multiple concurrent requests\n\n" +
+                                      "**Options:**\n" +
+                                      "1. Wait a moment and try again (rate limits reset quickly)\n" +
+                                      "2. Break complex requests into smaller parts\n" +
+                                      "3. Consider upgrading Azure OpenAI tier for higher limits\n\n" +
+                                      "See: https://aka.ms/AOAIGovQuota for quota information",
+                            Intent = new IntentClassificationResult
+                            {
+                                IntentType = "error",
+                                Confidence = 1.0,
+                                ToolCategory = "system"
+                            },
+                            ToolExecuted = false
+                        };
                     }
+                }
+                catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // This is a timeout from Azure OpenAI, not a user cancellation
+                    if (attempt < maxRetries)
+                    {
+                        var delay = baseRetryDelayMs * (attempt + 1);
+                        _logger.LogWarning(ex, "⚠️ Azure OpenAI request timed out. Retrying in {DelayMs}ms (attempt {Attempt}/{MaxRetries})", 
+                            delay, attempt + 1, maxRetries);
+                        await Task.Delay(delay, CancellationToken.None); // Don't use cancellationToken for retry delay
+                    }
+                    else
+                    {
+                        _logger.LogError(ex, "❌ Azure OpenAI request timed out after {MaxRetries} retries", maxRetries);
+                        
+                        // Return a helpful error message instead of throwing
+                        return new IntelligentChatResponse
+                        {
+                            Response = "⚠️ The request to Azure OpenAI timed out. This can happen with complex queries. Please try:\n\n" +
+                                      "1. Breaking your request into smaller parts\n" +
+                                      "2. Simplifying the query\n" +
+                                      "3. Trying again in a moment\n\n" +
+                                      "If this persists, the Azure OpenAI service may be experiencing high load.",
+                            Intent = new IntentClassificationResult
+                            {
+                                IntentType = "error",
+                                Confidence = 1.0,
+                                ToolCategory = "system"
+                            },
+                            ToolExecuted = false
+                        };
+                    }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    // User explicitly cancelled the request - let it bubble up to be handled by outer catch
+                    _logger.LogInformation("User cancellation detected during retry loop");
+                    throw;
                 }
             }
             
@@ -410,6 +469,28 @@ public class IntelligentChatService : IIntelligentChatService
                 {
                     ProcessingTimeMs = stopwatch.ElapsedMilliseconds,
                     ModelUsed = "gpt-4o" // TODO: Extract from kernel config
+                }
+            };
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // User cancelled - this is expected, not an error
+            _logger.LogInformation("Request cancelled by user for conversation {ConversationId}", conversationId);
+            
+            return new IntelligentChatResponse
+            {
+                Response = "Request cancelled.",
+                Intent = new IntentClassificationResult
+                {
+                    IntentType = "cancelled",
+                    Confidence = 1.0
+                },
+                ConversationId = conversationId,
+                ToolExecuted = false,
+                Metadata = new ResponseMetadata
+                {
+                    ProcessingTimeMs = stopwatch.ElapsedMilliseconds,
+                    ModelUsed = "gpt-4o"
                 }
             };
         }

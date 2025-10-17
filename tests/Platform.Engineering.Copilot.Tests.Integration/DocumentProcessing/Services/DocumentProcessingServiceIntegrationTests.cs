@@ -12,9 +12,9 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using CoreModels = Platform.Engineering.Copilot.Core.Models;
-using Platform.Engineering.Copilot.DocumentProcessing.Analyzers;
 using DocModels = Platform.Engineering.Copilot.DocumentProcessing.Models;
 using Platform.Engineering.Copilot.DocumentProcessing.Services;
+using Platform.Engineering.Copilot.Services.DocumentProcessing;
 using Xunit;
 
 namespace Platform.Engineering.Copilot.Tests.Integration.DocumentProcessing.Services

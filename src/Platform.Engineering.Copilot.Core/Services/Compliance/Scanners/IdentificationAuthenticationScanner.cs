@@ -8,6 +8,14 @@ using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Extensions;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
 
 namespace Platform.Engineering.Copilot.Core.Services.Compliance;
 
@@ -325,7 +333,7 @@ REFERENCES:
             {
                 try
                 {
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(vm.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(vm.Id ?? "");
                     var vmResource = armClient.GetGenericResource(resourceId);
                     var vmData = await vmResource.GetAsync(cancellationToken);
                     
@@ -379,7 +387,7 @@ REFERENCES:
                         continue;
                     }
                     
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(app.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(app.Id ?? "");
                     var appResource = armClient.GetGenericResource(resourceId);
                     var appData = await appResource.GetAsync(cancellationToken);
                     
@@ -416,7 +424,7 @@ REFERENCES:
             {
                 try
                 {
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(func.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(func.Id ?? "");
                     var funcResource = armClient.GetGenericResource(resourceId);
                     var funcData = await funcResource.GetAsync(cancellationToken);
                     
@@ -453,7 +461,7 @@ REFERENCES:
             {
                 try
                 {
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(container.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(container.Id ?? "");
                     var containerResource = armClient.GetGenericResource(resourceId);
                     var containerData = await containerResource.GetAsync(cancellationToken);
                     
@@ -899,7 +907,7 @@ REFERENCES:
                 {
                     try
                     {
-                        var resourceId = Azure.Core.ResourceIdentifier.Parse(kv.Id ?? "");
+                        var resourceId = ResourceIdentifier.Parse(kv.Id ?? "");
                         var kvResource = armClient.GetGenericResource(resourceId);
                         var kvData = await kvResource.GetAsync(cancellationToken);
                         

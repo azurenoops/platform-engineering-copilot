@@ -13,7 +13,7 @@ using global::Azure.ResourceManager.Resources.Models;
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Interfaces;
 
-namespace Platform.Engineering.Copilot.Core.Services
+namespace Platform.Engineering.Copilot.Core.Services.Deployment
 {
     /// <summary>
     /// Service for orchestrating infrastructure deployments across cloud providers.

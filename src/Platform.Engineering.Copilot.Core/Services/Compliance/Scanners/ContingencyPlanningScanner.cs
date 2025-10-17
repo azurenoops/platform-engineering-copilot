@@ -8,6 +8,14 @@ using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Extensions;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
 
 namespace Platform.Engineering.Copilot.Core.Services.Compliance;
 
@@ -123,7 +131,7 @@ public class ContingencyPlanningScanner : IComplianceScanner
             {
                 try
                 {
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(storage.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(storage.Id ?? "");
                     var storageResource = armClient.GetGenericResource(resourceId);
                     var storageData = await storageResource.GetAsync(cancellationToken);
                     
@@ -168,7 +176,7 @@ public class ContingencyPlanningScanner : IComplianceScanner
                         continue;
                     }
                     
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(db.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(db.Id ?? "");
                     var dbResource = armClient.GetGenericResource(resourceId);
                     var dbData = await dbResource.GetAsync(cancellationToken);
                     
@@ -206,7 +214,7 @@ public class ContingencyPlanningScanner : IComplianceScanner
             {
                 try
                 {
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(vm.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(vm.Id ?? "");
                     var vmResource = armClient.GetGenericResource(resourceId);
                     var vmData = await vmResource.GetAsync(cancellationToken);
                     
@@ -481,7 +489,7 @@ Continue quarterly testing and annual full DR exercises to ensure compliance is 
             {
                 try
                 {
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(vm.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(vm.Id ?? "");
                     var vmResource = armClient.GetGenericResource(resourceId);
                     var vmData = await vmResource.GetAsync(cancellationToken);
                     
@@ -517,7 +525,7 @@ Continue quarterly testing and annual full DR exercises to ensure compliance is 
             {
                 try
                 {
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(sqlServer.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(sqlServer.Id ?? "");
                     var sqlResource = armClient.GetGenericResource(resourceId);
                     var sqlData = await sqlResource.GetAsync(cancellationToken);
                     
@@ -544,7 +552,7 @@ Continue quarterly testing and annual full DR exercises to ensure compliance is 
             {
                 try
                 {
-                    var resourceId = Azure.Core.ResourceIdentifier.Parse(storage.Id ?? "");
+                    var resourceId = ResourceIdentifier.Parse(storage.Id ?? "");
                     var storageResource = armClient.GetGenericResource(resourceId);
                     var storageData = await storageResource.GetAsync(cancellationToken);
                     

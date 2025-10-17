@@ -5,11 +5,17 @@ using Microsoft.SemanticKernel;
 using Azure.Identity;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Services;
+using Platform.Engineering.Copilot.Core.Services.Deployment;
 using Platform.Engineering.Copilot.Core.Services.Cache;
 using Platform.Engineering.Copilot.Core.Services.Compliance;
 using Platform.Engineering.Copilot.Core.Plugins;
 using Platform.Engineering.Copilot.Core.Services.Infrastructure;
 using Platform.Engineering.Copilot.Core.Services.Onboarding;
+using Platform.Engineering.Copilot.Core.Services.Chat;
+using Platform.Engineering.Copilot.Core.Services.Azure;
+using Platform.Engineering.Copilot.Core.Services.Azure.Cost;
+using Platform.Engineering.Copilot.Core.Services.Azure.ResourceHealth;
+using Platform.Engineering.Copilot.Core.Services.Azure.Security;
 
 namespace Platform.Engineering.Copilot.Core.Extensions;
 
@@ -48,12 +54,19 @@ public static class ServiceCollectionExtensions
                 !string.IsNullOrEmpty(azureOpenAIDeployment) &&
                 (!string.IsNullOrEmpty(azureOpenAIApiKey) || useManagedIdentity))
             {
+                // Create HttpClient with extended timeout for complex queries
+                var httpClient = new HttpClient
+                {
+                    Timeout = TimeSpan.FromMinutes(5) // Increase from default 100 seconds to 5 minutes
+                };
+                
                 if (useManagedIdentity)
                 {
                     builder.AddAzureOpenAIChatCompletion(
                         deploymentName: azureOpenAIDeployment,
                         endpoint: azureOpenAIEndpoint,
-                        credentials: new DefaultAzureCredential()
+                        credentials: new DefaultAzureCredential(),
+                        httpClient: httpClient
                     );
                 }
                 else
@@ -61,7 +74,8 @@ public static class ServiceCollectionExtensions
                     builder.AddAzureOpenAIChatCompletion(
                         deploymentName: azureOpenAIDeployment,
                         endpoint: azureOpenAIEndpoint,
-                        apiKey: azureOpenAIApiKey!
+                        apiKey: azureOpenAIApiKey!,
+                        httpClient: httpClient
                     );
                 }
             }
@@ -89,10 +103,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IIntelligentChatService, IntelligentChatService>();
         
         // Register Azure resource service (stub implementation for DI resolution)
-        services.AddScoped<IAzureResourceService, Platform.Engineering.Copilot.Core.Services.AzureServices.AzureResourceService>();
+        services.AddScoped<IAzureResourceService, AzureResourceService>();
         
         // Register Azure resource health service (stub implementation for DI resolution)
-        services.AddScoped<IAzureResourceHealthService, Platform.Engineering.Copilot.Core.Services.AzureServices.AzureResourceHealthService>();
+        services.AddScoped<IAzureResourceHealthService, AzureResourceHealthService>();
         
         // Register cost management services
         services.AddHttpClient<AzureCostManagementService>();
@@ -125,8 +139,7 @@ public static class ServiceCollectionExtensions
             Platform.Engineering.Copilot.Core.Services.TemplateGeneration.ComplianceAwareTemplateEnhancer>();
         services.AddScoped<Platform.Engineering.Copilot.Core.Services.Infrastructure.INetworkTopologyDesignService, 
             Platform.Engineering.Copilot.Core.Services.Infrastructure.NetworkTopologyDesignService>();
-        services.AddScoped<Platform.Engineering.Copilot.Core.Services.Security.IAzureSecurityConfigurationService, 
-            Platform.Engineering.Copilot.Core.Services.Security.AzureSecurityConfigurationService>();
+        services.AddScoped<IAzureSecurityConfigurationService, AzureSecurityConfigurationService>();
         
         // Register infrastructure provisioning service (AI-powered, requires Kernel)
         services.AddScoped<IInfrastructureProvisioningService>(serviceProvider =>

@@ -3,10 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
+using Azure.ResourceManager.Resources;
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Interfaces;
-using Platform.Engineering.Copilot.Core.Models;
 
 namespace Platform.Engineering.Copilot.Core.Services.Compliance;
 /// <summary>
@@ -633,15 +637,15 @@ public class AtoRemediationEngine : IAtoRemediationEngine
     private async Task<string> ExecuteRemediationActionAsync(
         string subscriptionId,
         AtoFinding finding,
-        RemediationAction action,
+        AtoRemediationAction action,
         CancellationToken cancellationToken)
     {
         _logger.LogInformation("Executing remediation action {ActionType} for finding {FindingId}", 
-            action.ActionType, finding.Id);
+            action.ToolCommand, finding.Id);
 
         try
         {
-            switch (action.ActionType?.ToUpperInvariant())
+            switch (action.ToolCommand?.ToUpperInvariant())
             {
                 case "ENABLE_HTTPS":
                     return await EnableHttpsOnlyAsync(finding.ResourceId, cancellationToken);
@@ -658,6 +662,18 @@ public class AtoRemediationEngine : IAtoRemediationEngine
                         : null;
                     return await EnableDiagnosticSettingsAsync(finding.ResourceId, workspaceId, cancellationToken);
                 
+                case "CONFIGURE_ALERT_RULES":
+                    var alertWorkspaceId = action.Parameters.TryGetValue("logAnalyticsWorkspaceId", out var alertWsId) 
+                        ? alertWsId?.ToString() 
+                        : null;
+                    return await ConfigureAlertRulesAsync(finding.ResourceId, alertWorkspaceId, cancellationToken);
+                
+                case "CONFIGURE_LOG_RETENTION":
+                    var retentionDays = action.Parameters.TryGetValue("retentionDays", out var days) 
+                        ? int.Parse(days?.ToString() ?? "90") 
+                        : 90;
+                    return await ConfigureLogRetentionAsync(finding.ResourceId, retentionDays, cancellationToken);
+                
                 case "ENABLE_ENCRYPTION":
                     return await EnableEncryptionAsync(finding.ResourceId, cancellationToken);
                 
@@ -671,13 +687,13 @@ public class AtoRemediationEngine : IAtoRemediationEngine
                     return await ApplyPolicyAssignmentAsync(subscriptionId, finding.ResourceId, policyDefinitionId, cancellationToken);
                 
                 default:
-                    _logger.LogWarning("Unknown remediation action type: {ActionType}", action.ActionType);
+                    _logger.LogWarning("Unknown remediation action type: {ActionType}", action.ToolCommand);
                     return $"Executed custom action: {action.Description}";
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error executing remediation action {ActionType}", action.ActionType);
+            _logger.LogError(ex, "Error executing remediation action {ActionType}", action.ToolCommand);
             throw;
         }
     }
@@ -692,20 +708,28 @@ public class AtoRemediationEngine : IAtoRemediationEngine
         try
         {
             var armClient = _resourceService.GetArmClient();
-            var resource = armClient.GetGenericResource(Azure.Core.ResourceIdentifier.Parse(resourceId));
-            var resourceData = await resource.GetAsync(cancellationToken);
+            var resourceIdentifier = ResourceIdentifier.Parse(resourceId);
+            var resource = armClient.GetGenericResource(resourceIdentifier);
             
-            // Update the resource properties
-            var properties = new Dictionary<string, object>
+            // Get current resource data
+            var response = await resource.GetAsync(cancellationToken);
+            var resourceData = response.Value.Data;
+            
+            // Update properties to enable HTTPS only
+            var properties = resourceData.Properties.ToObjectFromJson<Dictionary<string, object>>();
+            properties["httpsOnly"] = true;
+            
+            // Create update payload
+            var updateData = new GenericResourceData(resourceData.Location)
             {
-                ["httpsOnly"] = true
+                Properties = BinaryData.FromObjectAsJson(properties)
             };
             
-            // In a real implementation, this would use Azure SDK to update the resource
-            // For now, log the action
-            _logger.LogInformation("Would set httpsOnly=true on {ResourceId}", resourceId);
+            // Apply the update
+            var updateOperation = await resource.UpdateAsync(WaitUntil.Completed, updateData, cancellationToken);
             
-            return $"Enabled HTTPS Only on {resourceId.Split('/').Last()}";
+            _logger.LogInformation("Successfully enabled HTTPS Only on {ResourceId}", resourceId);
+            return $"Enabled HTTPS Only on {resourceIdentifier.Name}";
         }
         catch (Exception ex)
         {
@@ -724,12 +748,28 @@ public class AtoRemediationEngine : IAtoRemediationEngine
         try
         {
             var armClient = _resourceService.GetArmClient();
-            var resource = armClient.GetGenericResource(Azure.Core.ResourceIdentifier.Parse(resourceId));
+            var resourceIdentifier = ResourceIdentifier.Parse(resourceId);
+            var resource = armClient.GetGenericResource(resourceIdentifier);
             
-            // In a real implementation, this would use Azure SDK to update the resource
-            _logger.LogInformation("Would set minTlsVersion={Version} on {ResourceId}", minTlsVersion, resourceId);
+            // Get current resource data
+            var response = await resource.GetAsync(cancellationToken);
+            var resourceData = response.Value.Data;
             
-            return $"Updated TLS version to {minTlsVersion} on {resourceId.Split('/').Last()}";
+            // Update properties to set minimum TLS version
+            var properties = resourceData.Properties.ToObjectFromJson<Dictionary<string, object>>();
+            properties["minTlsVersion"] = minTlsVersion;
+            
+            // Create update payload
+            var updateData = new GenericResourceData(resourceData.Location)
+            {
+                Properties = BinaryData.FromObjectAsJson(properties)
+            };
+            
+            // Apply the update
+            var updateOperation = await resource.UpdateAsync(WaitUntil.Completed, updateData, cancellationToken);
+            
+            _logger.LogInformation("Successfully updated TLS version to {Version} on {ResourceId}", minTlsVersion, resourceId);
+            return $"Updated TLS version to {minTlsVersion} on {resourceIdentifier.Name}";
         }
         catch (Exception ex)
         {
@@ -747,16 +787,150 @@ public class AtoRemediationEngine : IAtoRemediationEngine
         
         try
         {
-            // In a real implementation, this would use Azure SDK to configure diagnostic settings
-            _logger.LogInformation("Would enable diagnostic settings on {ResourceId} -> workspace {WorkspaceId}", 
-                resourceId, workspaceId ?? "default");
+            var armClient = _resourceService.GetArmClient();
+            var resourceIdentifier = ResourceIdentifier.Parse(resourceId);
             
-            return $"Enabled diagnostic settings on {resourceId.Split('/').Last()}";
+            // Construct diagnostic settings resource ID
+            var diagnosticSettingsId = $"{resourceId}/providers/Microsoft.Insights/diagnosticSettings/compliance-diagnostics";
+            var diagnosticIdentifier = new ResourceIdentifier(diagnosticSettingsId);
+            
+            // Create diagnostic settings payload
+            var diagnosticSettings = new
+            {
+                properties = new
+                {
+                    workspaceId = workspaceId ?? "/subscriptions/default/resourceGroups/default/providers/Microsoft.OperationalInsights/workspaces/default",
+                    logs = new[]
+                    {
+                        new { category = "AuditEvent", enabled = true, retentionPolicy = new { enabled = true, days = 90 } },
+                        new { category = "Administrative", enabled = true, retentionPolicy = new { enabled = true, days = 90 } }
+                    },
+                    metrics = new[]
+                    {
+                        new { category = "AllMetrics", enabled = true, retentionPolicy = new { enabled = true, days = 90 } }
+                    }
+                }
+            };
+            
+            // Apply diagnostic settings using ARM REST API
+            var genericResource = armClient.GetGenericResource(diagnosticIdentifier);
+            var data = new GenericResourceData(AzureLocation.EastUS)
+            {
+                Properties = BinaryData.FromObjectAsJson(diagnosticSettings.properties)
+            };
+            
+            await genericResource.UpdateAsync(WaitUntil.Completed, data, cancellationToken);
+            
+            _logger.LogInformation("Successfully enabled diagnostic settings on {ResourceId}", resourceId);
+            return $"Enabled diagnostic settings on {resourceIdentifier.Name}";
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to enable diagnostic settings on {ResourceId}", resourceId);
             throw new InvalidOperationException($"Failed to enable diagnostic settings: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Configure alert rules for audit monitoring
+    /// </summary>
+    private async Task<string> ConfigureAlertRulesAsync(string resourceId, string? workspaceId, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Configuring alert rules for resource {ResourceId}", resourceId);
+        
+        try
+        {
+            var armClient = _resourceService.GetArmClient();
+            var resourceIdentifier = ResourceIdentifier.Parse(resourceId);
+            
+            // Create scheduled query rule for audit monitoring
+            var alertRuleId = $"{resourceIdentifier.Parent}/providers/Microsoft.Insights/scheduledQueryRules/audit-alert-rule";
+            var alertIdentifier = new ResourceIdentifier(alertRuleId);
+            
+            var alertRulePayload = new
+            {
+                location = "global",
+                properties = new
+                {
+                    displayName = "Audit Log Alert Rule",
+                    description = "Automated alert rule for audit log review",
+                    enabled = true,
+                    severity = 2,
+                    evaluationFrequency = "PT5M",
+                    windowSize = "PT15M",
+                    scopes = new[] { workspaceId ?? "/subscriptions/default/resourceGroups/default/providers/Microsoft.OperationalInsights/workspaces/default" },
+                    criteria = new
+                    {
+                        allOf = new[]
+                        {
+                            new
+                            {
+                                query = "AuditLogs | where TimeGenerated > ago(15m) | where OperationName contains 'Delete' or OperationName contains 'Create'",
+                                timeAggregation = "Count",
+                                threshold = 10,
+                                @operator = "GreaterThan"
+                            }
+                        }
+                    },
+                    actions = new { }
+                }
+            };
+            
+            var genericResource = armClient.GetGenericResource(alertIdentifier);
+            var data = new GenericResourceData(AzureLocation.EastUS)
+            {
+                Properties = BinaryData.FromObjectAsJson(alertRulePayload.properties)
+            };
+            
+            await genericResource.UpdateAsync(WaitUntil.Completed, data, cancellationToken);
+            
+            _logger.LogInformation("Successfully configured alert rules on {ResourceId}", resourceId);
+            return $"Configured audit alert rules on {resourceIdentifier.Name}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to configure alert rules on {ResourceId}", resourceId);
+            throw new InvalidOperationException($"Failed to configure alert rules: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Configure log retention period
+    /// </summary>
+    private async Task<string> ConfigureLogRetentionAsync(string resourceId, int retentionDays, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Configuring log retention to {Days} days for resource {ResourceId}", retentionDays, resourceId);
+        
+        try
+        {
+            var armClient = _resourceService.GetArmClient();
+            var resourceIdentifier = ResourceIdentifier.Parse(resourceId);
+            var resource = armClient.GetGenericResource(resourceIdentifier);
+            
+            // Get current workspace data
+            var response = await resource.GetAsync(cancellationToken);
+            var resourceData = response.Value.Data;
+            
+            // Update retention settings for Log Analytics workspace
+            var properties = resourceData.Properties.ToObjectFromJson<Dictionary<string, object>>();
+            properties["retentionInDays"] = retentionDays;
+            
+            // Create update payload
+            var updateData = new GenericResourceData(resourceData.Location)
+            {
+                Properties = BinaryData.FromObjectAsJson(properties)
+            };
+            
+            // Apply the update
+            await resource.UpdateAsync(WaitUntil.Completed, updateData, cancellationToken);
+            
+            _logger.LogInformation("Successfully configured log retention to {Days} days on {ResourceId}", retentionDays, resourceId);
+            return $"Configured log retention to {retentionDays} days on {resourceIdentifier.Name}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to configure log retention on {ResourceId}", resourceId);
+            throw new InvalidOperationException($"Failed to configure log retention: {ex.Message}", ex);
         }
     }
 
@@ -769,10 +943,47 @@ public class AtoRemediationEngine : IAtoRemediationEngine
         
         try
         {
-            // In a real implementation, this would use Azure SDK to enable encryption
-            _logger.LogInformation("Would enable encryption on {ResourceId}", resourceId);
+            var armClient = _resourceService.GetArmClient();
+            var resourceIdentifier = ResourceIdentifier.Parse(resourceId);
+            var resource = armClient.GetGenericResource(resourceIdentifier);
             
-            return $"Enabled encryption on {resourceId.Split('/').Last()}";
+            // Get current resource data
+            var response = await resource.GetAsync(cancellationToken);
+            var resourceData = response.Value.Data;
+            
+            // Update properties to enable encryption
+            var properties = resourceData.Properties.ToObjectFromJson<Dictionary<string, object>>();
+            
+            // For storage accounts
+            if (resourceIdentifier.ResourceType.ToString().Contains("storageAccounts", StringComparison.OrdinalIgnoreCase))
+            {
+                properties["encryption"] = new Dictionary<string, object>
+                {
+                    ["services"] = new Dictionary<string, object>
+                    {
+                        ["blob"] = new { enabled = true },
+                        ["file"] = new { enabled = true }
+                    },
+                    ["keySource"] = "Microsoft.Storage"
+                };
+            }
+            else
+            {
+                // Generic encryption enablement
+                properties["encryption"] = new { enabled = true };
+            }
+            
+            // Create update payload
+            var updateData = new GenericResourceData(resourceData.Location)
+            {
+                Properties = BinaryData.FromObjectAsJson(properties)
+            };
+            
+            // Apply the update
+            await resource.UpdateAsync(WaitUntil.Completed, updateData, cancellationToken);
+            
+            _logger.LogInformation("Successfully enabled encryption on {ResourceId}", resourceId);
+            return $"Enabled encryption on {resourceIdentifier.Name}";
         }
         catch (Exception ex)
         {
@@ -793,10 +1004,74 @@ public class AtoRemediationEngine : IAtoRemediationEngine
         
         try
         {
-            // In a real implementation, this would use Azure SDK to configure NSG rules
-            _logger.LogInformation("Would configure NSG rules on {ResourceId}", resourceId);
+            var armClient = _resourceService.GetArmClient();
+            var resourceIdentifier = ResourceIdentifier.Parse(resourceId);
+            var resource = armClient.GetGenericResource(resourceIdentifier);
             
-            return $"Configured NSG rules on {resourceId.Split('/').Last()}";
+            // Get current NSG data
+            var response = await resource.GetAsync(cancellationToken);
+            var resourceData = response.Value.Data;
+            
+            // Update security rules
+            var properties = resourceData.Properties.ToObjectFromJson<Dictionary<string, object>>();
+            
+            // Add or update security rules
+            var securityRules = new List<object>();
+            
+            // Add default deny all inbound rule if not exists
+            securityRules.Add(new
+            {
+                name = "DenyAllInbound",
+                properties = new
+                {
+                    priority = 4096,
+                    protocol = "*",
+                    access = "Deny",
+                    direction = "Inbound",
+                    sourceAddressPrefix = "*",
+                    sourcePortRange = "*",
+                    destinationAddressPrefix = "*",
+                    destinationPortRange = "*"
+                }
+            });
+            
+            // Add allowed inbound rules from parameters
+            if (parameters.TryGetValue("allowedPorts", out var allowedPorts))
+            {
+                var ports = allowedPorts.ToString()?.Split(',') ?? Array.Empty<string>();
+                for (int i = 0; i < ports.Length; i++)
+                {
+                    securityRules.Add(new
+                    {
+                        name = $"AllowPort{ports[i]}",
+                        properties = new
+                        {
+                            priority = 100 + i,
+                            protocol = "Tcp",
+                            access = "Allow",
+                            direction = "Inbound",
+                            sourceAddressPrefix = "*",
+                            sourcePortRange = "*",
+                            destinationAddressPrefix = "*",
+                            destinationPortRange = ports[i]
+                        }
+                    });
+                }
+            }
+            
+            properties["securityRules"] = securityRules;
+            
+            // Create update payload
+            var updateData = new GenericResourceData(resourceData.Location)
+            {
+                Properties = BinaryData.FromObjectAsJson(properties)
+            };
+            
+            // Apply the update
+            await resource.UpdateAsync(WaitUntil.Completed, updateData, cancellationToken);
+            
+            _logger.LogInformation("Successfully configured NSG rules on {ResourceId}", resourceId);
+            return $"Configured NSG rules on {resourceIdentifier.Name}";
         }
         catch (Exception ex)
         {
@@ -818,10 +1093,41 @@ public class AtoRemediationEngine : IAtoRemediationEngine
         
         try
         {
-            // In a real implementation, this would use Azure SDK to create policy assignment
-            _logger.LogInformation("Would apply policy {PolicyId} to {ResourceId}", policyDefinitionId, resourceId);
+            var armClient = _resourceService.GetArmClient();
+            var resourceIdentifier = ResourceIdentifier.Parse(resourceId);
             
-            return $"Applied policy assignment to {resourceId.Split('/').Last()}";
+            // Create policy assignment ID
+            var assignmentName = $"compliance-policy-{Guid.NewGuid().ToString()[..8]}";
+            var assignmentId = $"{resourceId}/providers/Microsoft.Authorization/policyAssignments/{assignmentName}";
+            var assignmentIdentifier = new ResourceIdentifier(assignmentId);
+            
+            // Use default policy definition if not provided
+            var policyId = policyDefinitionId ?? 
+                $"/subscriptions/{subscriptionId}/providers/Microsoft.Authorization/policyDefinitions/audit-vm-managed-disks";
+            
+            var policyAssignmentPayload = new
+            {
+                properties = new
+                {
+                    displayName = $"Compliance Policy Assignment - {assignmentName}",
+                    description = "Automated policy assignment for compliance remediation",
+                    policyDefinitionId = policyId,
+                    scope = resourceId,
+                    enforcementMode = "Default",
+                    parameters = new { }
+                }
+            };
+            
+            var genericResource = armClient.GetGenericResource(assignmentIdentifier);
+            var data = new GenericResourceData(resourceIdentifier.Location ?? AzureLocation.EastUS)
+            {
+                Properties = BinaryData.FromObjectAsJson(policyAssignmentPayload.properties)
+            };
+            
+            await genericResource.UpdateAsync(WaitUntil.Completed, data, cancellationToken);
+            
+            _logger.LogInformation("Successfully applied policy assignment to {ResourceId}", resourceId);
+            return $"Applied policy assignment to {resourceIdentifier.Name}";
         }
         catch (Exception ex)
         {

@@ -1,8 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using Platform.Engineering.Copilot.Core.Extensions;
 using Platform.Engineering.Copilot.Data.Context;
-using Platform.Engineering.Copilot.Core.Extensions;
 using Platform.Engineering.Copilot.Admin.Services;
+using Platform.Engineering.Copilot.Core.Services;
+using Platform.Engineering.Copilot.Core.Services.Azure;
+using Platform.Engineering.Copilot.Core.Services.Azure.Cost;
+using Platform.Engineering.Copilot.Core.Services.Compliance;
+using Platform.Engineering.Copilot.Core.Interfaces;
+using Platform.Engineering.Copilot.Core.Services.Validation.Validators;
+using Platform.Engineering.Copilot.Core.Services.Validation;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -77,31 +83,31 @@ builder.Services.AddHttpClient();
 
 // Add Gateway services manually (excluding problematic singletons that depend on scoped services)
 // Azure Services
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.IAzureResourceService, Platform.Engineering.Copilot.Core.Services.AzureServices.AzureResourceService>();
-builder.Services.AddSingleton<Platform.Engineering.Copilot.Core.Interfaces.IAzureMetricsService, Platform.Engineering.Copilot.Core.Services.AzureMetricsService>();
+builder.Services.AddScoped<IAzureResourceService, AzureResourceService>();
+builder.Services.AddSingleton<IAzureMetricsService, AzureMetricsService>();
 // Note: AzureResourceHealthService temporarily excluded from Governance project - see Governance.csproj
-// builder.Services.AddSingleton<Platform.Engineering.Copilot.Core.Interfaces.IAzureResourceHealthService, Platform.Engineering.Copilot.Core.Services.StubAzureResourceHealthService>();
+// builder.Services.AddSingleton<IAzureResourceHealthService, Platform.Engineering.Copilot.Core.Services.StubAzureResourceHealthService>();
 
 // Cost Management Services (now properly scoped to match dependencies)
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.AzureCostManagementService>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.IAzureCostManagementService>(
-    provider => provider.GetRequiredService<Platform.Engineering.Copilot.Core.Services.AzureCostManagementService>());
+builder.Services.AddScoped<AzureCostManagementService>();
+builder.Services.AddScoped<IAzureCostManagementService>(
+    provider => provider.GetRequiredService<AzureCostManagementService>());
 
 // Cost Optimization and Predictive Scaling Engines (now properly scoped)
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.ICostOptimizationEngine, Platform.Engineering.Copilot.Core.Services.CostOptimizationEngine>();
+builder.Services.AddScoped<ICostOptimizationEngine, CostOptimizationEngine>();
 builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.Infrastructure.IPredictiveScalingEngine, Platform.Engineering.Copilot.Core.Services.Infrastructure.PredictiveScalingEngine>();
 
 // Environment Storage Service (for database persistence)
 builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.Infrastructure.EnvironmentStorageService>();
 
 // Deployment Orchestration Service
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.IDeploymentOrchestrationService, Platform.Engineering.Copilot.Core.Services.DeploymentOrchestrationService>();
+builder.Services.AddScoped<IDeploymentOrchestrationService, Platform.Engineering.Copilot.Core.Services.Deployment.DeploymentOrchestrationService>();
 
 // Add services needed by EnvironmentManagementEngine
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.IGitHubServices, Platform.Engineering.Copilot.Core.Services.GitHubGatewayService>();
+builder.Services.AddScoped<IGitHubServices, Platform.Engineering.Copilot.Core.Services.GitHubGatewayService>();
 
 // Navy Flankspeed Onboarding Service
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.IOnboardingService, Platform.Engineering.Copilot.Core.Services.Onboarding.FlankspeedOnboardingService>();
+builder.Services.AddScoped<IOnboardingService, Platform.Engineering.Copilot.Core.Services.Onboarding.FlankspeedOnboardingService>();
 
 // Notification Services (Phase 5)
 builder.Services.Configure<Platform.Engineering.Copilot.Core.Configuration.EmailConfiguration>(
@@ -116,7 +122,7 @@ builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.Notificati
 
 // Teams Notification Service (Phase 4)
 builder.Services.AddHttpClient(); // Required for TeamsNotificationService
-builder.Services.AddSingleton<Platform.Engineering.Copilot.Core.Interfaces.ITeamsNotificationService, 
+builder.Services.AddSingleton<ITeamsNotificationService, 
     Platform.Engineering.Copilot.Core.Services.Notifications.TeamsNotificationService>();
 
 // Add Memory Cache (needed by NistControlsService)
@@ -126,48 +132,48 @@ builder.Services.AddMemoryCache();
 builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.Compliance.ComplianceMetricsService>();
 
 // Add services needed by AtoComplianceEngine
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.INistControlsService, Platform.Engineering.Copilot.Core.Services.Compliance.NistControlsService>();
+builder.Services.AddScoped<INistControlsService, Platform.Engineering.Copilot.Core.Services.Compliance.NistControlsService>();
 
 // Environment Management Engine (for environment lifecycle operations)
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.IEnvironmentManagementEngine, Platform.Engineering.Copilot.Core.Services.Infrastructure.EnvironmentManagementEngine>();
+builder.Services.AddScoped<IEnvironmentManagementEngine, Platform.Engineering.Copilot.Core.Services.Infrastructure.EnvironmentManagementEngine>();
 
 // Infrastructure Provisioning Service (for foundational infrastructure resources)
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.IInfrastructureProvisioningService, Platform.Engineering.Copilot.Core.Services.Infrastructure.InfrastructureProvisioningService>();
+builder.Services.AddScoped<IInfrastructureProvisioningService, Platform.Engineering.Copilot.Core.Services.Infrastructure.InfrastructureProvisioningService>();
 
 // Governance Engine (for policy enforcement and approval workflows)
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.IGovernanceEngine, Platform.Engineering.Copilot.Core.Services.Governance.GovernanceEngine>();
+builder.Services.AddScoped<IGovernanceEngine, Platform.Engineering.Copilot.Core.Services.Governance.GovernanceEngine>();
 
 // Azure Policy Service (for Azure policy evaluation)
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.IAzurePolicyService, Platform.Engineering.Copilot.Core.Services.AzurePolicyEngine>();
+builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.IAzurePolicyService, AzurePolicyEngine>();
 
 // ATO Compliance Engine (for security scanning) - Will be registered as optional for now
-// builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.IAtoComplianceEngine, Platform.Engineering.Copilot.Core.Services.Compliance.AtoComplianceEngine>();
+// builder.Services.AddScoped<IAtoComplianceEngine, Platform.Engineering.Copilot.Core.Services.Compliance.AtoComplianceEngine>();
 
 // Dynamic Template Generator (core service for template creation)
 builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.IDynamicTemplateGenerator, Platform.Engineering.Copilot.Core.Services.DynamicTemplateGeneratorService>();
 
 // Template Storage Service (for saving/loading templates)
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.ITemplateStorageService, Platform.Engineering.Copilot.Core.Data.Services.TemplateStorageService>();
+builder.Services.AddScoped<ITemplateStorageService, Platform.Engineering.Copilot.Core.Data.Services.TemplateStorageService>();
 
 // Register Configuration Validators
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.AKSConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.EKSConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.GKEConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.ECSConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.LambdaConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.CloudRunConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.VMConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.AppServiceConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.ContainerAppsConfigValidator>();
+builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, AKSConfigValidator>();
+builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, EKSConfigValidator>();
+builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, GKEConfigValidator>();
+builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, ECSConfigValidator>();
+builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, LambdaConfigValidator>();
+builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, CloudRunConfigValidator>();
+builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, VMConfigValidator>();
+builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, AppServiceConfigValidator>();
+builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, ContainerAppsConfigValidator>();
 
 // Register Configuration Validation Service (orchestrator)
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.Validation.ConfigurationValidationService>();
+builder.Services.AddScoped<ConfigurationValidationService>();
 
 // Register Admin services
 builder.Services.AddScoped<ITemplateAdminService, TemplateAdminService>();
 
 // Register Azure Pricing Service for cost estimates
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.Cost.IAzurePricingService, Platform.Engineering.Copilot.Core.Services.Cost.AzurePricingService>();
+builder.Services.AddScoped<IAzurePricingService, AzurePricingService>();
 
 // NOTE: DeploymentPollingService removed - legacy service from Extensions project
 

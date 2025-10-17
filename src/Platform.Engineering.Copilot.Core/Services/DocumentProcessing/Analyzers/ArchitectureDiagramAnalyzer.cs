@@ -3,7 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Platform.Engineering.Copilot.DocumentProcessing.Models;
 using Platform.Engineering.Copilot.DocumentProcessing.Services;
 
-namespace Platform.Engineering.Copilot.DocumentProcessing.Analyzers;
+namespace Platform.Engineering.Copilot.Services.DocumentProcessing.Analyzers;
 
 /// <summary>
 /// Analyzer for extracting and analyzing architecture diagrams from various document formats.

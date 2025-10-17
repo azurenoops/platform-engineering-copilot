@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Models.PredictiveScaling;
 using Platform.Engineering.Copilot.Core.Models.CostOptimization;
 using Platform.Engineering.Copilot.Core.Interfaces;
+using Platform.Engineering.Copilot.Core.Services.Azure.Cost;
 using AzureResource = Platform.Engineering.Copilot.Core.Models.AzureResource;
 
 namespace Platform.Engineering.Copilot.Core.Services.Infrastructure

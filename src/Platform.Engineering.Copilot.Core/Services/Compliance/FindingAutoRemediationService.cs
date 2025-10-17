@@ -283,6 +283,7 @@ public class FindingAutoRemediationService
         
         if (!IsAutoRemediable(finding))
         {
+            _logger?.LogDebug("Finding {FindingId} is NOT auto-remediable, returning manual action", finding.Id);
             actions.Add(new AtoRemediationAction
             {
                 Name = "Manual Review Required",
@@ -297,18 +298,24 @@ public class FindingAutoRemediationService
         var title = finding.Title.ToLowerInvariant();
         var resourceType = finding.ResourceType?.ToLowerInvariant() ?? "";
         
+        _logger?.LogInformation("Getting remediation actions for auto-remediable finding: Title='{Title}', ResourceType='{ResourceType}'", 
+            finding.Title, finding.ResourceType);
+        
         // Storage encryption
         if (title.Contains("encryption") && resourceType.Contains("storage"))
         {
-            actions.Add(new AtoRemediationAction
+            var action = new AtoRemediationAction
             {
                 Name = "Enable Storage Encryption",
                 Description = "Enable encryption at rest for the storage account using Azure Storage Service Encryption",
                 ActionType = AtoRemediationActionType.ConfigurationChange,
                 Complexity = AtoRemediationComplexity.Moderate,
                 EstimatedDuration = TimeSpan.FromMinutes(10),
-                RequiresApproval = false
-            });
+                RequiresApproval = false,
+                ToolCommand = "ENABLE_ENCRYPTION",  // Action type for AtoRemediationEngine
+                ScriptPath = "EnableStorageEncryption.ps1"
+            };
+            actions.Add(action);
         }
         
         // VM disk encryption
@@ -328,15 +335,18 @@ public class FindingAutoRemediationService
         // NSG rules
         if (title.Contains("port") && resourceType.Contains("networksecuritygroup"))
         {
-            actions.Add(new AtoRemediationAction
+            var action = new AtoRemediationAction
             {
                 Name = "Update NSG Rules",
                 Description = "Restrict open ports and remove overly permissive rules",
                 ActionType = AtoRemediationActionType.ConfigurationChange,
                 Complexity = AtoRemediationComplexity.Moderate,
                 EstimatedDuration = TimeSpan.FromMinutes(10),
-                RequiresApproval = true // May impact connectivity
-            });
+                RequiresApproval = true, // May impact connectivity
+                ToolCommand = "CONFIGURE_NSG",  // Action type for AtoRemediationEngine
+                ScriptPath = "ConfigureNsgRules.ps1"
+            };
+            actions.Add(action);
         }
         
         // Key Vault soft delete
@@ -384,43 +394,54 @@ public class FindingAutoRemediationService
         // Diagnostic settings
         if (title.Contains("diagnostic"))
         {
-            actions.Add(new AtoRemediationAction
+            var action = new AtoRemediationAction
             {
                 Name = "Enable Diagnostic Settings",
                 Description = "Configure diagnostic settings to send logs to Log Analytics workspace",
                 ActionType = AtoRemediationActionType.ConfigurationChange,
                 Complexity = AtoRemediationComplexity.Simple,
                 EstimatedDuration = TimeSpan.FromMinutes(5),
-                RequiresApproval = false
-            });
+                RequiresApproval = false,
+                ToolCommand = "ENABLE_DIAGNOSTIC_SETTINGS",  // Action type for AtoRemediationEngine
+                ScriptPath = "EnableDiagnosticSettings.ps1"
+            };
+            actions.Add(action);
         }
         
         // TLS version
         if (title.Contains("tls"))
         {
-            actions.Add(new AtoRemediationAction
+            var action = new AtoRemediationAction
             {
                 Name = "Update Minimum TLS Version",
                 Description = "Set minimum TLS version to 1.2 or higher",
                 ActionType = AtoRemediationActionType.ConfigurationChange,
                 Complexity = AtoRemediationComplexity.Simple,
                 EstimatedDuration = TimeSpan.FromMinutes(5),
-                RequiresApproval = false
-            });
+                RequiresApproval = false,
+                ToolCommand = "UPDATE_TLS_VERSION",  // Action type for AtoRemediationEngine
+                ScriptPath = "UpdateTlsVersion.ps1"
+            };
+            // Set parameters for TLS version update
+            action.Parameters["minimumTlsVersion"] = "1.2";
+            actions.Add(action);
         }
         
         // HTTPS only
         if (title.Contains("https"))
         {
-            actions.Add(new AtoRemediationAction
+            var action = new AtoRemediationAction
             {
                 Name = "Require HTTPS Only",
                 Description = "Configure resource to accept only HTTPS traffic",
                 ActionType = AtoRemediationActionType.ConfigurationChange,
                 Complexity = AtoRemediationComplexity.Simple,
                 EstimatedDuration = TimeSpan.FromMinutes(5),
-                RequiresApproval = false
-            });
+                RequiresApproval = false,
+                ToolCommand = "ENABLE_HTTPS",  // Action type for AtoRemediationEngine
+                ScriptPath = "EnableHttpsOnly.ps1"
+            };
+            actions.Add(action);
         }
         
         // Tags
@@ -437,9 +458,48 @@ public class FindingAutoRemediationService
             });
         }
         
+        // Alert rules / Audit review
+        if ((title.Contains("alert") || title.Contains("audit review")) && 
+            (resourceType.Contains("scheduledqueryrules") || resourceType.Contains("insights")))
+        {
+            var action = new AtoRemediationAction
+            {
+                Name = "Configure Audit Alert Rules",
+                Description = "Set up scheduled query rules for automated audit log review and alerting",
+                ActionType = AtoRemediationActionType.ConfigurationChange,
+                Complexity = AtoRemediationComplexity.Moderate,
+                EstimatedDuration = TimeSpan.FromMinutes(15),
+                RequiresApproval = false,
+                ToolCommand = "CONFIGURE_ALERT_RULES",
+                ScriptPath = "ConfigureAuditAlertRules.ps1"
+            };
+            actions.Add(action);
+        }
+        
+        // Log Analytics workspace retention
+        if (title.Contains("retention") && resourceType.Contains("operationalinsights"))
+        {
+            var action = new AtoRemediationAction
+            {
+                Name = "Configure Log Retention",
+                Description = "Set Log Analytics workspace retention period to meet compliance requirements (90+ days)",
+                ActionType = AtoRemediationActionType.ConfigurationChange,
+                Complexity = AtoRemediationComplexity.Simple,
+                EstimatedDuration = TimeSpan.FromMinutes(5),
+                RequiresApproval = false,
+                ToolCommand = "CONFIGURE_LOG_RETENTION",
+                ScriptPath = "ConfigureLogRetention.ps1"
+            };
+            action.Parameters["retentionDays"] = "90";
+            actions.Add(action);
+        }
+        
         // If no specific action matched, provide generic auto-remediation action
         if (actions.Count == 0)
         {
+            _logger?.LogWarning("No specific remediation action matched for auto-remediable finding. Title: {Title}, ResourceType: {ResourceType}", 
+                finding.Title, finding.ResourceType);
+                
             actions.Add(new AtoRemediationAction
             {
                 Name = "Auto-Configure Compliance Setting",
@@ -449,6 +509,10 @@ public class FindingAutoRemediationService
                 EstimatedDuration = GetEstimatedDuration(finding),
                 RequiresApproval = false
             });
+        }
+        else
+        {
+            _logger?.LogInformation("Created {Count} remediation action(s) for finding {FindingId}", actions.Count, finding.Id);
         }
         
         return actions;

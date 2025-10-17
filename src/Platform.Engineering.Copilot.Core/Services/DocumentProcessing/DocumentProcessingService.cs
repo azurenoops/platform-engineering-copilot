@@ -6,11 +6,11 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using iTextSharp.text.pdf;
 using Platform.Engineering.Copilot.DocumentProcessing.Models;
-using Platform.Engineering.Copilot.DocumentProcessing.Analyzers;
+using Platform.Engineering.Copilot.DocumentProcessing.Services;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
 
-namespace Platform.Engineering.Copilot.DocumentProcessing.Services;
+namespace Platform.Engineering.Copilot.Services.DocumentProcessing;
 
 /// <summary>
 /// Core service for processing and analyzing documents for compliance and architecture assessment.

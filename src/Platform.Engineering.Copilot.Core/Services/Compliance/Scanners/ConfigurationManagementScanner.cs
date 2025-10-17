@@ -8,6 +8,14 @@ using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Extensions;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
 
 namespace Platform.Engineering.Copilot.Core.Services.Compliance;
 
@@ -193,7 +201,7 @@ REFERENCES:
                     {
                         try
                         {
-                            var policyResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(policy.Id));
+                            var policyResource = armClient.GetGenericResource(new ResourceIdentifier(policy.Id));
                             var policyData = await policyResource.GetAsync(cancellationToken: cancellationToken);
                             
                             // Parse policy properties
@@ -1095,7 +1103,7 @@ REFERENCES:
                     {
                         try
                         {
-                            var nsgResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(nsg.Id));
+                            var nsgResource = armClient.GetGenericResource(new ResourceIdentifier(nsg.Id));
                             var nsgData = await nsgResource.GetAsync(cancellationToken: cancellationToken);
                             
                             // Parse NSG properties

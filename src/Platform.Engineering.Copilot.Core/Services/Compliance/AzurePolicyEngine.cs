@@ -8,7 +8,7 @@ using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Services;
 using System.Text.Json;
 
-namespace Platform.Engineering.Copilot.Core.Services;
+namespace Platform.Engineering.Copilot.Core.Services.Compliance;
 
 public class AzurePolicyEngine : IAzurePolicyService
 {

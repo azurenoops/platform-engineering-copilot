@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Platform.Engineering.Copilot.Core.Services.Validation;
+using Platform.Engineering.Copilot.Core.Services.Azure.Cost;
 using Platform.Engineering.Copilot.Admin.Models;
 using Platform.Engineering.Copilot.Admin.Services;
 
@@ -430,7 +431,7 @@ public class TemplateAdminController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<AzureResourceCostResponse>> GetCostEstimate(
         [FromBody] AzureResourceCostRequest request,
-        [FromServices] Platform.Engineering.Copilot.Core.Services.Cost.IAzurePricingService pricingService,
+        [FromServices] IAzurePricingService pricingService,
         CancellationToken cancellationToken)
     {
         try
@@ -439,7 +440,7 @@ public class TemplateAdminController : ControllerBase
                 "Calculating cost estimate for {ServiceFamily} in {Region}",
                 request.ServiceFamily, request.Region);
 
-            var specs = new Platform.Engineering.Copilot.Core.Services.Cost.ResourceSpecification
+            var specs = new ResourceSpecification
             {
                 ServiceFamily = request.ServiceFamily,
                 SkuName = request.SkuName,

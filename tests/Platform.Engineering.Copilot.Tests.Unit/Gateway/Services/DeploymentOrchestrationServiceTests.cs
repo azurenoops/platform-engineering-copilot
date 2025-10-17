@@ -8,7 +8,7 @@ using Moq;
 using Azure.ResourceManager;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
-using Platform.Engineering.Copilot.Core.Services;
+using Platform.Engineering.Copilot.Core.Services.Deployment;
 using Xunit;
 
 namespace Platform.Engineering.Copilot.Tests.Unit.Core.Services

@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Platform.Engineering.Copilot.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Interfaces;
-using Platform.Engineering.Copilot.Core.Services.AzureServices;
+using Platform.Engineering.Copilot.Core.Services.Azure;
 using Xunit;
 using Moq;
 

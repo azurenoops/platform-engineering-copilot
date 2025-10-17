@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
 
-namespace Platform.Engineering.Copilot.Core.Services.Security;
+namespace Platform.Engineering.Copilot.Core.Services.Azure.Security;
 
 /// <summary>
 /// Azure security configuration service with FedRAMP High and DoD IL5 compliant defaults

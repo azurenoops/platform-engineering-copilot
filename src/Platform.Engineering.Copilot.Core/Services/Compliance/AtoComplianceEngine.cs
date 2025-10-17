@@ -29,6 +29,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
     // private readonly IAtoComplianceReportService _reportService; // TODO: Implement this service
     private readonly ComplianceMetricsService _metricsService;
     private readonly GovernanceOptions _options;
+    private readonly GatewayOptions _gatewayOptions;
     private readonly Dictionary<string, IComplianceScanner> _scanners;
     private readonly Dictionary<string, IEvidenceCollector> _evidenceCollectors;
     
@@ -45,7 +46,8 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         IMemoryCache cache,
         // IAtoComplianceReportService reportService, // TODO: Implement this service
         ComplianceMetricsService metricsService,
-        IOptions<GovernanceOptions> options)
+        IOptions<GovernanceOptions> options,
+        IOptions<GatewayOptions> gatewayOptions)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _nistControlsService = nistControlsService ?? throw new ArgumentNullException(nameof(nistControlsService));
@@ -56,6 +58,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         // _reportService = reportService ?? throw new ArgumentNullException(nameof(reportService));
         _metricsService = metricsService ?? throw new ArgumentNullException(nameof(metricsService));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        _gatewayOptions = gatewayOptions?.Value ?? throw new ArgumentNullException(nameof(gatewayOptions));
 
         _scanners = InitializeScanners();
         _evidenceCollectors = InitializeEvidenceCollectors();
@@ -709,10 +712,11 @@ public class AtoComplianceEngine : IAtoComplianceEngine
 
     private Dictionary<string, IComplianceScanner> InitializeScanners()
     {
+        var gatewayOptions = Options.Create(_gatewayOptions);
         return new Dictionary<string, IComplianceScanner>
         {
             { "AC", new AccessControlScanner(_logger, _azureResourceService) },
-            { "AU", new AuditScanner(_logger, _azureResourceService) },
+            { "AU", new AuditScanner(_logger, _azureResourceService, gatewayOptions) },
             { "SC", new SystemCommunicationScanner(_logger, _azureResourceService) },
             { "SI", new SystemIntegrityScanner(_logger, _azureResourceService) },
             { "CP", new ContingencyPlanningScanner(_logger, _azureResourceService) },
@@ -879,23 +883,49 @@ public class AtoComplianceEngine : IAtoComplianceEngine
     {
         var steps = new List<RemediationStep>();
 
-        // Generate specific steps based on finding type
-        // For now, we'll create generic remediation steps
-        // In a real implementation, this would map specific finding types to detailed remediation steps
-        
-        steps.Add(new RemediationStep
+        // Use the finding's RemediationActions if available (populated by FindingAutoRemediationService)
+        if (finding.RemediationActions != null && finding.RemediationActions.Any())
         {
-            Order = 1,
-            Description = $"Remediate {finding.FindingType} issue for {finding.ResourceType}",
-            Command = GetRemediationCommand(finding),
-            AutomationScript = GetAutomationScript(finding)
-        });
+            _logger.LogInformation("Using {Count} RemediationActions for finding {FindingId} - IsAutoRemediable: {IsAuto}", 
+                finding.RemediationActions.Count, finding.Id, finding.IsAutoRemediable);
+            
+            var order = 1;
+            foreach (var action in finding.RemediationActions)
+            {
+                steps.Add(new RemediationStep
+                {
+                    Order = order++,
+                    Description = action.Description,
+                    // For auto-remediable findings, Command/Script are internal - used only by AtoRemediationEngine
+                    Command = finding.IsAutoRemediable ? null : (action.ToolCommand ?? GetRemediationCommand(finding)),
+                    AutomationScript = finding.IsAutoRemediable ? null : action.ScriptPath
+                });
+            }
+        }
+        else
+        {
+            // Fallback to generic steps if RemediationActions not populated
+            if (finding.IsAutoRemediable)
+            {
+                _logger.LogWarning("Finding {FindingId} is marked auto-remediable but has no RemediationActions! Title: {Title}, ResourceType: {ResourceType}", 
+                    finding.Id, finding.Title, finding.ResourceType);
+            }
+            
+            steps.Add(new RemediationStep
+            {
+                Order = 1,
+                Description = $"Remediate {finding.FindingType} issue for {finding.ResourceType}",
+                Command = GetRemediationCommand(finding),
+                AutomationScript = GetAutomationScript(finding)
+            });
+        }
 
+        // Add validation step for auto-remediable findings
         if (finding.IsAutoRemediable)
         {
             steps.Add(new RemediationStep
             {
-                Order = 2,
+                Order = steps.Count + 1,
                 Description = "Verify automated remediation",
                 Command = "Run compliance validation scan",
                 AutomationScript = null

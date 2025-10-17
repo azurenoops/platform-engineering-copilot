@@ -7,7 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using Platform.Engineering.Copilot.Core.Services.Cost;
+using Platform.Engineering.Copilot.Core.Services.Azure.Cost;
 
 namespace Platform.Engineering.Copilot.Tests.Unit.Core.Services.Cost;
 

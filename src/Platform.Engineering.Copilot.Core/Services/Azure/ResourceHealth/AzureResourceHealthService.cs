@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Platform.Engineering.Copilot.Core.Services.AzureServices;
+namespace Platform.Engineering.Copilot.Core.Services.Azure.ResourceHealth;
 
 /// <summary>
 /// Stub implementation of IAzureResourceHealthService for dependency injection resolution.

@@ -9,7 +9,7 @@ using global::Azure.Monitor.Query.Models;
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Interfaces;
 
-namespace Platform.Engineering.Copilot.Core.Services;
+namespace Platform.Engineering.Copilot.Core.Services.Azure.Cost;
 
 /// <summary>
 /// Service for retrieving Azure Monitor metrics data

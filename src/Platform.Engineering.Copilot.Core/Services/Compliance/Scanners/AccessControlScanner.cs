@@ -4,11 +4,15 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
+using Azure.ResourceManager.Authorization;
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Extensions;
-using Azure.ResourceManager.Authorization;
 
 namespace Platform.Engineering.Copilot.Core.Services.Compliance;
 
@@ -143,17 +147,17 @@ public class AccessControlScanner : IComplianceScanner
                     int totalRoleAssignments = 0;
                     var broadAssignmentDetails = new List<string>();
                     
-                    Azure.ResourceManager.ArmResource scopeResource;
+                    ArmResource scopeResource;
                     
                     if (string.IsNullOrEmpty(resourceGroupName))
                     {
                         // Subscription-level scan
-                        scopeResource = armClient.GetSubscriptionResource(new Azure.Core.ResourceIdentifier(scopeResourceId));
+                        scopeResource = armClient.GetSubscriptionResource(new ResourceIdentifier(scopeResourceId));
                     }
                     else
                     {
                         // Resource group-level scan
-                        scopeResource = armClient.GetResourceGroupResource(new Azure.Core.ResourceIdentifier(scopeResourceId));
+                        scopeResource = armClient.GetResourceGroupResource(new ResourceIdentifier(scopeResourceId));
                     }
                     
                     // Get role assignment collection from the scope resource (subscription or RG)
@@ -483,7 +487,7 @@ REFERENCES:
                     {
                         try
                         {
-                            var vmResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(vm.Id));
+                            var vmResource = armClient.GetGenericResource(new ResourceIdentifier(vm.Id));
                             var vmData = await vmResource.GetAsync(cancellationToken: cancellationToken);
                             
                             // Parse the properties JSON
@@ -507,7 +511,7 @@ REFERENCES:
                                                 vmsWithNics++;
                                                 
                                                 // Get the NIC resource to check for NSG
-                                                var nicResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(nicId));
+                                                var nicResource = armClient.GetGenericResource(new ResourceIdentifier(nicId));
                                                 var nicData = await nicResource.GetAsync(cancellationToken: cancellationToken);
                                                 
                                                 // Parse NIC properties JSON
@@ -536,7 +540,7 @@ REFERENCES:
                                                                     if (!string.IsNullOrEmpty(subnetId))
                                                                     {
                                                                         // Get subnet resource to check for NSG
-                                                                        var subnetResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(subnetId));
+                                                                        var subnetResource = armClient.GetGenericResource(new ResourceIdentifier(subnetId));
                                                                         var subnetData = await subnetResource.GetAsync(cancellationToken: cancellationToken);
                                                                         
                                                                         // Parse subnet properties JSON
@@ -825,7 +829,7 @@ REFERENCES:
                         try
                         {
                             resourcesChecked++;
-                            var genericResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(resource.Id));
+                            var genericResource = armClient.GetGenericResource(new ResourceIdentifier(resource.Id));
                             var resourceData = await genericResource.GetAsync(cancellationToken: cancellationToken);
                             
                             // Parse the resource properties JSON
@@ -1268,7 +1272,7 @@ REFERENCES:
                     {
                         try
                         {
-                            var vmResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(vm.Id));
+                            var vmResource = armClient.GetGenericResource(new ResourceIdentifier(vm.Id));
                             var vmData = await vmResource.GetAsync(cancellationToken: cancellationToken);
                             
                             bool hasLogAnalyticsAgent = false;
@@ -1278,7 +1282,7 @@ REFERENCES:
                             try
                             {
                                 var extensionsUri = $"{vm.Id}/extensions";
-                                var extensionsResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(extensionsUri));
+                                var extensionsResource = armClient.GetGenericResource(new ResourceIdentifier(extensionsUri));
                                 var extensionsData = await extensionsResource.GetAsync(cancellationToken: cancellationToken);
                                 
                                 var extensionsJson = JsonDocument.Parse(extensionsData.Value.Data.Properties.ToStream());
@@ -1727,7 +1731,7 @@ REFERENCES:
                     {
                         try
                         {
-                            var vnetResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(vnet.Id));
+                            var vnetResource = armClient.GetGenericResource(new ResourceIdentifier(vnet.Id));
                             var vnetData = await vnetResource.GetAsync(cancellationToken: cancellationToken);
                             
                             // Parse VNet properties to get subnets
@@ -2009,7 +2013,7 @@ REFERENCES:
             {
                 try
                 {
-                    var subscription = armClient.GetSubscriptionResource(new Azure.Core.ResourceIdentifier(subscriptionResourceId));
+                    var subscription = armClient.GetSubscriptionResource(new ResourceIdentifier(subscriptionResourceId));
                     var roleAssignmentCollection = subscription.GetRoleAssignments();
                     
                     // Track principals with multiple roles
@@ -2246,7 +2250,7 @@ REFERENCES:
                     {
                         try
                         {
-                            var vmResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(vm.Id));
+                            var vmResource = armClient.GetGenericResource(new ResourceIdentifier(vm.Id));
                             var vmData = await vmResource.GetAsync(cancellationToken: cancellationToken);
                             
                             // Parse VM properties to get network interfaces
@@ -2265,7 +2269,7 @@ REFERENCES:
                                             if (!string.IsNullOrEmpty(nicId))
                                             {
                                                 // Get NIC resource to check for public IP
-                                                var nicResource = armClient.GetGenericResource(new Azure.Core.ResourceIdentifier(nicId));
+                                                var nicResource = armClient.GetGenericResource(new ResourceIdentifier(nicId));
                                                 var nicData = await nicResource.GetAsync(cancellationToken: cancellationToken);
                                                 
                                                 var nicPropsJson = JsonDocument.Parse(nicData.Value.Data.Properties.ToStream());

@@ -10,7 +10,7 @@ using Platform.Engineering.Copilot.Core.Models.SemanticParsing;
 using System.Text;
 using System.Text.Json;
 
-namespace Platform.Engineering.Copilot.Core.Services;
+namespace Platform.Engineering.Copilot.Core.Services.Chat;
 
 /// <summary>
 /// Service that integrates Microsoft Semantic Kernel for advanced AI-powered query processing
@@ -81,7 +81,7 @@ public class SemanticKernelService : ISemanticKernelService
                 if (useManagedIdentity)
                 {
                     // Use DefaultAzureCredential for managed identity
-                    builder.AddAzureOpenAIChatCompletion(azureOpenAIDeployment, azureOpenAIEndpoint, new Azure.Identity.DefaultAzureCredential());
+                    builder.AddAzureOpenAIChatCompletion(azureOpenAIDeployment, azureOpenAIEndpoint, new DefaultAzureCredential());
                 }
                 else
                 {
