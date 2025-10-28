@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using System.ComponentModel;
 using System.Text.Json;
+using Platform.Engineering.Copilot.Core.Services.Azure;
 
 namespace Platform.Engineering.Copilot.Core.Plugins;
 
@@ -11,6 +12,8 @@ namespace Platform.Engineering.Copilot.Core.Plugins;
 /// </summary>
 public class SecurityPlugin : BaseSupervisorPlugin
 {
+    private readonly AzureMcpClient _azureMcpClient;
+    
     // Named subscriptions for easier testing and demos
     private static readonly Dictionary<string, string> _namedSubscriptions = new()
     {
@@ -25,8 +28,10 @@ public class SecurityPlugin : BaseSupervisorPlugin
 
     public SecurityPlugin(
         ILogger<SecurityPlugin> logger,
-        Kernel kernel) : base(logger, kernel)
+        Kernel kernel,
+        AzureMcpClient azureMcpClient) : base(logger, kernel)
     {
+        _azureMcpClient = azureMcpClient ?? throw new ArgumentNullException(nameof(azureMcpClient));
     }
 
     // ========== SUBSCRIPTION LOOKUP HELPER ==========
@@ -783,4 +788,277 @@ public class SecurityPlugin : BaseSupervisorPlugin
         public string? Details { get; set; }
         public string? Error { get; set; }
     }
+
+    #region MCP-Enhanced Functions
+
+    [KernelFunction("scan_for_security_vulnerabilities")]
+    [Description("Scan Azure resources for security vulnerabilities using Azure MCP security scanning tools. " +
+                 "Provides comprehensive vulnerability detection, threat analysis, and remediation guidance.")]
+    public async Task<string> ScanForSecurityVulnerabilitiesAsync(
+        [Description("Target resource group to scan for vulnerabilities")] 
+        string resourceGroup,
+        
+        [Description("Optional subscription ID or name (uses default if not provided)")] 
+        string? subscriptionId = null,
+        
+        [Description("Scan scope: 'all', 'compute', 'storage', 'network' (default: all)")] 
+        string scope = "all",
+        
+        [Description("Include detailed remediation steps (default: true)")] 
+        bool includeRemediation = true,
+        
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Resolve subscription ID
+            var resolvedSubscriptionId = !string.IsNullOrWhiteSpace(subscriptionId)
+                ? ResolveSubscriptionId(subscriptionId)
+                : ResolveSubscriptionId("default");
+
+            // 1. Use Azure MCP security center tools for vulnerability scanning
+            var scanArgs = new Dictionary<string, object?>
+            {
+                ["subscriptionId"] = resolvedSubscriptionId,
+                ["resourceGroup"] = resourceGroup,
+                ["scope"] = scope
+            };
+
+            var scanResult = await _azureMcpClient.CallToolAsync("securitycenter", scanArgs, cancellationToken);
+
+            if (scanResult == null || !scanResult.Success)
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = scanResult?.ErrorMessage ?? "Security scan failed"
+                }, new JsonSerializerOptions { WriteIndented = true });
+            }
+
+            var vulnerabilities = scanResult.Result?.ToString() ?? "No scan results available";
+
+            // 2. Get threat intelligence from MCP
+            var threatArgs = new Dictionary<string, object?>
+            {
+                ["query"] = $"Security threats and vulnerabilities for {resourceGroup}"
+            };
+            var threatResult = await _azureMcpClient.CallToolAsync("threatintelligence", threatArgs, cancellationToken);
+            var threatIntelligence = threatResult?.Result?.ToString() ?? "Threat intelligence unavailable";
+
+            // 3. Get security recommendations from MCP
+            var recommendationsArgs = new Dictionary<string, object?>
+            {
+                ["query"] = $"Security vulnerability remediation for Azure {scope} resources"
+            };
+            var recommendationsResult = await _azureMcpClient.CallToolAsync("get_bestpractices", recommendationsArgs, cancellationToken);
+            var securityRecommendations = recommendationsResult?.Result?.ToString() ?? "Recommendations unavailable";
+
+            // 4. Get compliance impact assessment
+            var complianceArgs = new Dictionary<string, object?>
+            {
+                ["subscriptionId"] = resolvedSubscriptionId,
+                ["resourceGroup"] = resourceGroup
+            };
+            var complianceResult = await _azureMcpClient.CallToolAsync("azurepolicy", complianceArgs, cancellationToken);
+            var complianceImpact = complianceResult?.Result?.ToString() ?? "Compliance data unavailable";
+
+            // 5. Build comprehensive vulnerability report
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                resourceGroup = resourceGroup,
+                subscriptionId = resolvedSubscriptionId,
+                scanScope = scope,
+                scanResults = new
+                {
+                    source = "Azure Security Center via MCP",
+                    vulnerabilities = vulnerabilities,
+                    scanDate = DateTime.UtcNow
+                },
+                threatAnalysis = new
+                {
+                    source = "Azure Threat Intelligence",
+                    intelligence = threatIntelligence
+                },
+                securityRecommendations = new
+                {
+                    source = "Azure Best Practices",
+                    recommendations = securityRecommendations,
+                    includesRemediation = includeRemediation
+                },
+                complianceImpact = new
+                {
+                    source = "Azure Policy",
+                    analysis = complianceImpact
+                },
+                nextSteps = new[]
+                {
+                    "Review identified vulnerabilities above",
+                    "Assess threat intelligence findings",
+                    "Prioritize remediation based on severity",
+                    includeRemediation ? "Apply recommended security fixes" : "Say 'scan with remediation steps' for fix guidance",
+                    "Say 'get security best practices' for hardening recommendations",
+                    "Verify fixes with 'scan for vulnerabilities' after remediation"
+                }
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error scanning for security vulnerabilities");
+            return JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = $"Vulnerability scan failed: {ex.Message}"
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+    }
+
+    [KernelFunction("get_security_best_practices")]
+    [Description("Get comprehensive security best practices and hardening recommendations using Azure MCP. " +
+                 "Provides actionable security guidance for Azure resources, network security, identity, and data protection.")]
+    public async Task<string> GetSecurityBestPracticesAsync(
+        [Description("Target resource group for security recommendations")] 
+        string resourceGroup,
+        
+        [Description("Optional subscription ID or name (uses default if not provided)")] 
+        string? subscriptionId = null,
+        
+        [Description("Security domain: 'all', 'identity', 'network', 'data', 'compute', 'monitoring' (default: all)")] 
+        string securityDomain = "all",
+        
+        [Description("Include implementation scripts and automation (default: true)")] 
+        bool includeImplementation = true,
+        
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Resolve subscription ID
+            var resolvedSubscriptionId = !string.IsNullOrWhiteSpace(subscriptionId)
+                ? ResolveSubscriptionId(subscriptionId)
+                : ResolveSubscriptionId("default");
+
+            // 1. Get security best practices from MCP based on domain
+            var domainQuery = securityDomain.ToLowerInvariant() switch
+            {
+                "identity" => "Azure identity and access management security best practices",
+                "network" => "Azure network security and firewall hardening best practices",
+                "data" => "Azure data protection and encryption best practices",
+                "compute" => "Azure virtual machine and container security best practices",
+                "monitoring" => "Azure security monitoring and threat detection best practices",
+                _ => $"Comprehensive Azure security hardening for {resourceGroup}"
+            };
+
+            var bestPracticesArgs = new Dictionary<string, object?>
+            {
+                ["query"] = domainQuery
+            };
+            var bestPracticesResult = await _azureMcpClient.CallToolAsync("get_bestpractices", bestPracticesArgs, cancellationToken);
+            var bestPractices = bestPracticesResult?.Result?.ToString() ?? "Best practices unavailable";
+
+            // 2. Get security center recommendations via MCP
+            var securityCenterArgs = new Dictionary<string, object?>
+            {
+                ["subscriptionId"] = resolvedSubscriptionId,
+                ["resourceGroup"] = resourceGroup
+            };
+            var securityCenterResult = await _azureMcpClient.CallToolAsync("securitycenter", securityCenterArgs, cancellationToken);
+            var securityCenterRecommendations = securityCenterResult?.Result?.ToString() ?? "Security Center data unavailable";
+
+            // 3. Get Azure Policy security recommendations
+            var policyArgs = new Dictionary<string, object?>
+            {
+                ["subscriptionId"] = resolvedSubscriptionId,
+                ["resourceGroup"] = resourceGroup
+            };
+            var policyResult = await _azureMcpClient.CallToolAsync("azurepolicy", policyArgs, cancellationToken);
+            var policyRecommendations = policyResult?.Result?.ToString() ?? "Policy recommendations unavailable";
+
+            // 4. Get Microsoft Defender recommendations if available
+            var defenderArgs = new Dictionary<string, object?>
+            {
+                ["subscriptionId"] = resolvedSubscriptionId,
+                ["resourceGroup"] = resourceGroup
+            };
+            var defenderResult = await _azureMcpClient.CallToolAsync("defender", defenderArgs, cancellationToken);
+            var defenderRecommendations = defenderResult?.Result?.ToString() ?? "Defender recommendations unavailable";
+
+            // 5. Get implementation automation if requested
+            object? implementationGuide = null;
+            if (includeImplementation)
+            {
+                var automationArgs = new Dictionary<string, object?>
+                {
+                    ["query"] = $"Azure security automation scripts for {securityDomain} hardening"
+                };
+                var automationResult = await _azureMcpClient.CallToolAsync("get_bestpractices", automationArgs, cancellationToken);
+                
+                implementationGuide = new
+                {
+                    scripts = automationResult?.Result?.ToString() ?? "Automation scripts unavailable",
+                    note = "Review and test automation scripts before production deployment"
+                };
+            }
+
+            // 6. Compile comprehensive security hardening guide
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                resourceGroup = resourceGroup,
+                subscriptionId = resolvedSubscriptionId,
+                securityDomain = securityDomain.ToUpperInvariant(),
+                bestPractices = new
+                {
+                    domain = securityDomain,
+                    source = "Azure Best Practices via MCP",
+                    recommendations = bestPractices
+                },
+                securityCenter = new
+                {
+                    source = "Azure Security Center",
+                    recommendations = securityCenterRecommendations
+                },
+                azurePolicy = new
+                {
+                    source = "Azure Policy",
+                    securityPolicies = policyRecommendations
+                },
+                microsoftDefender = new
+                {
+                    source = "Microsoft Defender for Cloud",
+                    recommendations = defenderRecommendations
+                },
+                implementation = implementationGuide,
+                prioritizedActions = new[]
+                {
+                    new { priority = "Critical", action = "Enable Microsoft Defender for all resource types", timeframe = "Immediate" },
+                    new { priority = "Critical", action = "Implement network security groups and firewall rules", timeframe = "24 hours" },
+                    new { priority = "High", action = "Enable Azure AD multi-factor authentication", timeframe = "1 week" },
+                    new { priority = "High", action = "Configure encryption at rest for all storage accounts", timeframe = "1 week" },
+                    new { priority = "Medium", action = "Set up Azure Monitor and security alerts", timeframe = "2 weeks" },
+                    new { priority = "Medium", action = "Implement Azure Policy for governance", timeframe = "2 weeks" }
+                },
+                nextSteps = new[]
+                {
+                    "Review security recommendations by priority",
+                    "Check Security Center and Defender findings",
+                    "Implement critical security controls first",
+                    includeImplementation ? "Use provided automation scripts for deployment" : "Say 'get security best practices with implementation' for automation scripts",
+                    "Say 'scan for security vulnerabilities' to validate improvements",
+                    "Schedule regular security assessments"
+                }
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting security best practices");
+            return JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = $"Failed to get security best practices: {ex.Message}"
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+    }
+
+    #endregion
 }

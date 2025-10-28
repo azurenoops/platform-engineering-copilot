@@ -33,7 +33,7 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Add all Platform.Engineering.Copilot.Core services to the dependency injection container
     /// </summary>
-    public static IServiceCollection AddSupervisorCore(this IServiceCollection services)
+    public static IServiceCollection AddPlatformEngineeringCopilotCore(this IServiceCollection services)
     {
         // Register caching services
         services.AddMemoryCache(); // Required for IMemoryCache
@@ -44,7 +44,7 @@ public static class ServiceCollectionExtensions
         // Each resolution gets a fresh Kernel instance
         // CRITICAL FIX: Register Kernel WITHOUT plugins to avoid circular dependency
         // Plugins will be registered by IntelligentChatService using its own serviceProvider
-        services.AddTransient<Kernel>(serviceProvider =>
+        services.AddTransient(serviceProvider =>
         {
             var configuration = serviceProvider.GetRequiredService<IConfiguration>();
             var logger = serviceProvider.GetRequiredService<ILogger<Kernel>>();
@@ -134,23 +134,23 @@ public static class ServiceCollectionExtensions
         
         // Register configuration validation service and validators
         services.AddScoped<ConfigurationValidationService>();
-        services.AddScoped<IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.AKSConfigValidator>();
-        services.AddScoped<IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.EKSConfigValidator>();
-        services.AddScoped<IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.GKEConfigValidator>();
-        services.AddScoped<IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.ECSConfigValidator>();
+        services.AddScoped<IConfigurationValidator, AKSConfigValidator>();
+        services.AddScoped<IConfigurationValidator, EKSConfigValidator>();
+        services.AddScoped<IConfigurationValidator, GKEConfigValidator>();
+        services.AddScoped<IConfigurationValidator, ECSConfigValidator>();
         services.AddScoped<IConfigurationValidator, ContainerAppsConfigValidator>();
         services.AddScoped<IConfigurationValidator, AppServiceConfigValidator>();
-        services.AddScoped<IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.LambdaConfigValidator>();
-        services.AddScoped<IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.CloudRunConfigValidator>();
-        services.AddScoped<IConfigurationValidator, Platform.Engineering.Copilot.Core.Services.Validation.Validators.VMConfigValidator>();
+        services.AddScoped<IConfigurationValidator, LambdaConfigValidator>();
+        services.AddScoped<IConfigurationValidator, CloudRunConfigValidator>();
+        services.AddScoped<IConfigurationValidator, VMConfigValidator>();
         
         // Register template generation enhancements
-        services.AddScoped<Platform.Engineering.Copilot.Core.Services.TemplateGeneration.IComplianceAwareTemplateEnhancer, 
-            Platform.Engineering.Copilot.Core.Services.TemplateGeneration.ComplianceAwareTemplateEnhancer>();
-        services.AddScoped<Platform.Engineering.Copilot.Core.Services.Infrastructure.INetworkTopologyDesignService, 
-            Platform.Engineering.Copilot.Core.Services.Infrastructure.NetworkTopologyDesignService>();
-        services.AddScoped<Platform.Engineering.Copilot.Core.Services.Infrastructure.IPredictiveScalingEngine,
-            Platform.Engineering.Copilot.Core.Services.Infrastructure.PredictiveScalingEngine>();
+        services.AddScoped<Services.TemplateGeneration.IComplianceAwareTemplateEnhancer,
+            Services.TemplateGeneration.ComplianceAwareTemplateEnhancer>();
+        services.AddScoped<INetworkTopologyDesignService,
+            NetworkTopologyDesignService>();
+        services.AddScoped<IPredictiveScalingEngine,
+            PredictiveScalingEngine>();
         services.AddScoped<IAzureSecurityConfigurationService, AzureSecurityConfigurationService>();
         
         // Register Azure Policy Service (required by ComplianceAwareTemplateEnhancer)
@@ -166,7 +166,7 @@ public static class ServiceCollectionExtensions
         });
 
         // Register compliance service (AI-powered, requires Kernel)
-        services.AddScoped<ComplianceService>(serviceProvider =>
+        services.AddScoped(serviceProvider =>
         {
             var logger = serviceProvider.GetRequiredService<ILogger<ComplianceService>>();
             var kernel = serviceProvider.GetRequiredService<Kernel>();
@@ -201,6 +201,9 @@ public static class ServiceCollectionExtensions
         // Register execution plan validator
         services.AddSingleton<ExecutionPlanValidator>();
 
+        // OPTIMIZATION: Register execution plan cache
+        services.AddSingleton<ExecutionPlanCache>();
+
         // Register OrchestratorAgent (coordinates all specialized agents)
         services.AddSingleton<OrchestratorAgent>();
 
@@ -213,6 +216,20 @@ public static class ServiceCollectionExtensions
         // Register Job Cleanup Background Service
         services.AddHostedService<JobCleanupBackgroundService>();
 
+        // Register Azure MCP Client (Microsoft's official Azure MCP Server integration)
+        services.AddSingleton(sp => 
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            return new AzureMcpConfiguration
+            {
+                ReadOnly = config.GetValue("AzureMcp:ReadOnly", false),
+                Debug = config.GetValue("AzureMcp:Debug", false),
+                DisableUserConfirmation = config.GetValue("AzureMcp:DisableUserConfirmation", false),
+                Namespaces = config.GetSection("AzureMcp:Namespaces").Get<string[]>()
+            };
+        });
+        services.AddSingleton<AzureMcpClient>();
+
         return services;
     }
 
@@ -221,7 +238,7 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddSemanticProcessing(this IServiceCollection services)
     {
-        return services.AddSupervisorCore();
+        return services.AddPlatformEngineeringCopilotCore();
     }
 
     /// <summary>

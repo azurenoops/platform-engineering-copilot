@@ -33,7 +33,73 @@ services:
       retries: 5
       start_period: 30s
 
-  # Platform API Service
+  # Platform MCP Server (Multi-Agent Orchestrator)
+  # Dual-mode: HTTP for Chat web app, stdio for GitHub Copilot/Claude (external)
+  platform-mcp:
+    build:
+      context: .
+      dockerfile: src/Platform.Engineering.Copilot.Mcp/Dockerfile
+    image: plaform-engineering-copilot-mcp:latest
+    container_name: plaform-engineering-copilot-mcp
+    hostname: platform-mcp
+    restart: unless-stopped
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://0.0.0.0:5100
+      - ASPNETCORE_HTTP_PORTS=5100
+      # Database Configuration
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=plaform-engineering-copilotDb;User=sa;Password=plaform-engineering-copilotDB123!;TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
+      - ConnectionStrings__SqlServerConnection=Server=sqlserver,1433;Database=plaform-engineering-copilotDb;User=sa;Password=plaform-engineering-copilotDB123!;TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
+      - DatabaseProvider=SqlServer
+      # Gateway - Azure Configuration
+      - Gateway__Azure__SubscriptionId=${AZURE_SUBSCRIPTION_ID:-453c2549-4cc5-464f-ba66-acad920823e8}
+      - Gateway__Azure__ClientId=${AZURE_CLIENT_ID:-}
+      - Gateway__Azure__ClientSecret=${AZURE_CLIENT_SECRET:-}
+      - Gateway__Azure__TenantId=${AZURE_TENANT_ID:-5310815f-d7b8-4c10-9879-9eccf368d822}
+      - Gateway__Azure__CloudEnvironment=${AZURE_CLOUD_ENVIRONMENT:-AzureGovernment}
+      - Gateway__Azure__UseManagedIdentity=${AZURE_USE_MANAGED_IDENTITY:-false}
+      - Gateway__Azure__Enabled=${AZURE_ENABLED:-true}
+      # Gateway - Azure OpenAI Configuration
+      - Gateway__AzureOpenAI__ApiKey=${AZURE_OPENAI_API_KEY:-}
+      - Gateway__AzureOpenAI__Endpoint=${AZURE_OPENAI_ENDPOINT:-https://mcp-ai.openai.azure.us/}
+      - Gateway__AzureOpenAI__DeploymentName=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+      - Gateway__AzureOpenAI__ChatDeploymentName=${AZURE_OPENAI_CHAT_DEPLOYMENT:-gpt-4o}
+      - Gateway__AzureOpenAI__EmbeddingDeploymentName=${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:-text-embedding-ada-002}
+      - Gateway__AzureOpenAI__UseManagedIdentity=${AZURE_OPENAI_USE_MANAGED_IDENTITY:-false}
+      # Gateway - GitHub Configuration
+      - Gateway__GitHub__AccessToken=${GITHUB_TOKEN:-}
+      - Gateway__GitHub__ApiBaseUrl=${GITHUB_API_BASE_URL:-https://api.github.com}
+      - Gateway__GitHub__DefaultOwner=${GITHUB_DEFAULT_OWNER:-}
+      - Gateway__GitHub__Enabled=${GITHUB_ENABLED:-true}
+      # Gateway - Timeouts
+      - Gateway__ConnectionTimeoutSeconds=${GATEWAY_CONNECTION_TIMEOUT:-60}
+      - Gateway__RequestTimeoutSeconds=${GATEWAY_REQUEST_TIMEOUT:-300}
+      # NIST Controls Configuration
+      - NistControls__BaseUrl=${NIST_CONTROLS_BASE_URL:-https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json}
+      - NistControls__TimeoutSeconds=${NIST_CONTROLS_TIMEOUT:-60}
+      - NistControls__CacheDurationHours=${NIST_CONTROLS_CACHE_DURATION:-24}
+      - NistControls__MaxRetryAttempts=${NIST_CONTROLS_MAX_RETRIES:-3}
+      - NistControls__RetryDelaySeconds=${NIST_CONTROLS_RETRY_DELAY:-2}
+      - NistControls__EnableOfflineFallback=${NIST_CONTROLS_OFFLINE_FALLBACK:-true}
+      - NistControls__EnableDetailedLogging=${NIST_CONTROLS_DETAILED_LOGGING:-false}
+    ports:
+      - "5100:5100"
+    volumes:
+      - plaform-engineering-copilot-logs:/app/logs
+    networks:
+      - plaform-engineering-copilot-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5100/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Platform API Service (DEPRECATED - will be removed)
+  # Use platform-mcp instead for new integrations
   platform-api:
     build:
       context: .
@@ -42,6 +108,8 @@ services:
     container_name: plaform-engineering-copilot-api
     hostname: platform-api
     restart: unless-stopped
+    profiles:
+      - legacy  # Only start if explicitly requested with --profile legacy
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -131,14 +199,14 @@ services:
     depends_on:
       sqlserver:
         condition: service_healthy
-      platform-api:
+      platform-mcp:
         condition: service_healthy
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://0.0.0.0:5001
       - ASPNETCORE_HTTP_PORTS=5001
       - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=plaform-engineering-copilotPlatformChatDb;User=sa;Password=plaform-engineering-copilotDB123!;TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
-      - PlatformApi__BaseUrl=http://platform-api:7001
+      - McpServer__BaseUrl=http://platform-mcp:5100
       - Logging__LogLevel__Default=Information
       - Logging__LogLevel__Microsoft=Warning
     ports:

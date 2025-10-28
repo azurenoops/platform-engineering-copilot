@@ -75,7 +75,7 @@ var connectionString = $"Data Source={sharedDbPath}";
 
 Console.WriteLine($"[Admin API] Using database: {sharedDbPath}");
 
-builder.Services.AddDbContext<EnvironmentManagementContext>(options =>
+builder.Services.AddDbContext<PlatformEngineeringCopilotContext>(options =>
     options.UseSqlite(connectionString));
 
 // Register HTTP client (required by several services)

@@ -32,7 +32,7 @@ public class ChatService : IChatService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<ChatService> _logger;
     private readonly IConfiguration _configuration;
-    private readonly string _apiBaseUrl;
+    private readonly string _mcpBaseUrl;
     private readonly string _uploadsPath;
 
     public ChatService(
@@ -45,7 +45,7 @@ public class ChatService : IChatService
         _httpClientFactory = httpClientFactory;
         _logger = logger;
         _configuration = configuration;
-        _apiBaseUrl = configuration["PlatformApi:BaseUrl"] ?? "http://localhost:7001";
+        _mcpBaseUrl = configuration["McpServer:BaseUrl"] ?? "http://localhost:5100";
         _uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
         Directory.CreateDirectory(_uploadsPath);
     }
@@ -378,15 +378,15 @@ public class ChatService : IChatService
     }
 
     /// <summary>
-    /// Call the new Intelligent Chat API endpoint
-    /// Uses AI-powered intent classification, tool chaining, and proactive suggestions
+    /// Call the MCP Server chat endpoint
+    /// Uses AI-powered multi-agent orchestration with intent classification, tool chaining, and proactive suggestions
     /// </summary>
     private async Task<IntelligentChatApiResponse?> CallIntelligentChatApiAsync(string message, string conversationId)
     {
         try
         {
             using var httpClient = _httpClientFactory.CreateClient();
-            httpClient.BaseAddress = new Uri(_apiBaseUrl);
+            httpClient.BaseAddress = new Uri(_mcpBaseUrl);
             httpClient.Timeout = TimeSpan.FromSeconds(180); // Extended timeout for AI processing with function calls
 
             var request = new
@@ -399,44 +399,85 @@ public class ChatService : IChatService
             var json = JsonSerializer.Serialize(request);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            _logger.LogInformation("Calling Intelligent Chat API: {Endpoint}", "/api/chat/intelligent-query");
-            var response = await httpClient.PostAsync("/api/chat/intelligent-query", content);
+            _logger.LogInformation("Calling MCP Chat endpoint: {Endpoint}", "/mcp/chat");
+            var response = await httpClient.PostAsync("/mcp/chat", content);
             var responseContent = await response.Content.ReadAsStringAsync();
 
             if (response.IsSuccessStatusCode)
             {
-                var apiResponse = JsonSerializer.Deserialize<IntelligentChatApiResponse>(responseContent, new JsonSerializerOptions
+                // MCP returns ChatMcpResult directly - map to our API response format
+                var mcpResult = JsonSerializer.Deserialize<ChatMcpResult>(responseContent, new JsonSerializerOptions
                 {
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                     PropertyNameCaseInsensitive = true
                 });
 
-                _logger.LogInformation("Intelligent Chat API call successful");
-                return apiResponse;
+                if (mcpResult != null)
+                {
+                    // Convert MCP result to our expected format
+                    var apiResponse = new IntelligentChatApiResponse
+                    {
+                        Success = mcpResult.Success,
+                        Data = new IntelligentChatData
+                        {
+                            Response = mcpResult.Response,
+                            ConversationId = mcpResult.ConversationId,
+                            MessageId = Guid.NewGuid().ToString(),
+                            Intent = new IntentClassification
+                            {
+                                IntentType = mcpResult.IntentType,
+                                Confidence = mcpResult.Confidence,
+                                ToolName = mcpResult.ToolExecuted ? "orchestrator" : null
+                            },
+                            ToolExecuted = mcpResult.ToolExecuted,
+                            ToolResult = mcpResult.ToolResult,
+                            Suggestions = mcpResult.Suggestions.Select(s => new ProactiveSuggestionData
+                            {
+                                Title = s.Title,
+                                Description = s.Description,
+                                Priority = s.Priority,
+                                Category = s.Category,
+                                SuggestedPrompt = s.SuggestedPrompt ?? string.Empty
+                            }).ToList(),
+                            RequiresFollowUp = mcpResult.RequiresFollowUp,
+                            FollowUpPrompt = mcpResult.FollowUpPrompt,
+                            Metadata = new ResponseMetadata
+                            {
+                                ProcessingTimeMs = (long)mcpResult.ProcessingTimeMs
+                            }
+                        },
+                        Error = mcpResult.Errors.Any() ? string.Join("; ", mcpResult.Errors) : null
+                    };
+
+                    _logger.LogInformation("MCP Chat call successful");
+                    return apiResponse;
+                }
+
+                return null;
             }
             else
             {
-                _logger.LogError("Intelligent Chat API call failed with status: {StatusCode}, content: {Content}", 
+                _logger.LogError("MCP Chat call failed with status: {StatusCode}, content: {Content}", 
                     response.StatusCode, responseContent);
                 return null;
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error calling Intelligent Chat API");
+            _logger.LogError(ex, "Error calling MCP Chat endpoint");
             return null;
         }
     }
 
     /// <summary>
-    /// Legacy chat endpoint (fallback)
+    /// Legacy chat endpoint (fallback) - now routes through MCP server
     /// </summary>
     private async Task<ChatResponse> CallPlatformApiAsync(string query)
     {
         try
         {
             using var httpClient = _httpClientFactory.CreateClient();
-            httpClient.BaseAddress = new Uri(_apiBaseUrl);
+            httpClient.BaseAddress = new Uri(_mcpBaseUrl);
 
             var request = new { query = query };
             var json = JsonSerializer.Serialize(request);
@@ -506,4 +547,68 @@ public class ChatService : IChatService
 
         return title;
     }
+}
+
+// ============================================================================
+// MCP RESULT MODELS (from MCP Server)
+// ============================================================================
+
+internal class ChatMcpResult
+{
+    public bool Success { get; set; }
+    public string Response { get; set; } = string.Empty;
+    public string ConversationId { get; set; } = string.Empty;
+    public string IntentType { get; set; } = string.Empty;
+    public double Confidence { get; set; }
+    public bool ToolExecuted { get; set; }
+    public object? ToolResult { get; set; }
+    public List<string> AgentsInvoked { get; set; } = new();
+    public string? ExecutionPattern { get; set; }
+    public double ProcessingTimeMs { get; set; }
+    public List<SuggestionInfo> Suggestions { get; set; } = new();
+    public List<string> Errors { get; set; } = new();
+    public bool RequiresFollowUp { get; set; }
+    public string? FollowUpPrompt { get; set; }
+}
+
+internal class SuggestionInfo
+{
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string Priority { get; set; } = string.Empty;
+    public string Category { get; set; } = string.Empty;
+    public string? SuggestedPrompt { get; set; }
+}
+
+internal class IntelligentChatResponseData
+{
+    public string Response { get; set; } = string.Empty;
+    public IntentData Intent { get; set; } = new();
+    public bool ToolExecuted { get; set; }
+    public object? ToolResult { get; set; }
+    public List<SuggestionData> Suggestions { get; set; } = new();
+    public ResponseMetadataData Metadata { get; set; } = new();
+}
+
+internal class IntentData
+{
+    public string IntentType { get; set; } = string.Empty;
+    public double Confidence { get; set; }
+    public string? ToolName { get; set; }
+}
+
+internal class SuggestionData
+{
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string Priority { get; set; } = string.Empty;
+    public string Category { get; set; } = string.Empty;
+    public string? SuggestedPrompt { get; set; }
+}
+
+internal class ResponseMetadataData
+{
+    public long ProcessingTimeMs { get; set; }
+    public List<string> AgentsInvoked { get; set; } = new();
+    public string ExecutionPattern { get; set; } = string.Empty;
 }

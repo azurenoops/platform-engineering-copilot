@@ -12,17 +12,17 @@ using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Services.Audits;
 
-namespace Platform.Engineering.Copilot.API.Middleware;
+namespace Platform.Engineering.Copilot.Mcp.Middleware;
 
 /// <summary>
-/// Middleware for automatic audit logging of API requests and responses
+/// Middleware for automatic audit logging of MCP HTTP requests and responses
 /// </summary>
 public class AuditLoggingMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<AuditLoggingMiddleware> _logger;
     private readonly IAuditLoggingService _auditService;
-    private readonly AuditConfiguration _config;
+    private AuditConfiguration? _config;
     private readonly HashSet<string> _sensitiveHeaders = new()
     {
         "Authorization",
@@ -39,11 +39,14 @@ public class AuditLoggingMiddleware
         _next = next ?? throw new ArgumentNullException(nameof(next));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _auditService = auditService ?? throw new ArgumentNullException(nameof(auditService));
-        _config = _auditService.GetConfigurationAsync().GetAwaiter().GetResult();
+        // Load config lazily in InvokeAsync to avoid deadlocks
     }
 
     public async Task InvokeAsync(HttpContext context)
     {
+        // Load config on first request
+        _config ??= await _auditService.GetConfigurationAsync();
+
         // Skip if path is excluded
         if (_config.ExcludedPaths.Any(path => context.Request.Path.StartsWithSegments(path)))
         {
@@ -135,7 +138,7 @@ public class AuditLoggingMiddleware
             Tags = new Dictionary<string, string>
             {
                 ["Environment"] = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production",
-                ["Service"] = "Platform.API"
+                ["Service"] = "Platform.MCP"
             }
         };
 
@@ -194,7 +197,7 @@ public class AuditLoggingMiddleware
         }
 
         // Capture response body if configured
-        if (_config.CaptureResponseBody && responseBodyStream.Length > 0)
+        if (_config?.CaptureResponseBody == true && responseBodyStream.Length > 0)
         {
             responseBodyStream.Seek(0, SeekOrigin.Begin);
             using var reader = new StreamReader(responseBodyStream, leaveOpen: true);
@@ -226,7 +229,7 @@ public class AuditLoggingMiddleware
         auditEntry.Metadata["ExceptionType"] = exception.GetType().Name;
         auditEntry.Metadata["Duration"] = duration.TotalMilliseconds.ToString("F2");
         
-        if (_config.EnableDetailedLogging)
+        if (_config?.EnableDetailedLogging == true)
         {
             auditEntry.Metadata["StackTrace"] = exception.StackTrace ?? "No stack trace";
         }
@@ -277,7 +280,7 @@ public class AuditLoggingMiddleware
 
         return user.FindFirst(ClaimTypes.Name)?.Value ??
                user.FindFirst("name")?.Value ??
-               user.Identity.Name ??
+               user.Identity?.Name ??
                "Unknown User";
     }
 
@@ -393,7 +396,7 @@ public class AuditLoggingMiddleware
                 writer.WriteStartObject();
                 foreach (var property in element.EnumerateObject())
                 {
-                    if (_config.SensitiveFields.Any(f => property.Name.Contains(f, StringComparison.OrdinalIgnoreCase)))
+                    if (_config?.SensitiveFields.Any(f => property.Name.Contains(f, StringComparison.OrdinalIgnoreCase)) == true)
                     {
                         writer.WriteString(property.Name, "[REDACTED]");
                     }

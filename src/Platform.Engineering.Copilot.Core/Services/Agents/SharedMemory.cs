@@ -181,4 +181,24 @@ public class SharedMemory
                $"{context.PreviousResults.Count} agent responses, " +
                $"{comms.Count} communications";
     }
+
+    // Deployment metadata storage for agent-to-agent communication
+    private readonly ConcurrentDictionary<string, Dictionary<string, string>> _deploymentMetadata = new();
+
+    /// <summary>
+    /// Store deployment metadata (resource group, subscription ID, etc.) for a conversation
+    /// </summary>
+    public void StoreDeploymentMetadata(string conversationId, Dictionary<string, string> metadata)
+    {
+        _deploymentMetadata[conversationId] = metadata;
+        _logger.LogDebug("Stored deployment metadata for conversation: {ConversationId}", conversationId);
+    }
+
+    /// <summary>
+    /// Retrieve deployment metadata for a conversation
+    /// </summary>
+    public Dictionary<string, string>? GetDeploymentMetadata(string conversationId)
+    {
+        return _deploymentMetadata.TryGetValue(conversationId, out var metadata) ? metadata : null;
+    }
 }

@@ -10,6 +10,7 @@ using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Models.CostOptimization;
 using Platform.Engineering.Copilot.Core.Services;
 using Platform.Engineering.Copilot.Core.Services.Azure.Cost;
+using Platform.Engineering.Copilot.Core.Services.Azure;
 using DetailedCostOptimizationRecommendation = Platform.Engineering.Copilot.Core.Models.CostOptimization.CostOptimizationRecommendation;
 
 namespace Platform.Engineering.Copilot.Core.Plugins;
@@ -21,15 +22,18 @@ public class CostManagementPlugin : BaseSupervisorPlugin
 {
     private readonly ICostOptimizationEngine _costOptimizationEngine;
     private readonly IAzureCostManagementService _costService;
+    private readonly AzureMcpClient _azureMcpClient;
 
     public CostManagementPlugin(
         ILogger<CostManagementPlugin> logger,
         Kernel kernel,
         ICostOptimizationEngine costOptimizationEngine,
-        IAzureCostManagementService costService) : base(logger, kernel)
+        IAzureCostManagementService costService,
+        AzureMcpClient azureMcpClient) : base(logger, kernel)
     {
         _costOptimizationEngine = costOptimizationEngine ?? throw new ArgumentNullException(nameof(costOptimizationEngine));
         _costService = costService ?? throw new ArgumentNullException(nameof(costService));
+        _azureMcpClient = azureMcpClient ?? throw new ArgumentNullException(nameof(azureMcpClient));
     }
 
     [KernelFunction("process_cost_management_query")]
@@ -635,4 +639,293 @@ public class CostManagementPlugin : BaseSupervisorPlugin
         Forecast,
         Export
     }
+
+    #region MCP-Enhanced Functions
+
+    [KernelFunction("get_cost_optimization_recommendations_with_best_practices")]
+    [Description("Get comprehensive cost optimization recommendations using Azure MCP Advisor and FinOps best practices. " +
+                 "Provides Azure Advisor insights, FinOps guidance, and actionable cost-saving opportunities.")]
+    public async Task<string> GetCostOptimizationRecommendationsWithBestPracticesAsync(
+        [Description("Azure subscription ID to analyze")] 
+        string subscriptionId,
+        
+        [Description("Optional resource group to focus analysis (analyzes all if not provided)")] 
+        string? resourceGroup = null,
+        
+        [Description("Include detailed implementation steps (default: true)")] 
+        bool includeImplementation = true,
+        
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // 1. Get cost optimization analysis from existing engine
+            var optimizationResult = await _costOptimizationEngine.AnalyzeSubscriptionAsync(
+                subscriptionId);
+
+            // 2. Get Azure Advisor recommendations via MCP
+            var advisorArgs = new Dictionary<string, object?>
+            {
+                ["subscriptionId"] = subscriptionId
+            };
+            if (!string.IsNullOrWhiteSpace(resourceGroup))
+            {
+                advisorArgs["resourceGroup"] = resourceGroup;
+            }
+
+            var advisorResult = await _azureMcpClient.CallToolAsync("advisor", advisorArgs, cancellationToken);
+            var advisorRecommendations = advisorResult?.Result?.ToString() ?? "Advisor recommendations unavailable";
+
+            // 3. Get FinOps best practices from MCP
+            var finOpsArgs = new Dictionary<string, object?>
+            {
+                ["query"] = "Azure FinOps cost optimization best practices and cloud financial management"
+            };
+            var finOpsResult = await _azureMcpClient.CallToolAsync("get_bestpractices", finOpsArgs, cancellationToken);
+            var finOpsBestPractices = finOpsResult?.Result?.ToString() ?? "FinOps best practices unavailable";
+
+            // 4. Get cost management best practices
+            var costMgmtArgs = new Dictionary<string, object?>
+            {
+                ["query"] = "Azure cost management and budget optimization strategies"
+            };
+            var costMgmtResult = await _azureMcpClient.CallToolAsync("get_bestpractices", costMgmtArgs, cancellationToken);
+            var costManagementGuidance = costMgmtResult?.Result?.ToString() ?? "Cost management guidance unavailable";
+
+            // 5. Build comprehensive optimization report
+            var topRecommendations = optimizationResult.Recommendations
+                .OrderByDescending(r => r.EstimatedMonthlySavings)
+                .Take(10)
+                .Select(r => new
+                {
+                    resourceId = r.ResourceId,
+                    resourceType = r.ResourceType,
+                    resourceGroup = r.ResourceGroup,
+                    recommendation = r.Description,
+                    estimatedMonthlySavings = FormatCurrency(r.EstimatedMonthlySavings),
+                    estimatedAnnualSavings = FormatCurrency(r.EstimatedMonthlySavings * 12),
+                    priority = r.Priority.ToString(),
+                    complexity = r.Complexity.ToString()
+                })
+                .ToList();
+
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                success = true,
+                subscriptionId,
+                resourceGroup = resourceGroup ?? "All resources",
+                analysis = new
+                {
+                    totalRecommendations = optimizationResult.Recommendations.Count,
+                    estimatedMonthlySavings = FormatCurrency(optimizationResult.Recommendations.Sum(r => r.EstimatedMonthlySavings)),
+                    estimatedAnnualSavings = FormatCurrency(optimizationResult.Recommendations.Sum(r => r.EstimatedMonthlySavings) * 12),
+                    analyzedResources = optimizationResult.TotalRecommendations
+                },
+                topRecommendations,
+                azureAdvisor = new
+                {
+                    source = "Azure Advisor via MCP",
+                    recommendations = advisorRecommendations
+                },
+                finOpsBestPractices = new
+                {
+                    source = "FinOps Framework",
+                    guidance = finOpsBestPractices
+                },
+                costManagementStrategies = new
+                {
+                    source = "Azure Cost Management Best Practices",
+                    strategies = costManagementGuidance
+                },
+                implementationGuide = includeImplementation ? new
+                {
+                    quickWins = new[]
+                    {
+                        "Stop or deallocate unused virtual machines",
+                        "Right-size over-provisioned resources",
+                        "Delete unattached disks and orphaned resources",
+                        "Switch to reserved instances for stable workloads",
+                        "Enable auto-shutdown for dev/test VMs"
+                    },
+                    mediumTerm = new[]
+                    {
+                        "Implement Azure Hybrid Benefit for Windows/SQL licenses",
+                        "Move appropriate workloads to spot instances",
+                        "Consolidate resources to reduce management overhead",
+                        "Implement autoscaling for variable workloads",
+                        "Review and optimize storage tiers"
+                    },
+                    longTerm = new[]
+                    {
+                        "Establish FinOps culture and accountability",
+                        "Implement comprehensive tagging strategy",
+                        "Set up cost allocation and showback/chargeback",
+                        "Regular architectural reviews for cost optimization",
+                        "Continuous cost optimization monitoring"
+                    }
+                } : null,
+                nextSteps = new[]
+                {
+                    "Review top recommendations by estimated savings",
+                    "Check Azure Advisor for additional insights",
+                    "Implement quick wins with high savings/low effort",
+                    "Establish FinOps practices for ongoing optimization",
+                    includeImplementation ? "Follow implementation guide by priority" : "Say 'get recommendations with implementation' for detailed steps",
+                    "Set up budgets and alerts for cost control",
+                    "Schedule monthly cost optimization reviews"
+                }
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting cost optimization recommendations");
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = $"Failed to get cost recommendations: {ex.Message}"
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+    }
+
+    [KernelFunction("get_budget_recommendations_with_best_practices")]
+    [Description("Get Azure budget recommendations and financial governance best practices using Azure MCP. " +
+                 "Provides budget setup guidance, cost alerting strategies, and financial management best practices.")]
+    public async Task<string> GetBudgetRecommendationsWithBestPracticesAsync(
+        [Description("Azure subscription ID to analyze")] 
+        string subscriptionId,
+        
+        [Description("Target monthly budget amount in USD (optional, will suggest if not provided)")] 
+        decimal? targetBudget = null,
+        
+        [Description("Include automation scripts for budget setup (default: true)")] 
+        bool includeAutomation = true,
+        
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // 1. Get current spending analysis
+            var costAnalysis = await _costOptimizationEngine.AnalyzeSubscriptionAsync(
+                subscriptionId);
+
+            // 2. Get budget best practices from MCP
+            var budgetArgs = new Dictionary<string, object?>
+            {
+                ["query"] = "Azure budget management and cost alerting best practices"
+            };
+            var budgetResult = await _azureMcpClient.CallToolAsync("get_bestpractices", budgetArgs, cancellationToken);
+            var budgetBestPractices = budgetResult?.Result?.ToString() ?? "Budget best practices unavailable";
+
+            // 3. Get financial governance guidance
+            var governanceArgs = new Dictionary<string, object?>
+            {
+                ["query"] = "Cloud financial governance and budget accountability frameworks"
+            };
+            var governanceResult = await _azureMcpClient.CallToolAsync("get_bestpractices", governanceArgs, cancellationToken);
+            var governanceGuidance = governanceResult?.Result?.ToString() ?? "Governance guidance unavailable";
+
+            // 4. Get cost anomaly detection recommendations
+            var anomalyArgs = new Dictionary<string, object?>
+            {
+                ["query"] = "Azure cost anomaly detection and alerting strategies"
+            };
+            var anomalyResult = await _azureMcpClient.CallToolAsync("get_bestpractices", anomalyArgs, cancellationToken);
+            var anomalyDetection = anomalyResult?.Result?.ToString() ?? "Anomaly detection guidance unavailable";
+
+            // 5. Calculate recommended budget thresholds
+            var currentMonthlyAverage = costAnalysis.TotalMonthlyCost;
+            var suggestedBudget = targetBudget ?? (currentMonthlyAverage * 1.1m); // 10% buffer
+
+            var budgetRecommendations = new
+            {
+                suggestedMonthlyBudget = FormatCurrency(suggestedBudget),
+                currentMonthlyAverage = FormatCurrency(currentMonthlyAverage),
+                alertThresholds = new[]
+                {
+                    new { percentage = 50, amount = FormatCurrency(suggestedBudget * 0.5m), severity = "Informational", action = "Monitor spending trends" },
+                    new { percentage = 75, amount = FormatCurrency(suggestedBudget * 0.75m), severity = "Warning", action = "Review current spending and forecasts" },
+                    new { percentage = 90, amount = FormatCurrency(suggestedBudget * 0.9m), severity = "Critical", action = "Immediate cost reduction required" },
+                    new { percentage = 100, amount = FormatCurrency(suggestedBudget), severity = "Critical", action = "Budget exceeded - take action" }
+                },
+                forecastedOverrun = currentMonthlyAverage > suggestedBudget
+            };
+
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                success = true,
+                subscriptionId = subscriptionId,
+                budgetAnalysis = budgetRecommendations,
+                bestPractices = new
+                {
+                    budgetManagement = new
+                    {
+                        source = "Azure Best Practices",
+                        guidance = budgetBestPractices
+                    },
+                    financialGovernance = new
+                    {
+                        source = "FinOps Framework",
+                        governance = governanceGuidance
+                    },
+                    anomalyDetection = new
+                    {
+                        source = "Azure Cost Anomaly Detection",
+                        strategies = anomalyDetection
+                    }
+                },
+                automationScripts = includeAutomation ? new
+                {
+                    budgetCreation = new
+                    {
+                        language = "Azure CLI",
+                        description = "Create budget with alert thresholds",
+                        note = "Customize values before execution"
+                    },
+                    alertConfiguration = new
+                    {
+                        language = "Azure PowerShell",
+                        description = "Configure cost alert action groups",
+                        note = "Set email/SMS/webhook endpoints"
+                    },
+                    anomalyAlerts = new
+                    {
+                        language = "Azure Policy",
+                        description = "Set up cost anomaly detection alerts",
+                        note = "Requires Azure Cost Management permissions"
+                    }
+                } : null,
+                recommendations = new[]
+                {
+                    new { priority = "Critical", recommendation = $"Set monthly budget at {FormatCurrency(suggestedBudget)}", timeframe = "Immediate" },
+                    new { priority = "Critical", recommendation = "Configure 50%, 75%, 90%, 100% alert thresholds", timeframe = "24 hours" },
+                    new { priority = "High", recommendation = "Set up action groups for budget alerts", timeframe = "1 week" },
+                    new { priority = "High", recommendation = "Enable cost anomaly detection", timeframe = "1 week" },
+                    new { priority = "Medium", recommendation = "Implement cost allocation tags", timeframe = "2 weeks" },
+                    new { priority = "Medium", recommendation = "Set up chargeback/showback reports", timeframe = "1 month" },
+                    new { priority = "Low", recommendation = "Establish monthly budget review process", timeframe = "Ongoing" }
+                },
+                nextSteps = new[]
+                {
+                    $"Create monthly budget of {FormatCurrency(suggestedBudget)}",
+                    "Configure alert thresholds at recommended percentages",
+                    "Set up email/SMS notifications for budget alerts",
+                    "Enable cost anomaly detection",
+                    includeAutomation ? "Use provided automation scripts for setup" : "Say 'get budget recommendations with automation' for scripts",
+                    "Say 'get cost optimization recommendations' to reduce current spending",
+                    "Schedule monthly budget review meetings"
+                }
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting budget recommendations");
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = $"Failed to get budget recommendations: {ex.Message}"
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+    }
+
+    #endregion
 }

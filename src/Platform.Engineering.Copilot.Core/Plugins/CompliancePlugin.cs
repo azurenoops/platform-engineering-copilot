@@ -10,6 +10,7 @@ using Microsoft.SemanticKernel;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
 using System.ComponentModel;
+using Platform.Engineering.Copilot.Core.Services.Azure;
 
 namespace Platform.Engineering.Copilot.Core.Plugins;
 
@@ -22,6 +23,7 @@ public class CompliancePlugin : BaseSupervisorPlugin
     private readonly IAtoComplianceEngine _complianceEngine;
     private readonly IAtoRemediationEngine _remediationEngine;
     private readonly IAzureResourceService _azureResourceService;
+    private readonly AzureMcpClient _azureMcpClient;
     
     // Named subscription lookup (can be configured via appsettings.json)
     // Used as fallback when Azure API is not available
@@ -42,11 +44,13 @@ public class CompliancePlugin : BaseSupervisorPlugin
         Kernel kernel,
         IAtoComplianceEngine complianceEngine,
         IAtoRemediationEngine remediationEngine,
-        IAzureResourceService azureResourceService) : base(logger, kernel)
+        IAzureResourceService azureResourceService,
+        AzureMcpClient azureMcpClient) : base(logger, kernel)
     {
         _complianceEngine = complianceEngine ?? throw new ArgumentNullException(nameof(complianceEngine));
         _remediationEngine = remediationEngine ?? throw new ArgumentNullException(nameof(remediationEngine));
         _azureResourceService = azureResourceService ?? throw new ArgumentNullException(nameof(azureResourceService));
+        _azureMcpClient = azureMcpClient ?? throw new ArgumentNullException(nameof(azureMcpClient));
     }
     
     // ========== SUBSCRIPTION LOOKUP HELPER ==========
@@ -107,11 +111,13 @@ public class CompliancePlugin : BaseSupervisorPlugin
                  "Essential for ATO compliance verification. Can scope to a specific resource group. " +
                  "Accepts either a subscription GUID (like '453c2549-9efb-4d48-a4f6-6c6b42db39b5') or a friendly name (like 'production', 'dev', 'staging'). " +
                  "Examples: 'Run assessment for production' or 'Run assessment for subscription dev' or " +
-                 "'Run assessment for resource group my-rg in production'")]
+                 "'Run assessment for resource group my-rg in production'. " +
+                 "CRITICAL: If the conversation mentions 'newly provisioned' or 'newly created' resources, ALWAYS extract the resource group name from context and pass it to resourceGroupName parameter. " +
+                 "Look for resource group names like 'newly-provisioned-aks', 'rg-dev-aks', 'newly-created-rg', etc. in the conversation history.")]
     public async Task<string> RunComplianceAssessmentAsync(
         [Description("Azure subscription ID (GUID) or friendly name (e.g., 'production', 'dev', 'staging'). Example: 'production' or '453c2549-9efb-4d48-a4f6-6c6b42db39b5'")] 
         string subscriptionIdOrName,
-        [Description("Optional resource group name to limit scope (e.g., 'mission-prod-rg'). Leave empty to scan entire subscription.")] 
+        [Description("CRITICAL: Resource group name to scan. If task mentions 'newly provisioned AKS cluster' or similar, extract the resource group name from conversation history (e.g., 'newly-provisioned-aks', 'rg-dev-aks'). ALWAYS provide this when assessing newly created resources. Leave empty ONLY when scanning entire subscription.")] 
         string? resourceGroupName = null,
         CancellationToken cancellationToken = default)
     {
@@ -1599,9 +1605,21 @@ public class CompliancePlugin : BaseSupervisorPlugin
                 }, new JsonSerializerOptions { WriteIndented = true });
             }
 
-            // Get latest assessment findings
-            var assessment = await _complianceEngine.RunComprehensiveAssessmentAsync(
-                subscriptionId, null, cancellationToken);
+            // Try to get cached assessment first (< 5 minutes old)
+            var assessment = await _complianceEngine.GetLatestAssessmentAsync(
+                subscriptionId, cancellationToken);
+
+            if (assessment == null || (DateTime.UtcNow - assessment.EndTime.UtcDateTime).TotalMinutes > 5)
+            {
+                _logger.LogInformation("No recent assessment found, running new compliance scan...");
+                assessment = await _complianceEngine.RunComprehensiveAssessmentAsync(
+                    subscriptionId, null, cancellationToken);
+            }
+            else
+            {
+                _logger.LogInformation("✅ Using cached assessment from {Time} ({Minutes:F1} minutes ago)", 
+                    assessment.EndTime, (DateTime.UtcNow - assessment.EndTime.UtcDateTime).TotalMinutes);
+            }
             
             var findings = assessment.ControlFamilyResults
                 .SelectMany(cf => cf.Value.Findings)
@@ -3430,4 +3448,262 @@ Platform Engineering Copilot - Compliance Module
         public string Details { get; set; } = string.Empty;
         public string? Error { get; set; }
     }
+
+    #region MCP-Enhanced Functions
+
+    [KernelFunction("validate_compliance_with_azure_policy")]
+    [Description("Validate Azure resources against Azure Policy for compliance checking. " +
+                 "Uses Azure MCP to check policy compliance, violations, and remediation options.")]
+    public async Task<string> ValidateComplianceWithAzurePolicyAsync(
+        [Description("Target resource group to validate compliance")] 
+        string resourceGroup,
+        
+        [Description("Optional subscription ID or name (uses default if not provided)")] 
+        string? subscriptionId = null,
+        
+        [Description("Optional policy assignment name to validate against specific policy")] 
+        string? policyAssignment = null,
+        
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Resolve subscription ID
+            var resolvedSubscriptionId = !string.IsNullOrWhiteSpace(subscriptionId)
+                ? await ResolveSubscriptionIdAsync(subscriptionId)
+                : await ResolveSubscriptionIdAsync("default");
+
+            // 1. Use Azure MCP to get policy compliance state
+            var policyArgs = new Dictionary<string, object?>
+            {
+                ["subscriptionId"] = resolvedSubscriptionId,
+                ["resourceGroup"] = resourceGroup
+            };
+
+            if (!string.IsNullOrWhiteSpace(policyAssignment))
+            {
+                policyArgs["policyAssignment"] = policyAssignment;
+            }
+
+            var policyResult = await _azureMcpClient.CallToolAsync("azurepolicy", policyArgs, cancellationToken);
+
+            if (policyResult == null || !policyResult.Success)
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = policyResult?.ErrorMessage ?? "Azure Policy validation failed"
+                }, new JsonSerializerOptions { WriteIndented = true });
+            }
+
+            var policyData = policyResult.Result?.ToString() ?? "No policy data available";
+
+            // 2. Get compliance best practices from MCP
+            var bestPracticesArgs = new Dictionary<string, object?>
+            {
+                ["query"] = $"Azure Policy compliance best practices for {resourceGroup}"
+            };
+            var bestPracticesResult = await _azureMcpClient.CallToolAsync("get_bestpractices", bestPracticesArgs, cancellationToken);
+            var bestPractices = bestPracticesResult?.Result?.ToString() ?? "Best practices unavailable";
+
+            // 3. Get resource compliance state from existing compliance engine
+            var complianceAssessment = await _complianceEngine.RunComprehensiveAssessmentAsync(
+                resolvedSubscriptionId, resourceGroup, null, cancellationToken);
+
+            // 4. Compile comprehensive compliance report
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                resourceGroup = resourceGroup,
+                subscriptionId = resolvedSubscriptionId,
+                azurePolicy = new
+                {
+                    complianceState = policyData,
+                    policyAssignment = policyAssignment ?? "All policies"
+                },
+                complianceFramework = new
+                {
+                    framework = "NIST 800-53",
+                    overallScore = complianceAssessment.OverallComplianceScore,
+                    totalFindings = complianceAssessment.TotalFindings,
+                    criticalFindings = complianceAssessment.CriticalFindings,
+                    highFindings = complianceAssessment.HighFindings,
+                    assessedAt = complianceAssessment.EndTime
+                },
+                bestPractices = new
+                {
+                    source = "Azure MCP",
+                    recommendations = bestPractices
+                },
+                nextSteps = new[]
+                {
+                    "Review Azure Policy compliance violations above",
+                    "Check NIST 800-53 control failures",
+                    "Apply best practice recommendations",
+                    "Say 'remediate compliance issues in <resource-group>' to auto-fix violations",
+                    "Say 'generate compliance evidence for <resource-group>' for ATO documentation"
+                }
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating compliance with Azure Policy");
+            return JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = $"Compliance validation failed: {ex.Message}"
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+    }
+
+    [KernelFunction("get_compliance_recommendations")]
+    [Description("Get comprehensive compliance recommendations using Azure MCP best practices. " +
+                 "Provides actionable guidance for NIST 800-53, FedRAMP, and Azure Policy compliance.")]
+    public async Task<string> GetComplianceRecommendationsAsync(
+        [Description("Target resource group for compliance recommendations")] 
+        string resourceGroup,
+        
+        [Description("Optional subscription ID or name (uses default if not provided)")] 
+        string? subscriptionId = null,
+        
+        [Description("Compliance framework: 'nist-800-53', 'fedramp-moderate', 'fedramp-high', 'azure-policy' (default: nist-800-53)")] 
+        string framework = "nist-800-53",
+        
+        [Description("Include remediation scripts in recommendations (default: true)")] 
+        bool includeRemediation = true,
+        
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Resolve subscription ID
+            var resolvedSubscriptionId = !string.IsNullOrWhiteSpace(subscriptionId)
+                ? await ResolveSubscriptionIdAsync(subscriptionId)
+                : await ResolveSubscriptionIdAsync("default");
+
+            // 1. Get compliance assessment from existing engine
+            var assessment = await _complianceEngine.RunComprehensiveAssessmentAsync(
+                resolvedSubscriptionId, resourceGroup, null, cancellationToken);
+
+            // 2. Get framework-specific recommendations from MCP
+            var frameworkQuery = framework.ToLowerInvariant() switch
+            {
+                "fedramp-moderate" => "FedRAMP Moderate compliance recommendations for Azure infrastructure",
+                "fedramp-high" => "FedRAMP High compliance recommendations for Azure infrastructure",
+                "azure-policy" => $"Azure Policy compliance recommendations for {resourceGroup}",
+                _ => $"NIST 800-53 compliance recommendations for {resourceGroup}"
+            };
+
+            var recommendationsArgs = new Dictionary<string, object?>
+            {
+                ["query"] = frameworkQuery
+            };
+            var mcpRecommendations = await _azureMcpClient.CallToolAsync("get_bestpractices", recommendationsArgs, cancellationToken);
+            var recommendations = mcpRecommendations?.Result?.ToString() ?? "No recommendations available";
+
+            // 3. Get Azure Policy recommendations via MCP
+            var policyArgs = new Dictionary<string, object?>
+            {
+                ["subscriptionId"] = resolvedSubscriptionId,
+                ["resourceGroup"] = resourceGroup
+            };
+            var policyResult = await _azureMcpClient.CallToolAsync("azurepolicy", policyArgs, cancellationToken);
+            var policyRecommendations = policyResult?.Result?.ToString() ?? "Policy data unavailable";
+
+            // 4. Get remediation recommendations if requested
+            object? remediationSteps = null;
+            var allFindings = assessment.ControlFamilyResults.Values
+                .SelectMany(cf => cf.Findings)
+                .Where(f => f.Severity == AtoFindingSeverity.Critical || f.Severity == AtoFindingSeverity.High)
+                .ToList();
+                
+            if (includeRemediation && allFindings.Any())
+            {
+                var remediationPlan = await _remediationEngine.GenerateRemediationPlanAsync(
+                    resolvedSubscriptionId, allFindings, null, cancellationToken);
+
+                remediationSteps = new
+                {
+                    totalActions = remediationPlan.RemediationItems.Count,
+                    automaticActions = remediationPlan.RemediationItems.Count(a => a.IsAutomated),
+                    manualActions = remediationPlan.RemediationItems.Count(a => !a.IsAutomated),
+                    estimatedEffort = remediationPlan.EstimatedEffort,
+                    actions = remediationPlan.RemediationItems.Take(5).Select(a => new
+                    {
+                        findingId = a.FindingId,
+                        title = a.Title,
+                        automated = a.IsAutomated,
+                        priority = a.Priority
+                    }).ToList(),
+                    note = remediationPlan.RemediationItems.Count > 5 
+                        ? $"Showing 5 of {remediationPlan.RemediationItems.Count} actions. Say 'remediate compliance issues' to execute all." 
+                        : null
+                };
+            }
+
+            // 5. Compile comprehensive recommendations report
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                resourceGroup = resourceGroup,
+                subscriptionId = resolvedSubscriptionId,
+                framework = framework.ToUpperInvariant(),
+                complianceStatus = new
+                {
+                    overallScore = assessment.OverallComplianceScore,
+                    totalFindings = assessment.TotalFindings,
+                    criticalFindings = assessment.CriticalFindings,
+                    highFindings = assessment.HighFindings,
+                    mediumFindings = assessment.MediumFindings,
+                    lowFindings = assessment.LowFindings,
+                    assessedAt = assessment.EndTime
+                },
+                recommendations = new
+                {
+                    frameworkGuidance = new
+                    {
+                        source = $"Azure MCP - {framework.ToUpperInvariant()}",
+                        guidance = recommendations
+                    },
+                    azurePolicy = new
+                    {
+                        source = "Azure Policy via MCP",
+                        policyGuidance = policyRecommendations
+                    },
+                    remediationPlan = remediationSteps
+                },
+                failingControls = assessment.ControlFamilyResults.Values
+                    .SelectMany(cf => cf.Findings)
+                    .Where(f => f.Severity == AtoFindingSeverity.Critical || f.Severity == AtoFindingSeverity.High)
+                    .Take(10)
+                    .Select(f => new
+                    {
+                        resourceId = f.ResourceId,
+                        resourceName = f.ResourceName,
+                        title = f.Title,
+                        severity = f.Severity.ToString(),
+                        complianceStatus = f.ComplianceStatus.ToString()
+                    }).ToList(),
+                nextSteps = new[]
+                {
+                    $"Review {framework.ToUpperInvariant()} compliance guidance above",
+                    "Check Azure Policy recommendations for quick wins",
+                    includeRemediation ? "Execute remediation plan to fix failing controls" : "Say 'get compliance recommendations with remediation' to see fix steps",
+                    "Say 'remediate compliance issues' to auto-fix violations",
+                    "Say 'generate compliance evidence' for ATO documentation"
+                }
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting compliance recommendations");
+            return JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = $"Failed to get recommendations: {ex.Message}"
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+    }
+
+    #endregion
 }

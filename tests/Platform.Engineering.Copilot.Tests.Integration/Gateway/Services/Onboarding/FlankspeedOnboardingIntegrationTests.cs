@@ -28,7 +28,7 @@ namespace Platform.Engineering.Copilot.Tests.Integration.Core.Services.Onboardin
     public class FlankspeedOnboardingIntegrationTests : IAsyncLifetime
     {
         private ServiceProvider? _serviceProvider;
-        private EnvironmentManagementContext? _context;
+        private PlatformEngineeringCopilotContext? _context;
         private IOnboardingService? _onboardingService;
 
         public async Task InitializeAsync()
@@ -37,7 +37,7 @@ namespace Platform.Engineering.Copilot.Tests.Integration.Core.Services.Onboardin
             var services = new ServiceCollection();
 
             // Add in-memory database
-            services.AddDbContext<EnvironmentManagementContext>(options =>
+            services.AddDbContext<PlatformEngineeringCopilotContext>(options =>
                 options.UseInMemoryDatabase($"FlankspeedOnboarding_{Guid.NewGuid()}"));
 
             // Add logging
@@ -99,7 +99,7 @@ namespace Platform.Engineering.Copilot.Tests.Integration.Core.Services.Onboardin
             services.AddScoped<IOnboardingService, FlankspeedOnboardingService>();
 
             _serviceProvider = services.BuildServiceProvider();
-            _context = _serviceProvider.GetRequiredService<EnvironmentManagementContext>();
+            _context = _serviceProvider.GetRequiredService<PlatformEngineeringCopilotContext>();
             _onboardingService = _serviceProvider.GetRequiredService<IOnboardingService>();
 
             await Task.CompletedTask;

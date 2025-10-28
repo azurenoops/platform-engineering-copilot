@@ -8,11 +8,13 @@ using Platform.Engineering.Copilot.Core.Services;
 using Platform.Engineering.Copilot.Core.Services.Infrastructure;
 using Platform.Engineering.Copilot.Core.Services.TemplateGeneration;
 using Platform.Engineering.Copilot.Core.Services.Agents;
+using Platform.Engineering.Copilot.Core.Services.Azure;
 
 namespace Platform.Engineering.Copilot.Core.Plugins;
 
 /// <summary>
 /// Semantic Kernel plugin for Azure infrastructure provisioning
+/// Enhanced with Azure MCP Server integration for best practices, schema validation, and Azure Developer CLI
 /// Uses natural language queries to provision infrastructure via AI-powered service
 /// Example: "Create a storage account named mydata in eastus with Standard_LRS"
 /// </summary>
@@ -24,6 +26,7 @@ public class InfrastructurePlugin : BaseSupervisorPlugin
     private readonly IPredictiveScalingEngine _scalingEngine;
     private readonly IComplianceAwareTemplateEnhancer _complianceEnhancer;
     private readonly SharedMemory _sharedMemory;
+    private readonly AzureMcpClient _azureMcpClient;
     private string? _currentConversationId; // Set by agent before function calls
 
     public InfrastructurePlugin(
@@ -34,7 +37,8 @@ public class InfrastructurePlugin : BaseSupervisorPlugin
         INetworkTopologyDesignService networkDesignService,
         IPredictiveScalingEngine scalingEngine,
         IComplianceAwareTemplateEnhancer complianceEnhancer,
-        SharedMemory sharedMemory)
+        SharedMemory sharedMemory,
+        AzureMcpClient azureMcpClient)
         : base(logger, kernel)
     {
         _infrastructureService = infrastructureService;
@@ -43,6 +47,7 @@ public class InfrastructurePlugin : BaseSupervisorPlugin
         _scalingEngine = scalingEngine;
         _complianceEnhancer = complianceEnhancer;
         _sharedMemory = sharedMemory;
+        _azureMcpClient = azureMcpClient ?? throw new ArgumentNullException(nameof(azureMcpClient));
     }
 
     /// <summary>
@@ -1251,5 +1256,423 @@ public class InfrastructurePlugin : BaseSupervisorPlugin
             // Default - return Networking for infrastructure-only resources instead of AKS
             _ => ComputePlatform.Networking
         };
+    }
+
+    // ========== AZURE MCP ENHANCED FUNCTIONS ==========
+
+    [KernelFunction("generate_infrastructure_template_with_best_practices")]
+    [Description("Generate Azure infrastructure templates with built-in Microsoft best practices and schema validation. " +
+                 "Combines dynamic template generation with Azure MCP best practices guidance and Bicep schema validation. " +
+                 "Use when you want infrastructure templates that follow Azure Well-Architected Framework by default.")]
+    public async Task<string> GenerateInfrastructureTemplateWithBestPracticesAsync(
+        [Description("Natural language infrastructure requirements (e.g., 'storage account with encryption and private endpoint')")] 
+        string requirements,
+        
+        [Description("Template format: 'bicep' or 'terraform' (default: bicep)")] 
+        string format = "bicep",
+        
+        [Description("Include Microsoft best practices recommendations (default: true)")] 
+        bool includeBestPractices = true,
+        
+        [Description("Validate template with Bicep schema (default: true)")] 
+        bool validateSchema = true,
+        
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Generating infrastructure template with best practices for: {Requirements}", requirements);
+
+            // 1. Use existing template generator for base template
+            var infraFormat = format.ToLowerInvariant() == "terraform" 
+                ? InfrastructureFormat.Terraform 
+                : InfrastructureFormat.Bicep;
+
+            var resourceTypes = ExtractResourceTypes(requirements);
+            var primaryResourceType = resourceTypes.FirstOrDefault() ?? "general infrastructure";
+            
+            var templateRequest = BuildTemplateGenerationRequest(
+                primaryResourceType,
+                requirements,
+                infraFormat,
+                ComputePlatform.AKS,  // Use AKS as default compute platform
+                "eastus",
+                3,
+                null);
+
+            var templateResult = await _templateGenerator.GenerateTemplateAsync(templateRequest, cancellationToken);
+
+            if (!templateResult.Success)
+            {
+                return System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = $"Template generation failed: {templateResult.ErrorMessage}"
+                });
+            }
+
+            var generatedTemplate = templateResult.Files?.FirstOrDefault().Value ?? "";
+
+            // 2. Use Azure MCP to get best practices
+            object? bestPracticesData = null;
+            if (includeBestPractices)
+            {
+                try
+                {
+                    await _azureMcpClient.InitializeAsync(cancellationToken);
+                    
+                    _logger.LogInformation("Fetching best practices for resource types via Azure MCP");
+
+                    var toolName = format == "terraform" ? "azureterraformbestpractices" : "get_bestpractices";
+                    var bestPractices = await _azureMcpClient.CallToolAsync(toolName, 
+                        new Dictionary<string, object?>
+                        {
+                            ["resourceTypes"] = string.Join(", ", resourceTypes)
+                        }, cancellationToken);
+
+                    bestPracticesData = new
+                    {
+                        available = bestPractices.Success,
+                        source = format == "terraform" ? "Terraform" : "Azure",
+                        recommendations = bestPractices.Success ? bestPractices.Result : "Best practices not available"
+                    };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not retrieve best practices from Azure MCP");
+                    bestPracticesData = new
+                    {
+                        available = false,
+                        error = "Best practices service temporarily unavailable"
+                    };
+                }
+            }
+
+            // 3. Use Azure MCP Bicep schema for validation (Bicep only)
+            object? schemaValidation = null;
+            if (validateSchema && format == "bicep")
+            {
+                try
+                {
+                    _logger.LogInformation("Validating template with Bicep schema via Azure MCP");
+
+                    var validation = await _azureMcpClient.CallToolAsync("bicepschema", 
+                        new Dictionary<string, object?>
+                        {
+                            ["command"] = "validate",
+                            ["parameters"] = new { template = generatedTemplate }
+                        }, cancellationToken);
+
+                    schemaValidation = new
+                    {
+                        available = validation.Success,
+                        valid = validation.Success,
+                        result = validation.Success ? validation.Result : "Schema validation not available"
+                    };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not validate schema with Azure MCP");
+                    schemaValidation = new
+                    {
+                        available = false,
+                        error = "Schema validation service temporarily unavailable"
+                    };
+                }
+            }
+
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                success = true,
+                format = format,
+                requirements = requirements,
+                template = new
+                {
+                    content = generatedTemplate,
+                    files = templateResult.Files
+                },
+                bestPractices = bestPracticesData,
+                schemaValidation = schemaValidation,
+                nextSteps = new[]
+                {
+                    "Review the generated template and best practices recommendations above.",
+                    schemaValidation != null ? "Check schema validation results for any template issues." : null,
+                    "Say 'deploy this template to resource group <name>' to deploy the infrastructure.",
+                    "Say 'generate documentation for this template' for deployment guides."
+                }.Where(s => s != null)
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating infrastructure template with best practices");
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = ex.Message
+            });
+        }
+    }
+
+    [KernelFunction("deploy_infrastructure_with_azd")]
+    [Description("Deploy infrastructure using Azure Developer CLI (azd) with automated orchestration. " +
+                 "Leverages official Microsoft Azure Developer CLI for production-grade deployments. " +
+                 "Use when you want streamlined deployment automation with Microsoft-supported tooling.")]
+    public async Task<string> DeployInfrastructureWithAzdAsync(
+        [Description("Path to infrastructure template or Azure Developer template directory")] 
+        string templatePath,
+        
+        [Description("Environment name (e.g., 'dev', 'staging', 'prod')")] 
+        string environment,
+        
+        [Description("Azure location/region (e.g., 'eastus', 'usgovvirginia')")] 
+        string location,
+        
+        [Description("Resource group name (optional - azd will create if not specified)")] 
+        string? resourceGroup = null,
+        
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Deploying infrastructure with azd: {TemplatePath} to {Environment}", templatePath, environment);
+
+            await _azureMcpClient.InitializeAsync(cancellationToken);
+
+            // Use Azure MCP azd tool for deployment
+            var deploymentParams = new Dictionary<string, object?>
+            {
+                ["command"] = "deploy",
+                ["parameters"] = new
+                {
+                    templatePath = templatePath,
+                    environment = environment,
+                    location = location,
+                    resourceGroup = resourceGroup
+                }
+            };
+
+            _logger.LogInformation("Executing azd deployment via Azure MCP");
+            var azdResult = await _azureMcpClient.CallToolAsync("azd", deploymentParams, cancellationToken);
+
+            if (!azdResult.Success)
+            {
+                return System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = "Azure Developer CLI deployment failed",
+                    details = azdResult.Result
+                });
+            }
+
+            // Also use deploy tool for status tracking
+            var deployStatus = await _azureMcpClient.CallToolAsync("deploy", 
+                new Dictionary<string, object?>
+                {
+                    ["command"] = "status",
+                    ["parameters"] = new { environment }
+                }, cancellationToken);
+
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                success = true,
+                environment = environment,
+                location = location,
+                resourceGroup = resourceGroup ?? $"rg-{environment}",
+                deployment = new
+                {
+                    tool = "Azure Developer CLI (azd)",
+                    result = azdResult.Result,
+                    status = deployStatus.Success ? deployStatus.Result : "Status check unavailable"
+                },
+                nextSteps = new[]
+                {
+                    "Review the deployment results above for any warnings or errors.",
+                    "Say 'get deployment status for environment <name>' to check deployment progress.",
+                    "Say 'list resources in resource group <name>' to see what was deployed.",
+                    "Check Azure Portal for detailed deployment logs and resource status."
+                }
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deploying infrastructure with azd");
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = ex.Message,
+                recommendation = "Verify Azure Developer CLI is available and template path is correct."
+            });
+        }
+    }
+
+    [KernelFunction("provision_aks_with_best_practices")]
+    [Description("Provision Azure Kubernetes Service (AKS) cluster with Microsoft best practices and security hardening. " +
+                 "Combines infrastructure provisioning with Azure MCP AKS operations and best practices guidance. " +
+                 "Use when you need production-ready AKS clusters with proper configuration.")]
+    public async Task<string> ProvisionAksWithBestPracticesAsync(
+        [Description("AKS cluster name")] 
+        string clusterName,
+        
+        [Description("Azure resource group name")] 
+        string resourceGroup,
+        
+        [Description("Azure location/region (e.g., 'eastus', 'usgovvirginia')")] 
+        string location,
+        
+        [Description("Node count (default: 3)")] 
+        int nodeCount = 3,
+        
+        [Description("VM size for nodes (default: 'Standard_DS2_v2')")] 
+        string vmSize = "Standard_DS2_v2",
+        
+        [Description("Include Microsoft AKS best practices recommendations (default: true)")] 
+        bool includeBestPractices = true,
+        
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Provisioning AKS cluster with best practices: {ClusterName} in {ResourceGroup}", 
+                clusterName, resourceGroup);
+
+            // 1. Get AKS best practices from Azure MCP
+            object? bestPracticesData = null;
+            if (includeBestPractices)
+            {
+                try
+                {
+                    await _azureMcpClient.InitializeAsync(cancellationToken);
+                    
+                    _logger.LogInformation("Fetching AKS best practices via Azure MCP");
+
+                    var bestPractices = await _azureMcpClient.CallToolAsync("get_bestpractices", 
+                        new Dictionary<string, object?>
+                        {
+                            ["resourceType"] = "Microsoft.ContainerService/managedClusters"
+                        }, cancellationToken);
+
+                    bestPracticesData = new
+                    {
+                        available = bestPractices.Success,
+                        recommendations = bestPractices.Success ? bestPractices.Result : "Best practices not available"
+                    };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not retrieve AKS best practices from Azure MCP");
+                    bestPracticesData = new
+                    {
+                        available = false,
+                        error = "Best practices service temporarily unavailable"
+                    };
+                }
+            }
+
+            // 2. Use existing infrastructure service to provision
+            var provisioningRequest = $@"
+                Create an AKS cluster named {clusterName} in resource group {resourceGroup} 
+                in {location} with {nodeCount} nodes of size {vmSize}.
+                Enable managed identity, network policy, and Azure RBAC.
+                Configure monitoring with Azure Monitor and Log Analytics.
+            ";
+
+            var provisioningResult = await _infrastructureService.ProvisionInfrastructureAsync(provisioningRequest, cancellationToken);
+
+            if (!provisioningResult.Success)
+            {
+                return System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = $"AKS provisioning failed: {provisioningResult.Message}"
+                });
+            }
+
+            // 3. Use Azure MCP AKS tool for additional configuration
+            object? aksConfiguration = null;
+            try
+            {
+                _logger.LogInformation("Configuring AKS cluster via Azure MCP");
+
+                var aksConfig = await _azureMcpClient.CallToolAsync("aks", 
+                    new Dictionary<string, object?>
+                    {
+                        ["command"] = "get",
+                        ["parameters"] = new 
+                        { 
+                            clusterName = clusterName,
+                            resourceGroup = resourceGroup
+                        }
+                    }, cancellationToken);
+
+                aksConfiguration = new
+                {
+                    available = aksConfig.Success,
+                    details = aksConfig.Success ? aksConfig.Result : "AKS configuration not available"
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not retrieve AKS configuration from Azure MCP");
+                aksConfiguration = new
+                {
+                    available = false,
+                    error = "AKS configuration service temporarily unavailable"
+                };
+            }
+
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                success = true,
+                cluster = new
+                {
+                    name = clusterName,
+                    resourceGroup = resourceGroup,
+                    location = location,
+                    nodeCount = nodeCount,
+                    vmSize = vmSize
+                },
+                provisioning = new
+                {
+                    status = provisioningResult.Success ? "Completed" : "Failed",
+                    message = provisioningResult.Message,
+                    resourceId = provisioningResult.ResourceId
+                },
+                bestPractices = bestPracticesData,
+                configuration = aksConfiguration,
+                nextSteps = new[]
+                {
+                    "Review the AKS best practices recommendations above before deploying workloads.",
+                    "Configure kubectl to connect: az aks get-credentials --resource-group " + resourceGroup + " --name " + clusterName,
+                    "Say 'show me the AKS cluster configuration' to review detailed settings.",
+                    "Say 'deploy application to AKS cluster <name>' to deploy your workloads.",
+                    "Enable Azure Policy for Kubernetes for additional governance and compliance."
+                }
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error provisioning AKS cluster with best practices");
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = ex.Message
+            });
+        }
+    }
+
+    private List<string> ExtractResourceTypes(string requirements)
+    {
+        var types = new List<string>();
+        var lowerReqs = requirements.ToLowerInvariant();
+
+        if (lowerReqs.Contains("storage") || lowerReqs.Contains("blob")) types.Add("Microsoft.Storage/storageAccounts");
+        if (lowerReqs.Contains("aks") || lowerReqs.Contains("kubernetes")) types.Add("Microsoft.ContainerService/managedClusters");
+        if (lowerReqs.Contains("app service") || lowerReqs.Contains("webapp")) types.Add("Microsoft.Web/sites");
+        if (lowerReqs.Contains("sql") || lowerReqs.Contains("database")) types.Add("Microsoft.Sql/servers");
+        if (lowerReqs.Contains("keyvault") || lowerReqs.Contains("key vault")) types.Add("Microsoft.KeyVault/vaults");
+        if (lowerReqs.Contains("vm") || lowerReqs.Contains("virtual machine")) types.Add("Microsoft.Compute/virtualMachines");
+        if (lowerReqs.Contains("vnet") || lowerReqs.Contains("network")) types.Add("Microsoft.Network/virtualNetworks");
+
+        return types.Any() ? types : new List<string> { "general" };
     }
 }

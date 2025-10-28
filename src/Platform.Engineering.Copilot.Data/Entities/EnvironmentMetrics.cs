@@ -50,8 +50,12 @@ public class ComplianceScan
     [Key]
     public Guid Id { get; set; }
     
-    [Required]
-    public Guid DeploymentId { get; set; }
+    // Nullable for subscription-level scans that aren't tied to a specific deployment
+    public Guid? DeploymentId { get; set; }
+    
+    // Azure subscription ID for faster lookups (indexed for caching queries)
+    [StringLength(36)]
+    public string? SubscriptionId { get; set; }
     
     [Required]
     [StringLength(50)]

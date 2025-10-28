@@ -3,7 +3,12 @@ using System.Text.Json.Serialization;
 namespace Platform.Engineering.Copilot.Mcp.Models;
 
 /// <summary>
-/// MCP protocol message types
+/// MCP stdio protocol models (JSONRPC 2.0 over stdin/stdout)
+/// These are the wire-format models for MCP protocol communication
+/// </summary>
+
+/// <summary>
+/// MCP protocol message base class
 /// </summary>
 public abstract class McpMessage
 {
@@ -12,7 +17,7 @@ public abstract class McpMessage
 }
 
 /// <summary>
-/// MCP request message
+/// MCP request message (JSONRPC 2.0)
 /// </summary>
 public class McpRequest : McpMessage
 {
@@ -27,7 +32,7 @@ public class McpRequest : McpMessage
 }
 
 /// <summary>
-/// MCP response message
+/// MCP response message (JSONRPC 2.0)
 /// </summary>
 public class McpResponse : McpMessage
 {
@@ -57,6 +62,48 @@ public class McpError
 }
 
 /// <summary>
+/// MCP tool call (from client)
+/// </summary>
+public class McpToolCall
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("arguments")]
+    public Dictionary<string, object>? Arguments { get; set; }
+}
+
+/// <summary>
+/// MCP tool result (to client)
+/// </summary>
+public class McpToolResult
+{
+    [JsonPropertyName("content")]
+    public List<McpContent> Content { get; set; } = new();
+
+    [JsonPropertyName("isError")]
+    public bool IsError { get; set; }
+}
+
+/// <summary>
+/// MCP content (text/image/resource)
+/// </summary>
+public class McpContent
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "text";
+
+    [JsonPropertyName("text")]
+    public string? Text { get; set; }
+
+    [JsonPropertyName("data")]
+    public string? Data { get; set; }
+
+    [JsonPropertyName("mimeType")]
+    public string? MimeType { get; set; }
+}
+
+/// <summary>
 /// MCP tool definition
 /// </summary>
 public class McpTool
@@ -72,73 +119,31 @@ public class McpTool
 }
 
 /// <summary>
-/// MCP tool call parameters
-/// </summary>
-public class McpToolCall
-{
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
-
-    [JsonPropertyName("arguments")]
-    public Dictionary<string, object>? Arguments { get; set; }
-}
-
-/// <summary>
-/// MCP tool result
-/// </summary>
-public class McpToolResult
-{
-    [JsonPropertyName("content")]
-    public List<McpContent> Content { get; set; } = new();
-
-    [JsonPropertyName("isError")]
-    public bool IsError { get; set; }
-}
-
-/// <summary>
-/// MCP content item
-/// </summary>
-public class McpContent
-{
-    [JsonPropertyName("type")]
-    public string Type { get; set; } = "text";
-
-    [JsonPropertyName("text")]
-    public string Text { get; set; } = string.Empty;
-}
-
-/// <summary>
-/// Server capabilities
+/// MCP server capabilities
 /// </summary>
 public class McpServerCapabilities
 {
+    [JsonPropertyName("experimental")]
+    public object? Experimental { get; set; }
+
+    [JsonPropertyName("logging")]
+    public object? Logging { get; set; }
+
+    [JsonPropertyName("prompts")]
+    public object? Prompts { get; set; }
+
+    [JsonPropertyName("resources")]
+    public object? Resources { get; set; }
+
     [JsonPropertyName("tools")]
-    public object? Tools { get; set; }
+    public ToolsCapabilities? Tools { get; set; }
 }
 
 /// <summary>
-/// Initialize request
+/// Tools capabilities
 /// </summary>
-public class McpInitializeParams
+public class ToolsCapabilities
 {
-    [JsonPropertyName("protocolVersion")]
-    public string ProtocolVersion { get; set; } = "2024-11-05";
-
-    [JsonPropertyName("capabilities")]
-    public object Capabilities { get; set; } = new { };
-
-    [JsonPropertyName("clientInfo")]
-    public McpClientInfo ClientInfo { get; set; } = new();
-}
-
-/// <summary>
-/// Client information
-/// </summary>
-public class McpClientInfo
-{
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
-
-    [JsonPropertyName("version")]
-    public string Version { get; set; } = string.Empty;
+    [JsonPropertyName("listChanged")]
+    public bool ListChanged { get; set; }
 }

@@ -10,7 +10,7 @@ using Platform.Engineering.Copilot.Data.Context;
 
 namespace Platform.Engineering.Copilot.Data.Migrations
 {
-    [DbContext(typeof(EnvironmentManagementContext))]
+    [DbContext(typeof(PlatformEngineeringCopilotContext))]
     [Migration("20251017152337_AddApprovalWorkflowsTable")]
     partial class AddApprovalWorkflowsTable
     {

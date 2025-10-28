@@ -23,7 +23,7 @@ namespace Platform.Engineering.Copilot.Tests.Unit.Core.Services.Onboarding;
 /// </summary>
 public class FlankspeedOnboardingServiceHelperMethodsTests : IDisposable
 {
-    private readonly EnvironmentManagementContext _context;
+    private readonly PlatformEngineeringCopilotContext _context;
     private readonly FlankspeedOnboardingService _service;
     private readonly Mock<ILogger<FlankspeedOnboardingService>> _mockLogger;
     private readonly Mock<IEnvironmentManagementEngine> _mockEnvironmentEngine;
@@ -35,11 +35,11 @@ public class FlankspeedOnboardingServiceHelperMethodsTests : IDisposable
 
     public FlankspeedOnboardingServiceHelperMethodsTests()
     {
-        var options = new DbContextOptionsBuilder<EnvironmentManagementContext>()
+        var options = new DbContextOptionsBuilder<PlatformEngineeringCopilotContext>()
             .UseInMemoryDatabase($"FlankspeedHelperTests-{Guid.NewGuid()}")
             .Options;
 
-        _context = new EnvironmentManagementContext(options);
+        _context = new PlatformEngineeringCopilotContext(options);
         _mockLogger = new Mock<ILogger<FlankspeedOnboardingService>>();
         _mockEnvironmentEngine = new Mock<IEnvironmentManagementEngine>();
         _mockTemplateStorage = new Mock<ITemplateStorageService>();

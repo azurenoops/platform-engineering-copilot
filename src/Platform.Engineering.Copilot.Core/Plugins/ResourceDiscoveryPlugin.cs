@@ -8,24 +8,29 @@ using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
+using Platform.Engineering.Copilot.Core.Services.Azure;
 using System.ComponentModel;
 
 namespace Platform.Engineering.Copilot.Core.Plugins;
 
 /// <summary>
 /// Production-ready plugin for Azure resource discovery, inventory management, and health monitoring.
+/// Enhanced with Azure MCP Server integration for best practices, diagnostics, and documentation.
 /// Provides comprehensive resource querying, filtering, and analysis capabilities.
 /// </summary>
 public class ResourceDiscoveryPlugin : BaseSupervisorPlugin
 {
     private readonly IAzureResourceService _azureResourceService;
+    private readonly AzureMcpClient _azureMcpClient;
 
     public ResourceDiscoveryPlugin(
         ILogger<ResourceDiscoveryPlugin> logger,
         Kernel kernel,
-        IAzureResourceService azureResourceService) : base(logger, kernel)
+        IAzureResourceService azureResourceService,
+        AzureMcpClient azureMcpClient) : base(logger, kernel)
     {
         _azureResourceService = azureResourceService ?? throw new ArgumentNullException(nameof(azureResourceService));
+        _azureMcpClient = azureMcpClient ?? throw new ArgumentNullException(nameof(azureMcpClient));
     }
 
     // ========== DISCOVERY & INVENTORY FUNCTIONS ==========
@@ -1177,5 +1182,453 @@ public class ResourceDiscoveryPlugin : BaseSupervisorPlugin
         }
 
         return dependencies;
+    }
+
+    // ========== AZURE MCP ENHANCED FUNCTIONS ==========
+
+    [KernelFunction("discover_azure_resources_with_guidance")]
+    [Description("Discover Azure resources with best practices and optimization recommendations. " +
+                 "Combines fast SDK-based resource discovery with Azure MCP best practices guidance. " +
+                 "Use when you want actionable recommendations along with your resource inventory.")]
+    public async Task<string> DiscoverAzureResourcesWithGuidanceAsync(
+        [Description("Azure subscription ID. Required for resource discovery.")] string subscriptionId,
+        [Description("Resource group name to filter by (optional)")] string? resourceGroup = null,
+        [Description("Resource type to filter by (e.g., 'Microsoft.Storage/storageAccounts', optional)")] string? resourceType = null,
+        [Description("Include best practices guidance (default: true)")] bool includeBestPractices = true,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Discovering Azure resources with guidance in subscription {SubscriptionId}", subscriptionId);
+
+            if (string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = "Subscription ID is required"
+                }, new JsonSerializerOptions { WriteIndented = true });
+            }
+
+            // 1. Use SDK for fast resource discovery
+            var allResources = await _azureResourceService.ListAllResourcesAsync(subscriptionId);
+
+            // Apply filters
+            var filteredResources = allResources.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(resourceGroup))
+            {
+                filteredResources = filteredResources.Where(r => 
+                    r.ResourceGroup?.Equals(resourceGroup, StringComparison.OrdinalIgnoreCase) == true);
+            }
+
+            if (!string.IsNullOrWhiteSpace(resourceType))
+            {
+                filteredResources = filteredResources.Where(r => 
+                    r.Type?.Equals(resourceType, StringComparison.OrdinalIgnoreCase) == true);
+            }
+
+            var resourceList = filteredResources.ToList();
+
+            // Group by type
+            var byType = resourceList.GroupBy(r => r.Type ?? "Unknown")
+                .Select(g => new { type = g.Key, count = g.Count() })
+                .OrderByDescending(x => x.count);
+
+            // 2. Use Azure MCP to get best practices for discovered resource types
+            object? bestPracticesData = null;
+            if (includeBestPractices && resourceList.Any())
+            {
+                try
+                {
+                    await _azureMcpClient.InitializeAsync(cancellationToken);
+                    
+                    var uniqueTypes = resourceList.Select(r => r.Type).Distinct().Take(5).ToList();
+                    _logger.LogInformation("Fetching best practices for {Count} resource types via Azure MCP", uniqueTypes.Count);
+
+                    var bestPractices = await _azureMcpClient.CallToolAsync("get_bestpractices", 
+                        new Dictionary<string, object?>
+                        {
+                            ["resourceTypes"] = string.Join(", ", uniqueTypes)
+                        }, cancellationToken);
+
+                    bestPracticesData = new
+                    {
+                        available = bestPractices.Success,
+                        data = bestPractices.Success ? bestPractices.Result : "Best practices not available"
+                    };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not retrieve best practices from Azure MCP");
+                    bestPracticesData = new
+                    {
+                        available = false,
+                        error = "Best practices service temporarily unavailable"
+                    };
+                }
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                subscriptionId = subscriptionId,
+                filters = new
+                {
+                    resourceGroup = resourceGroup ?? "all",
+                    resourceType = resourceType ?? "all types"
+                },
+                summary = new
+                {
+                    totalResources = resourceList.Count,
+                    uniqueTypes = byType.Count()
+                },
+                breakdown = new
+                {
+                    byType = byType.Take(10)
+                },
+                resources = resourceList.Take(50).Select(r => new
+                {
+                    id = r.Id,
+                    name = r.Name,
+                    type = r.Type,
+                    resourceGroup = r.ResourceGroup,
+                    location = r.Location
+                }),
+                bestPractices = bestPracticesData,
+                nextSteps = new[]
+                {
+                    resourceList.Count > 50 ? "Results limited to 50 resources - use more specific filters." : null,
+                    includeBestPractices ? "Review the best practices above to optimize your Azure resources." : "Say 'show me best practices for these resources' to get optimization guidance.",
+                    "Say 'show me details for resource <resource-id>' to inspect specific resources with diagnostics."
+                }.Where(s => s != null)
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error discovering resources with guidance in subscription {SubscriptionId}", subscriptionId);
+            return CreateErrorResponse("discover Azure resources with guidance", ex);
+        }
+    }
+
+    [KernelFunction("get_resource_details_with_diagnostics")]
+    [Description("Get comprehensive resource details with AppLens diagnostics and troubleshooting guidance. " +
+                 "Combines SDK resource data with Azure MCP's AppLens diagnostics for deep analysis. " +
+                 "Use when troubleshooting resource issues or performing detailed health analysis.")]
+    public async Task<string> GetResourceDetailsWithDiagnosticsAsync(
+        [Description("Full Azure resource ID")] string resourceId,
+        [Description("Include AppLens diagnostics (default: true)")] bool includeDiagnostics = true,
+        [Description("Include health status (default: true)")] bool includeHealth = true,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Getting resource details with diagnostics for {ResourceId}", resourceId);
+
+            if (string.IsNullOrWhiteSpace(resourceId))
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = "Resource ID is required"
+                }, new JsonSerializerOptions { WriteIndented = true });
+            }
+
+            // 1. Use SDK for resource details
+            var resource = await _azureResourceService.GetResourceAsync(resourceId);
+
+            if (resource == null)
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = $"Resource not found: {resourceId}"
+                }, new JsonSerializerOptions { WriteIndented = true });
+            }
+
+            // 2. Get health status if requested
+            object? healthStatus = null;
+            if (includeHealth)
+            {
+                try
+                {
+                    healthStatus = await _azureResourceService.GetResourceHealthAsync(resourceId, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not retrieve health status for resource {ResourceId}", resourceId);
+                }
+            }
+
+            // 3. Use Azure MCP AppLens for advanced diagnostics
+            object? diagnosticsData = null;
+            if (includeDiagnostics)
+            {
+                try
+                {
+                    await _azureMcpClient.InitializeAsync(cancellationToken);
+                    
+                    _logger.LogInformation("Fetching AppLens diagnostics via Azure MCP for {ResourceId}", resourceId);
+
+                    var diagnostics = await _azureMcpClient.CallToolAsync("applens", 
+                        new Dictionary<string, object?>
+                        {
+                            ["command"] = "diagnose",
+                            ["parameters"] = new { resourceId }
+                        }, cancellationToken);
+
+                    diagnosticsData = new
+                    {
+                        available = diagnostics.Success,
+                        data = diagnostics.Success ? diagnostics.Result : "Diagnostics not available"
+                    };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not retrieve AppLens diagnostics from Azure MCP");
+                    diagnosticsData = new
+                    {
+                        available = false,
+                        error = "AppLens diagnostics service temporarily unavailable"
+                    };
+                }
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                resourceId = resourceId,
+                resource = new
+                {
+                    id = resource.Id ?? resourceId,
+                    name = resource.Name ?? "Unknown",
+                    type = resource.Type ?? "Unknown",
+                    location = resource.Location ?? "Unknown",
+                    tags = resource.Tags,
+                    sku = resource.Sku,
+                    kind = resource.Kind,
+                    provisioningState = resource.ProvisioningState
+                },
+                health = healthStatus != null ? (object)new
+                {
+                    available = true,
+                    status = healthStatus
+                } : new
+                {
+                    available = false,
+                    message = "Health status not available for this resource type"
+                },
+                diagnostics = diagnosticsData,
+                nextSteps = new[]
+                {
+                    diagnosticsData != null ? "Review AppLens diagnostics above for detailed troubleshooting insights." : null,
+                    healthStatus != null ? "Check the health status for any issues requiring attention." : null,
+                    "Say 'search Azure documentation for <resource-type> troubleshooting' for official guidance.",
+                    "Say 'get best practices for this resource type' for optimization recommendations."
+                }.Where(s => s != null)
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting resource details with diagnostics for {ResourceId}", resourceId);
+            return CreateErrorResponse("get resource details with diagnostics", ex);
+        }
+    }
+
+    [KernelFunction("search_azure_documentation")]
+    [Description("Search official Microsoft Azure documentation for guidance and troubleshooting. " +
+                 "Powered by Azure MCP Server with access to up-to-date Microsoft Learn content. " +
+                 "Use when you need official documentation, how-to guides, or troubleshooting steps.")]
+    public async Task<string> SearchAzureDocumentationAsync(
+        [Description("Search query (e.g., 'how to configure storage firewall', 'troubleshoot AKS connectivity')")] string query,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Searching Azure documentation for: {Query}", query);
+
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = "Search query is required"
+                }, new JsonSerializerOptions { WriteIndented = true });
+            }
+
+            await _azureMcpClient.InitializeAsync(cancellationToken);
+
+            var docs = await _azureMcpClient.CallToolAsync("documentation", 
+                new Dictionary<string, object?>
+                {
+                    ["query"] = query
+                }, cancellationToken);
+
+            return JsonSerializer.Serialize(new
+            {
+                success = docs.Success,
+                query = query,
+                results = docs.Success ? docs.Result : "Documentation search unavailable",
+                nextSteps = new[]
+                {
+                    "Review the documentation results above for official Microsoft guidance.",
+                    "Say 'get best practices for <resource-type>' for specific recommendations.",
+                    "Say 'show me details for resource <resource-id>' to apply this guidance to your resources."
+                }
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching Azure documentation for query: {Query}", query);
+            return CreateErrorResponse("search Azure documentation", ex);
+        }
+    }
+
+    [KernelFunction("get_resource_best_practices")]
+    [Description("Get Azure and Terraform best practices for specific resource types. " +
+                 "Powered by Azure MCP Server with curated recommendations from Microsoft. " +
+                 "Use for optimization, compliance, security, and infrastructure improvements.")]
+    public async Task<string> GetResourceBestPracticesAsync(
+        [Description("Resource type (e.g., 'Microsoft.Storage/storageAccounts', 'AKS', 'App Service')")] string resourceType,
+        [Description("Include Terraform best practices (default: false)")] bool includeTerraform = false,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Getting best practices for resource type: {ResourceType}", resourceType);
+
+            if (string.IsNullOrWhiteSpace(resourceType))
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = "Resource type is required"
+                }, new JsonSerializerOptions { WriteIndented = true });
+            }
+
+            await _azureMcpClient.InitializeAsync(cancellationToken);
+
+            var bestPracticesResults = new List<object>();
+
+            // 1. Get Azure best practices
+            var azureBp = await _azureMcpClient.CallToolAsync("get_bestpractices", 
+                new Dictionary<string, object?>
+                {
+                    ["resourceType"] = resourceType
+                }, cancellationToken);
+
+            bestPracticesResults.Add(new
+            {
+                source = "Azure",
+                available = azureBp.Success,
+                data = azureBp.Success ? azureBp.Result : "Azure best practices not available"
+            });
+
+            // 2. Get Terraform best practices if requested
+            if (includeTerraform)
+            {
+                var tfBp = await _azureMcpClient.CallToolAsync("azureterraformbestpractices", 
+                    new Dictionary<string, object?>
+                    {
+                        ["resourceType"] = resourceType
+                    }, cancellationToken);
+
+                bestPracticesResults.Add(new
+                {
+                    source = "Terraform",
+                    available = tfBp.Success,
+                    data = tfBp.Success ? tfBp.Result : "Terraform best practices not available"
+                });
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                resourceType = resourceType,
+                bestPractices = bestPracticesResults,
+                nextSteps = new[]
+                {
+                    "Review the best practices above to optimize your resources.",
+                    "Say 'discover resources of type <type>' to find resources that could benefit from these practices.",
+                    "Say 'search Azure documentation for <topic>' for more detailed implementation guidance.",
+                    includeTerraform ? null : "Say 'include Terraform best practices' to see Infrastructure as Code recommendations."
+                }.Where(s => s != null)
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting best practices for resource type: {ResourceType}", resourceType);
+            return CreateErrorResponse("get resource best practices", ex);
+        }
+    }
+
+    [KernelFunction("generate_bicep_for_resource")]
+    [Description("Generate Bicep Infrastructure as Code for an existing Azure resource. " +
+                 "Powered by Azure MCP Server to export resources as reusable Bicep templates. " +
+                 "Use for IaC adoption, disaster recovery templates, or resource replication.")]
+    public async Task<string> GenerateBicepForResourceAsync(
+        [Description("Full Azure resource ID to generate Bicep code for")] string resourceId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Generating Bicep code for resource: {ResourceId}", resourceId);
+
+            if (string.IsNullOrWhiteSpace(resourceId))
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = "Resource ID is required"
+                }, new JsonSerializerOptions { WriteIndented = true });
+            }
+
+            // 1. Get resource details via SDK
+            var resource = await _azureResourceService.GetResourceAsync(resourceId);
+
+            if (resource == null)
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = $"Resource not found: {resourceId}"
+                }, new JsonSerializerOptions { WriteIndented = true });
+            }
+
+            // 2. Use Azure MCP to generate Bicep
+            await _azureMcpClient.InitializeAsync(cancellationToken);
+
+            var bicep = await _azureMcpClient.CallToolAsync("bicepschema", 
+                new Dictionary<string, object?>
+                {
+                    ["command"] = "generate",
+                    ["parameters"] = new 
+                    { 
+                        resourceType = resource.Type,
+                        resourceId = resourceId
+                    }
+                }, cancellationToken);
+
+            return JsonSerializer.Serialize(new
+            {
+                success = bicep.Success,
+                resourceId = resourceId,
+                resourceType = resource.Type,
+                resourceName = resource.Name,
+                bicepCode = bicep.Success ? bicep.Result : "Bicep generation not available",
+                nextSteps = new[]
+                {
+                    "Copy the Bicep code above to a .bicep file for deployment.",
+                    "Say 'get best practices for Bicep' for IaC recommendations.",
+                    "Say 'generate Bicep for resource group <name>' to export multiple resources.",
+                    "Review and customize the generated code before deploying to production."
+                }
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating Bicep for resource: {ResourceId}", resourceId);
+            return CreateErrorResponse("generate Bicep for resource", ex);
+        }
     }
 }

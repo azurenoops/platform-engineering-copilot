@@ -17,11 +17,11 @@ namespace Platform.Engineering.Copilot.Admin.Controllers;
 public class DeploymentAdminController : ControllerBase
 {
     private readonly ILogger<DeploymentAdminController> _logger;
-    private readonly EnvironmentManagementContext _dbContext;
+    private readonly PlatformEngineeringCopilotContext _dbContext;
 
     public DeploymentAdminController(
         ILogger<DeploymentAdminController> logger,
-        EnvironmentManagementContext dbContext)
+        PlatformEngineeringCopilotContext dbContext)
     {
         _logger = logger;
         _dbContext = dbContext;

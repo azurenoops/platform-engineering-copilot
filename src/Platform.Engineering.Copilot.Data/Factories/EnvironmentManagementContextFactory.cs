@@ -8,11 +8,11 @@ namespace Platform.Engineering.Copilot.Data.Factories;
 /// <summary>
 /// Design-time factory for creating DbContext instances during migrations
 /// </summary>
-public class EnvironmentManagementContextFactory : IDesignTimeDbContextFactory<EnvironmentManagementContext>
+public class EnvironmentManagementContextFactory : IDesignTimeDbContextFactory<PlatformEngineeringCopilotContext>
 {
-    public EnvironmentManagementContext CreateDbContext(string[] args)
+    public PlatformEngineeringCopilotContext CreateDbContext(string[] args)
     {
-        var optionsBuilder = new DbContextOptionsBuilder<EnvironmentManagementContext>();
+        var optionsBuilder = new DbContextOptionsBuilder<PlatformEngineeringCopilotContext>();
 
         // Build configuration
         var configuration = new ConfigurationBuilder()
@@ -47,6 +47,6 @@ public class EnvironmentManagementContextFactory : IDesignTimeDbContextFactory<E
                 break;
         }
 
-        return new EnvironmentManagementContext(optionsBuilder.Options);
+        return new PlatformEngineeringCopilotContext(optionsBuilder.Options);
     }
 }

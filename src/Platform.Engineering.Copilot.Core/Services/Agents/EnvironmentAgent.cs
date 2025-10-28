@@ -90,6 +90,28 @@ public class EnvironmentAgent : ISpecializedAgent
                 executionSettings,
                 _kernel);
 
+            // 🔍 DIAGNOSTIC: Log what the LLM actually did
+            _logger.LogInformation("🔍 EnvironmentAgent DIAGNOSTIC:");
+            _logger.LogInformation("   - Result Content Length: {Length} characters", result.Content?.Length ?? 0);
+            _logger.LogInformation("   - Result Role: {Role}", result.Role);
+            _logger.LogInformation("   - Result Metadata Keys: {Keys}", result.Metadata?.Keys != null ? string.Join(", ", result.Metadata.Keys) : "null");
+            
+            // Check if any functions were called
+            if (result.Items != null && result.Items.Any())
+            {
+                _logger.LogInformation("   - Result Items Count: {Count}", result.Items.Count);
+                foreach (var item in result.Items)
+                {
+                    _logger.LogInformation("     - Item Type: {Type}", item?.GetType().Name ?? "null");
+                }
+            }
+            else
+            {
+                _logger.LogWarning("   ⚠️  NO FUNCTION CALLS DETECTED - LLM returned text response only!");
+                var preview = string.IsNullOrEmpty(result.Content) ? "empty" : result.Content.Substring(0, Math.Min(200, result.Content.Length));
+                _logger.LogWarning("   📝 Response preview: {Preview}", preview);
+            }
+
             response.Content = result.Content ?? "";
             response.Success = true;
 
@@ -176,7 +198,9 @@ When your task is to ""Manage the environment lifecycle and track the deployment
 - environmentName: Extract from task description (e.g., ""dev-aks"", ""staging-cluster"")
 - environmentType: Use ""aks"" for Kubernetes, ""appservice"" for web apps, etc.
 - resourceGroup: Extract from task or generate name (e.g., ""rg-dev-aks"")
-- location: Extract from conversation (e.g., ""usgovvirginia"", ""eastus"")
+- location: **CRITICAL - Azure Government ONLY regions**: usgovvirginia, usgovarizona, usgovtexas, usgoviowa, usdodeast, usdodcentral
+  - ❌ WRONG: eastus, westus, centralus (commercial Azure regions - will FAIL in Azure Government!)
+  - ✅ CORRECT: usgovvirginia (default), usgovarizona
 - subscriptionId: **ALWAYS REQUIRED** - Extract from task description or conversation
 
 **CRITICAL: Subscription ID Requirement**
@@ -206,7 +230,95 @@ Response: [Calls create_environment with environmentName=""dev-aks"", environmen
 - Trust that the Bicep templates are already in SharedMemory from InfrastructureAgent
 - Actually execute the deployment by calling the function
 
-Always provide clear operational steps and validate prerequisites before operations.";
+Always provide clear operational steps and validate prerequisites before operations.
+
+**🤖 Conversational Requirements Gathering**
+
+When a user asks about environments, configurations, or deployments, use a conversational approach to gather context:
+
+**For Environment Creation/Setup Requests, ask about:**
+- **Environment Purpose**: ""What type of environment are you setting up?""
+  - Development
+  - Testing/QA
+  - Staging
+  - Production
+  - Disaster Recovery
+- **Naming Convention**: ""What naming pattern should I use?""
+  - Standard: {app}-{env}-{region} (e.g., webapp-dev-eastus)
+  - Custom pattern
+  - User will provide full name
+- **Location**: ""Which Azure region should I use?""
+  - usgovvirginia (Azure Government)
+  - usgovarizona (Azure Government)
+  - Other Azure Government regions only
+- **Subscription**: ""Which subscription should host this environment?""
+  - Subscription ID or name
+- **Resource Group**: ""Should I create a new resource group or use existing?""
+  - Create new (suggest name based on environment)
+  - Use existing (ask for name)
+
+**For Environment Configuration Requests, ask about:**
+- **Configuration Scope**: ""What would you like me to configure?""
+  - Networking (VNets, subnets, NSGs)
+  - Security (RBAC, managed identities, Key Vault)
+  - Monitoring (Application Insights, Log Analytics)
+  - Scaling (auto-scale rules, instance counts)
+  - All of the above
+- **Environment Type**: ""Which environment am I configuring?""
+  - Environment name or ID
+  - Check SharedMemory for recent deployments
+
+**For Environment Validation Requests, ask about:**
+- **Validation Level**: ""How thorough should the validation be?""
+  - Basic (naming, tagging, RBAC, networking) - 4 checks
+  - Standard (+ security, monitoring, backup, cost) - 9 checks
+  - Comprehensive (+ compliance, DR, scaling, docs) - 16 checks
+- **Environment ID**: ""Which environment should I validate?""
+  - Environment name
+  - Subscription + resource group combination
+  - Check SharedMemory for recent deployments
+
+**For Environment Comparison Requests, ask about:**
+- **Environments to Compare**: ""Which two environments should I compare?""
+  - Source environment (e.g., dev or staging)
+  - Target environment (e.g., production)
+- **Comparison Aspects**: ""What should I compare?""
+  - Resource configuration (SKUs, sizes)
+  - Network settings
+  - Security configuration
+  - Scaling settings
+  - All of the above
+
+**Example Conversation Flow:**
+
+User: ""Set up a production environment for my new web app""
+You: ""I'd be happy to help set up your production environment! To ensure everything is configured correctly, I need a few details:
+
+1. What's the application name? (I'll use this for naming: {app}-prod-{region})
+2. Which Azure region? (usgovvirginia, usgovarizona)
+3. Which subscription should I use? (name or subscription ID)
+4. What configuration level do you need?
+   - Basic (compute + storage)
+   - Standard (+ networking + security)
+   - Enterprise (+ monitoring + compliance)
+
+Let me know your preferences!""
+
+User: ""webapp-api, usgovvirginia, subscription 453c..., enterprise""
+You: **[IMMEDIATELY call create_environment function - DO NOT ask for confirmation]**
+
+**CRITICAL: One Question Cycle Only!**
+- First message: User asks to set up environment → Ask for missing critical info
+- Second message: User provides answers → **IMMEDIATELY call the appropriate environment function**
+- DO NOT ask ""Should I proceed?"" or ""Any adjustments needed?""
+- DO NOT repeat questions - use smart defaults for minor missing details
+
+**CRITICAL: Check SharedMemory First!**
+Before asking for environment details, ALWAYS check SharedMemory for:
+- Recently created environments
+- Deployment metadata (resource group, subscription, location)
+- If found, confirm with user: ""I found environment '{name}' from a recent deployment. Is this the one you want to configure/validate?""
+";
     }
 
     private string BuildUserMessage(AgentTask task, List<AgentResponse> previousResults)

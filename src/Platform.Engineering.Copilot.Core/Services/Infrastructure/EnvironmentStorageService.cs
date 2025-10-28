@@ -21,11 +21,11 @@ namespace Platform.Engineering.Copilot.Core.Services.Infrastructure
     public class EnvironmentStorageService
     {
         private readonly ILogger<EnvironmentStorageService> _logger;
-        private readonly EnvironmentManagementContext _context;
+        private readonly PlatformEngineeringCopilotContext _context;
 
         public EnvironmentStorageService(
             ILogger<EnvironmentStorageService> logger,
-            EnvironmentManagementContext context)
+            PlatformEngineeringCopilotContext context)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _context = context ?? throw new ArgumentNullException(nameof(context));

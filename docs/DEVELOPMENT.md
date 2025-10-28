@@ -123,7 +123,7 @@ graph TB
 - **Technology**: Entity Framework Core 9.0
 - **Responsibilities**:
   - Entity definitions (20+ entities)
-  - Database context (EnvironmentManagementContext)
+  - Database context (PlatformEngineeringCopilotContext)
   - Migrations and seeding
   - Supports: SQLite, SQL Server, In-Memory
 

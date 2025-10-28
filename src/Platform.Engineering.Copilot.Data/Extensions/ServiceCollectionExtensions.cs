@@ -19,7 +19,7 @@ public static class ServiceCollectionExtensions
         string connectionStringName = "DefaultConnection")
     {
         // Add Entity Framework DbContext
-        services.AddDbContext<EnvironmentManagementContext>(options =>
+        services.AddDbContext<PlatformEngineeringCopilotContext>(options =>
         {
             var connectionString = configuration.GetConnectionString(connectionStringName);
             if (string.IsNullOrEmpty(connectionString))
@@ -86,7 +86,7 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         string databaseName = "EnvironmentManagementTestDb")
     {
-        services.AddDbContext<EnvironmentManagementContext>(options =>
+        services.AddDbContext<PlatformEngineeringCopilotContext>(options =>
         {
             options.UseInMemoryDatabase(databaseName);
             options.EnableSensitiveDataLogging();

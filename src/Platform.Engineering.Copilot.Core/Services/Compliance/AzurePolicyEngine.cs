@@ -21,14 +21,14 @@ public class AzurePolicyEngine : IAzurePolicyService
     private readonly ILogger<AzurePolicyEngine> _logger;
     private readonly ArmClient _armClient;
     private readonly TokenCredential _credential;
-    private readonly EnvironmentManagementContext _dbContext;
+    private readonly PlatformEngineeringCopilotContext _dbContext;
     private readonly Dictionary<string, List<AzurePolicyEvaluation>> _policyEvaluationCache;
     private readonly TimeSpan _cacheExpiration = TimeSpan.FromMinutes(5);
     private readonly Dictionary<string, DateTime> _cacheTimestamps;
 
     public AzurePolicyEngine(
         ILogger<AzurePolicyEngine> logger,
-        EnvironmentManagementContext dbContext)
+        PlatformEngineeringCopilotContext dbContext)
     {
         _logger = logger;
         _dbContext = dbContext;

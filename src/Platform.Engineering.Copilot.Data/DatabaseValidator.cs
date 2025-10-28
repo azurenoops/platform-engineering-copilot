@@ -20,7 +20,7 @@ public class DatabaseValidator
         
         using var scope = host.Services.CreateScope();
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<DatabaseValidator>>();
-        var context = scope.ServiceProvider.GetRequiredService<EnvironmentManagementContext>();
+        var context = scope.ServiceProvider.GetRequiredService<PlatformEngineeringCopilotContext>();
 
         try
         {

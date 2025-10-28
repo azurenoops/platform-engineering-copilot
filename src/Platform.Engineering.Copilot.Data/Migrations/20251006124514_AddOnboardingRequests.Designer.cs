@@ -11,7 +11,7 @@ using Platform.Engineering.Copilot.Data.Context;
 
 namespace Platform.Engineering.Copilot.Data.Migrations
 {
-    [DbContext(typeof(EnvironmentManagementContext))]
+    [DbContext(typeof(PlatformEngineeringCopilotContext))]
     [Migration("20251006124514_AddOnboardingRequests")]
     partial class AddOnboardingRequests
     {

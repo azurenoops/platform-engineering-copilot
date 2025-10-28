@@ -12,6 +12,7 @@ using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Services.Compliance;
+using Platform.Engineering.Copilot.Data.Context;
 using Xunit;
 
 namespace Platform.Engineering.Copilot.Tests.Integration.Governance;
@@ -28,6 +29,7 @@ public class AtoComplianceEngineIntegrationTests
     private readonly Mock<IAzureResourceHealthService> _mockAzureHealthService;
     private readonly Mock<IAzureCostManagementService> _mockCostService;
     private readonly Mock<ComplianceMetricsService> _mockMetricsService;
+    private readonly Mock<PlatformEngineeringCopilotContext> _mockDbContext;
     private readonly IMemoryCache _memoryCache;
     private readonly IOptions<GovernanceOptions> _options;
     private readonly IOptions<GatewayOptions> _gatewayOptions;
@@ -40,6 +42,7 @@ public class AtoComplianceEngineIntegrationTests
         _mockAzureHealthService = new Mock<IAzureResourceHealthService>();
         _mockCostService = new Mock<IAzureCostManagementService>();
         _mockMetricsService = new Mock<ComplianceMetricsService>();
+        _mockDbContext = new Mock<PlatformEngineeringCopilotContext>();
         _memoryCache = new MemoryCache(new MemoryCacheOptions());
         
         _options = Options.Create(new GovernanceOptions
@@ -77,6 +80,7 @@ public class AtoComplianceEngineIntegrationTests
             _mockAzureHealthService.Object,
             _mockCostService.Object,
             _memoryCache,
+            _mockDbContext.Object,
             _mockMetricsService.Object,
             _options,
             _gatewayOptions);
@@ -152,6 +156,7 @@ public class AtoComplianceEngineIntegrationTests
             _mockAzureHealthService.Object,
             _mockCostService.Object,
             _memoryCache,
+            _mockDbContext.Object,
             _mockMetricsService.Object,
             _options,
             _gatewayOptions);
@@ -212,6 +217,7 @@ public class AtoComplianceEngineIntegrationTests
             _mockAzureHealthService.Object,
             _mockCostService.Object,
             _memoryCache,
+            _mockDbContext.Object,
             _mockMetricsService.Object,
             _options,
             _gatewayOptions);
@@ -252,6 +258,7 @@ public class AtoComplianceEngineIntegrationTests
             _mockAzureHealthService.Object,
             _mockCostService.Object,
             _memoryCache,
+            _mockDbContext.Object,
             _mockMetricsService.Object,
             _options,
             _gatewayOptions);
@@ -296,6 +303,7 @@ public class AtoComplianceEngineIntegrationTests
             _mockAzureHealthService.Object,
             _mockCostService.Object,
             _memoryCache,
+            _mockDbContext.Object,
             _mockMetricsService.Object,
             _options,
             _gatewayOptions);
@@ -340,6 +348,7 @@ public class AtoComplianceEngineIntegrationTests
             _mockAzureHealthService.Object,
             _mockCostService.Object,
             _memoryCache,
+            _mockDbContext.Object,
             _mockMetricsService.Object,
             _options,
             _gatewayOptions);
@@ -369,6 +378,7 @@ public class AtoComplianceEngineIntegrationTests
             _mockAzureHealthService.Object,
             _mockCostService.Object,
             _memoryCache,
+            _mockDbContext.Object,
             _mockMetricsService.Object,
             _options,
             _gatewayOptions);
@@ -397,6 +407,7 @@ public class AtoComplianceEngineIntegrationTests
             _mockAzureHealthService.Object,
             _mockCostService.Object,
             _memoryCache,
+            _mockDbContext.Object,
             _mockMetricsService.Object,
             _options,
             _gatewayOptions);
@@ -450,6 +461,7 @@ public class AtoComplianceEngineIntegrationTests
             _mockAzureHealthService.Object,
             _mockCostService.Object,
             _memoryCache,
+            _mockDbContext.Object,
             _mockMetricsService.Object,
             _options,
             _gatewayOptions);

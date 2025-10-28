@@ -33,7 +33,7 @@ public class DatabaseInitializationService : IHostedService
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<EnvironmentManagementContext>();
+        var context = scope.ServiceProvider.GetRequiredService<PlatformEngineeringCopilotContext>();
 
         try
         {

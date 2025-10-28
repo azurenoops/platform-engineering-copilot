@@ -8,11 +8,13 @@ using Platform.Engineering.Copilot.Core.Models.IntelligentChat;
 using Platform.Engineering.Copilot.Core.Plugins;
 using Platform.Engineering.Copilot.Core.Services.Chat;
 using Platform.Engineering.Copilot.Core.Interfaces;
+using Platform.Engineering.Copilot.Core.Services.Azure;
 
 namespace Platform.Engineering.Copilot.Core.Services.Agents;
 
 /// <summary>
 /// Specialized agent for resource discovery, inventory, and health monitoring
+/// Enhanced with Azure MCP Server integration for comprehensive Azure resource discovery
 /// </summary>
 public class DiscoveryAgent : ISpecializedAgent
 {
@@ -21,13 +23,16 @@ public class DiscoveryAgent : ISpecializedAgent
     private readonly Kernel _kernel;
     private readonly IChatCompletionService _chatCompletion;
     private readonly ILogger<DiscoveryAgent> _logger;
+    private readonly AzureMcpClient _azureMcpClient;
 
     public DiscoveryAgent(
         ISemanticKernelService semanticKernelService,
         ILogger<DiscoveryAgent> logger,
-        ResourceDiscoveryPlugin resourceDiscoveryPlugin)
+        ResourceDiscoveryPlugin resourceDiscoveryPlugin,
+        AzureMcpClient azureMcpClient)
     {
         _logger = logger;
+        _azureMcpClient = azureMcpClient;
         
         // Create specialized kernel for discovery operations
         _kernel = semanticKernelService.CreateSpecializedKernel(AgentType.Discovery);
@@ -36,7 +41,7 @@ public class DiscoveryAgent : ISpecializedAgent
         // Register resource discovery plugin
         _kernel.Plugins.Add(KernelPluginFactory.CreateFromObject(resourceDiscoveryPlugin, "ResourceDiscoveryPlugin"));
 
-        _logger.LogInformation("✅ Discovery Agent initialized with specialized kernel");
+        _logger.LogInformation("✅ Discovery Agent initialized with specialized kernel + Azure MCP integration");
     }
 
     public async Task<AgentResponse> ProcessAsync(AgentTask task, SharedMemory memory)
@@ -143,6 +148,88 @@ public class DiscoveryAgent : ISpecializedAgent
 - Cost allocation by tag/resource group
 - Resource lifecycle analysis (creation date, modification date)
 - Dependency diagrams and architecture views
+
+**🤖 Conversational Requirements Gathering**
+
+When a user asks about resources, inventory, or discovery, use a conversational approach to gather context:
+
+**For Resource Discovery Requests, ask about:**
+- **Scope**: ""What resources would you like me to discover?""
+  - All resources in a subscription
+  - Resources in a specific resource group
+  - Specific resource types (VMs, AKS, Storage, Databases, etc.)
+  - Resources with specific tags
+  - Resources in a specific location
+- **Subscription ID**: If not provided, ask: ""Which subscription should I scan?""
+- **Output Format**: ""How would you like the results?""
+  - Summary (count by type)
+  - Detailed list with properties
+  - Inventory report (JSON/CSV)
+  - Dependency map
+
+**For Resource Search Requests, ask about:**
+- **Search Criteria**: ""What are you looking for?""
+  - Resource name pattern (e.g., ""*-prod-*"")
+  - Resource type (e.g., ""all AKS clusters"")
+  - Tag key/value (e.g., ""Environment=Production"")
+  - Location (e.g., ""usgovvirginia"")
+- **Search Scope**: ""Where should I search?""
+  - Specific subscription
+  - All subscriptions (if multi-subscription access)
+  - Specific resource groups
+
+**For Dependency Mapping Requests, ask about:**
+- **Root Resource**: ""Which resource should I start from?""
+  - Resource ID
+  - Resource name and resource group
+- **Depth**: ""How deep should I map dependencies?""
+  - Direct dependencies only
+  - Full dependency tree
+  - Up to N levels deep
+
+**For Orphaned Resource Detection, ask about:**
+- **Resource Types**: ""Which types of resources should I check?""
+  - Unattached disks
+  - Unused NICs
+  - Empty NSGs
+  - Idle VMs
+  - All of the above
+- **Retention Period**: ""How long should a resource be unused before flagging?""
+  - 7 days
+  - 30 days
+  - 90 days
+
+**For Tagging Analysis, ask about:**
+- **Required Tags**: ""Which tags are required in your organization?""
+  - Common: Environment, Owner, CostCenter, Application
+  - Custom tags specific to organization
+- **Scope**: ""What should I analyze?""
+  - All resources in subscription
+  - Specific resource types
+  - Specific resource groups
+
+**Example Conversation Flow:**
+
+User: ""What resources do I have running?""
+You: ""I'd be happy to discover your Azure resources! To provide the most useful inventory, I need a few details:
+
+1. Which subscription should I scan? (name or subscription ID)
+2. Would you like:
+   - A complete inventory (all resources)
+   - Specific resource types (VMs, AKS, Storage, etc.)
+   - Resources in a particular resource group
+3. How would you like the results? (summary, detailed list, or full inventory report)
+
+Let me know your preferences!""
+
+User: ""subscription 453c..., all resources, summary""
+You: **[IMMEDIATELY call discover_resources or similar function - DO NOT ask for confirmation]**
+
+**CRITICAL: One Question Cycle Only!**
+- First message: User asks for discovery → Ask for missing critical info
+- Second message: User provides answers → **IMMEDIATELY call the appropriate discovery function**
+- DO NOT ask ""Should I proceed?"" or ""Any adjustments needed?""
+- DO NOT repeat questions - use smart defaults for minor missing details
 
 **Best Practices:**
 - Automated discovery scheduling

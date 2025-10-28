@@ -13,11 +13,11 @@ namespace Platform.Engineering.Copilot.Core.Data.Services;
 /// </summary>
 public class TemplateStorageService : ITemplateStorageService
 {
-    private readonly EnvironmentManagementContext _context;
+    private readonly PlatformEngineeringCopilotContext _context;
     private readonly ILogger<TemplateStorageService> _logger;
 
     public TemplateStorageService(
-        EnvironmentManagementContext context,
+        PlatformEngineeringCopilotContext context,
         ILogger<TemplateStorageService> logger)
     {
         _context = context;

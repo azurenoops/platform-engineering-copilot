@@ -10,6 +10,7 @@ using Platform.Engineering.Copilot.Core.Plugins;
 using Platform.Engineering.Copilot.Core.Services.Chat;
 using Platform.Engineering.Copilot.Core.Services.Infrastructure;
 using Platform.Engineering.Copilot.Core.Services.TemplateGeneration;
+using Platform.Engineering.Copilot.Core.Services.Azure;
 using System.Text.Json;
 
 namespace Platform.Engineering.Copilot.Core.Services.Agents;
@@ -36,7 +37,8 @@ public class InfrastructureAgent : ISpecializedAgent
         INetworkTopologyDesignService networkDesignService,
         IPredictiveScalingEngine scalingEngine,
         IComplianceAwareTemplateEnhancer complianceEnhancer,
-        SharedMemory sharedMemory)
+        SharedMemory sharedMemory,
+        AzureMcpClient azureMcpClient)
     {
         _logger = logger;
 
@@ -52,7 +54,8 @@ public class InfrastructureAgent : ISpecializedAgent
             networkDesignService,
             scalingEngine,
             complianceEnhancer,
-            sharedMemory);
+            sharedMemory,
+            azureMcpClient);
 
         // Register only infrastructure-related plugins
         try
@@ -72,7 +75,8 @@ public class InfrastructureAgent : ISpecializedAgent
                 new DeploymentPlugin(
                     loggerFactory.CreateLogger<DeploymentPlugin>(),
                     _kernel,
-                    deploymentService),
+                    deploymentService,
+                    azureMcpClient),
                 "Deployment");
 
             _logger.LogInformation("✅ Registered DeploymentPlugin for agent");
@@ -373,9 +377,13 @@ When your task description includes keywords like ""Provision"", ""Deploy the te
    Response: [Calls deploy_bicep_template with actual template path/content, resource group, subscription] ✅ CORRECT
 
 5. **DEPLOYMENT REQUIRES:**
-   - templatePath: Use the main.bicep or template file path from SharedMemory
+   - templatePath: **CRITICAL - JUST USE THE FILENAME**: ""main.bicep"" (DeploymentPlugin will retrieve it from SharedMemory automatically)
+     - ❌ WRONG: /path/to/main.bicep, /full/path/to/template.bicep  
+     - ✅ CORRECT: main.bicep (simple filename only!)
    - resourceGroup: Extract from user's request or use generated name
-   - location: Use the region specified (e.g., usgovvirginia, eastus)
+   - location: **For Azure Government, ONLY use**: usgovvirginia, usgovarizona, usgovtexas, usgoviowa, usdodeast, usdodcentral
+     - ❌ WRONG: eastus, westus, centralus (these are commercial Azure regions, NOT Azure Government!)
+     - ✅ CORRECT: usgovvirginia (default for dev), usgovarizona (for production)
    - subscriptionId: ALWAYS use the actual subscription ID provided (e.g., 453c2549-4cc5-464f-ba66-acad920823e8)
    - parameters: Optional - use values from conversation if needed
 
@@ -517,6 +525,31 @@ Do NOT write a text response with manual code - CALL THE FUNCTION!
                 },
                 kernel: _kernel);
             _logger.LogInformation("InfrastructureAgent: Completed OpenAI chat completion for conversation {ConversationId}", task.ConversationId);
+
+            // 🔍 DIAGNOSTIC: Log what the LLM actually did
+            _logger.LogInformation("🔍 InfrastructureAgent DIAGNOSTIC:");
+            _logger.LogInformation("   - Result Content Length: {Length} characters", result.Content?.Length ?? 0);
+            _logger.LogInformation("   - Result Role: {Role}", result.Role);
+            _logger.LogInformation("   - Result Metadata Keys: {Keys}", result.Metadata?.Keys != null ? string.Join(", ", result.Metadata.Keys) : "null");
+            
+            // Check if any functions were called by examining the chat history
+            var functionCalls = chatHistory.Where(m => m.Role == Microsoft.SemanticKernel.ChatCompletion.AuthorRole.Tool).ToList();
+            _logger.LogInformation("   - Function calls in history: {Count}", functionCalls.Count);
+            
+            if (result.Items != null && result.Items.Any())
+            {
+                _logger.LogInformation("   - Result Items Count: {Count}", result.Items.Count);
+                foreach (var item in result.Items)
+                {
+                    _logger.LogInformation("     - Item Type: {Type}", item?.GetType().Name ?? "null");
+                }
+            }
+            else
+            {
+                _logger.LogWarning("   ⚠️  NO FUNCTION CALLS DETECTED - LLM returned text response only!");
+                var preview = string.IsNullOrEmpty(result.Content) ? "empty" : result.Content.Substring(0, Math.Min(200, result.Content.Length));
+                _logger.LogWarning("   📝 Response preview: {Preview}", preview);
+            }
 
             var executionTime = (DateTime.UtcNow - startTime).TotalMilliseconds;
             _logger.LogInformation("InfrastructureAgent: Total execution time: {ExecutionTime}ms", executionTime);

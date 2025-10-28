@@ -4,6 +4,22 @@ version: "3.9"
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 services:
+  # MCP Server (replaces platform-api)
+  platform-mcp:
+    build:
+      context: .
+      dockerfile: src/Platform.Engineering.Copilot.Mcp/Dockerfile
+      target: build  # Use build stage for hot reload
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - DOTNET_USE_POLLING_FILE_WATCHER=true
+    volumes:
+      - ./src:/src:ro  # Mount source for hot reload
+      - supervisor-logs:/app/logs
+    command: >
+      sh -c "dotnet watch run --project src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj -- --http"
+
+  # Platform API (DEPRECATED - legacy support only)
   platform-api:
     build:
       context: .

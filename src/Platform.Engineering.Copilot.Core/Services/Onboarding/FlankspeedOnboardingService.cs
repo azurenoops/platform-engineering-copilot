@@ -19,7 +19,7 @@ namespace Platform.Engineering.Copilot.Core.Services.Onboarding;
 /// </summary>
 public class FlankspeedOnboardingService : IOnboardingService
 {
-    private readonly EnvironmentManagementContext _context;
+    private readonly PlatformEngineeringCopilotContext _context;
     private readonly ILogger<FlankspeedOnboardingService> _logger;
     private readonly IEnvironmentManagementEngine _environmentEngine;
     private readonly ITemplateStorageService _templateStorage;
@@ -29,7 +29,7 @@ public class FlankspeedOnboardingService : IOnboardingService
     private readonly ITeamsNotificationService _teamsNotificationService;
 
     public FlankspeedOnboardingService(
-        EnvironmentManagementContext context,
+        PlatformEngineeringCopilotContext context,
         ILogger<FlankspeedOnboardingService> logger,
         IEnvironmentManagementEngine environmentEngine,
         ITemplateStorageService templateStorage,

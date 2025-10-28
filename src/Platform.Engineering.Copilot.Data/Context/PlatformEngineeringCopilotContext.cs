@@ -6,9 +6,9 @@ namespace Platform.Engineering.Copilot.Data.Context;
 /// <summary>
 /// Environment Management Database Context
 /// </summary>
-public class EnvironmentManagementContext : DbContext
+public class PlatformEngineeringCopilotContext : DbContext
 {
-    public EnvironmentManagementContext(DbContextOptions<EnvironmentManagementContext> options)
+    public PlatformEngineeringCopilotContext(DbContextOptions<PlatformEngineeringCopilotContext> options)
         : base(options)
     {
     }

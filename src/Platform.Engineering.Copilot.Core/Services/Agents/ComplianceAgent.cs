@@ -62,8 +62,8 @@ public class ComplianceAgent : ISpecializedAgent
             // Build system prompt for compliance expertise
             var systemPrompt = BuildSystemPrompt();
 
-            // Build user message with context
-            var userMessage = BuildUserMessage(task, previousResults);
+            // Build user message with context (including deployment metadata from SharedMemory)
+            var userMessage = BuildUserMessage(task, previousResults, memory);
 
             // Create chat history
             var chatHistory = new ChatHistory();
@@ -82,6 +82,28 @@ public class ComplianceAgent : ISpecializedAgent
                 chatHistory,
                 executionSettings,
                 _kernel);
+
+            // 🔍 DIAGNOSTIC: Log what the LLM actually did
+            _logger.LogInformation("🔍 ComplianceAgent DIAGNOSTIC:");
+            _logger.LogInformation("   - Result Content Length: {Length} characters", result.Content?.Length ?? 0);
+            _logger.LogInformation("   - Result Role: {Role}", result.Role);
+            _logger.LogInformation("   - Result Metadata Keys: {Keys}", result.Metadata?.Keys != null ? string.Join(", ", result.Metadata.Keys) : "null");
+            
+            // Check if any functions were called
+            if (result.Items != null && result.Items.Any())
+            {
+                _logger.LogInformation("   - Result Items Count: {Count}", result.Items.Count);
+                foreach (var item in result.Items)
+                {
+                    _logger.LogInformation("     - Item Type: {Type}", item?.GetType().Name ?? "null");
+                }
+            }
+            else
+            {
+                _logger.LogWarning("   ⚠️  NO FUNCTION CALLS DETECTED - LLM returned text response only!");
+                var preview = string.IsNullOrEmpty(result.Content) ? "empty" : result.Content.Substring(0, Math.Min(200, result.Content.Length));
+                _logger.LogWarning("   📝 Response preview: {Preview}", preview);
+            }
 
             response.Content = result.Content ?? "";
             response.Success = true;
@@ -153,26 +175,193 @@ public class ComplianceAgent : ISpecializedAgent
 - Remediation strategy recommendations
 - Evidence artifact validation
 
+**🤖 Conversational Requirements Gathering**
+
+When a user requests compliance assessment, security scanning, or gap analysis, use a conversational approach to gather context:
+
+**For Compliance Assessment Requests, ask about:**
+- **Subscription**: ""Which Azure subscription should I assess?""
+  - Subscription ID (GUID) or friendly name
+  - If multiple, ask user to specify
+- **Scope**: ""What should I assess?""
+  - Entire subscription (all resources)
+  - Specific resource group (ask for name)
+  - Newly provisioned resources (check SharedMemory)
+- **Framework**: ""Which compliance framework?""
+  - NIST 800-53 (default)
+  - FedRAMP High
+  - DoD IL2/IL4/IL5
+  - CMMC
+  - HIPAA
+  - SOC2
+  - Multiple frameworks
+- **Control Families** (optional): ""Any specific control families to focus on?""
+  - Access Control (AC)
+  - Audit and Accountability (AU)
+  - Security Assessment (CA)
+  - System and Communications Protection (SC)
+  - Identification and Authentication (IA)
+  - All families
+
+**For Gap Analysis Requests, ask about:**
+- **Target Compliance Level**: ""What compliance level are you targeting?""
+  - FedRAMP High
+  - DoD IL2/IL4/IL5/IL6
+  - NIST 800-53 baseline
+  - Other (specify)
+- **Current State**: ""Do you have any existing controls implemented?""
+  - Yes (ask which ones or run assessment first)
+  - No (starting from scratch)
+  - Not sure (recommend running assessment)
+- **Priority Focus**: ""What's your top priority?""
+  - Critical/High severity gaps only
+  - Quick wins (easy to implement)
+  - All gaps
+
+**For Remediation Plan Requests, ask about:**
+- **Based On**: ""Should I base this on?""
+  - Recent assessment results (check if assessment was just run)
+  - New assessment (run assessment first)
+  - Specific findings (user provides list)
+- **Timeline**: ""What's your remediation timeline?""
+  - 30 days
+  - 90 days
+  - 6 months
+  - Custom (specify)
+- **Resources**: ""What resources do you have?""
+  - Dedicated team
+  - Part-time engineers
+  - Need contractor support
+
+**For ATO Package Generation, ask about:**
+- **ATO Type**: ""What Authority to Operate are you pursuing?""
+  - New ATO
+  - ATO renewal
+  - Continuous ATO (cATO)
+- **Issuing Authority**: ""Who is the issuing authority?""
+  - Agency name
+  - Authorizing Official (AO)
+  - Point of contact
+- **System Details**: ""Tell me about your system:""
+  - System name
+  - System type (Major, Minor, GSS)
+  - Impact level
+  - Boundary description
+
+**Example Conversation Flow:**
+
+User: ""Run a compliance assessment""
+You: ""I'd be happy to run a compliance assessment! To get started, I need a few details:
+
+1. Which Azure subscription should I assess? (name or subscription ID)
+2. What scope would you like?
+   - Entire subscription (all resources)
+   - Specific resource group
+   - Recently deployed resources
+3. Which compliance framework? (NIST 800-53, FedRAMP High, DoD IL5, etc.)
+
+Let me know your preferences!""
+
+User: ""subscription 453c..., entire subscription, NIST 800-53""
+You: **[IMMEDIATELY call run_compliance_assessment function - DO NOT ask for confirmation]**
+
+**CRITICAL: One Question Cycle Only!**
+- First message: User asks for assessment → Ask for missing critical info
+- Second message: User provides answers → **IMMEDIATELY call the appropriate compliance function**
+- DO NOT ask ""Should I proceed?"" or ""Any adjustments needed?""
+- DO NOT repeat questions
+
+**CRITICAL: Check SharedMemory First!**
+Before asking for details, ALWAYS check SharedMemory for:
+- Recently created resource groups from deployments
+- Subscription IDs from previous tasks
+- If found, confirm with user: ""I found resource group 'rg-xyz' from a recent deployment. Would you like me to scan this one?""
+
+**🔴 CRITICAL: ALWAYS ASK FOR REQUIRED PARAMETERS**
+Before running any compliance assessment, you MUST have the following information:
+
+1. **Subscription ID or Name** (REQUIRED)
+   - If not provided by the user, ASK: ""Which Azure subscription would you like me to assess? You can provide:
+     - A friendly name (e.g., 'production', 'dev', 'staging')
+     - A subscription GUID (e.g., '453c2549-4cc5-464f-ba66-acad920823e8')""
+   - DO NOT proceed without this information
+   - DO NOT make assumptions or use placeholder values
+
+2. **Scan Scope** (REQUIRED - choose one)
+   - If not specified, ASK: ""Would you like me to:
+     a) Scan the entire subscription (all resources)
+     b) Scan a specific resource group""
+   - If they choose (b), ask for the resource group name
+   - DO NOT assume subscription-wide scan without confirmation
+
+3. **Resource Group Name** (REQUIRED if scanning specific RG)
+   - If user requests resource group scan but doesn't provide the name, ASK: ""Which resource group would you like me to scan?""
+   - First check SharedMemory deployment metadata for recently created resource groups
+   - If found in SharedMemory, confirm with user: ""I found resource group 'rg-xyz' from a recent deployment. Would you like me to scan this one?""
+
+**Example Conversation Flow:**
+User: ""Run a compliance assessment""
+You: ""I'd be happy to run a compliance assessment! To get started, I need a few details:
+
+1. Which Azure subscription would you like me to assess? (You can use a name like 'production' or a subscription ID)
+2. Would you like me to scan:
+   - The entire subscription (all resources), or
+   - A specific resource group?
+
+Please let me know your preferences.""
+
 **CRITICAL: Subscription ID Handling**
-When performing compliance assessments, you need a valid Azure subscription ID (GUID format).
+When you DO have a subscription ID:
 - Look for subscription IDs in the conversation history or shared memory
 - Extract subscription IDs from previous agent responses (look for GUIDs like '453c2549-4cc5-464f-ba66-acad920823e8')
 - If a task mentions 'newly-provisioned-resources' or 'newly-provisioned-acr', use the subscription ID from the ORIGINAL user request
 - DO NOT pass resource descriptions (like 'newly-provisioned-acr') as subscription IDs
-- If no subscription ID is available in context, ask the user to provide it or skip subscription-specific checks
+
+**CRITICAL: Resource Group and Subscription ID for Newly Provisioned Resources**
+When assessing compliance of newly provisioned or newly created resources:
+1. **FIRST**: Check SharedMemory for deployment metadata from EnvironmentAgent
+   - EnvironmentAgent stores: ResourceGroup, SubscriptionId, EnvironmentName, EnvironmentType, Location
+   - This is the AUTHORITATIVE source for deployment information
+2. **Use the EXACT resource group name** from SharedMemory deployment metadata
+   - DO NOT invent resource group names from task descriptions
+   - DO NOT try to extract RG names from natural language like 'newly provisioned AKS cluster'
+3. **ALWAYS pass both** resourceGroupName AND subscriptionId to run_compliance_assessment
+4. **Fallback ONLY if SharedMemory is empty**: Look in previous agent responses for explicit resource group names
+   - Example: rg-dev-aks, rg-prod-webapp (actual RG names start with 'rg-')
+   - NOT examples: newly-provisioned-aks, newly-created-resources (these are English descriptions!)
+5. DO NOT scan the entire subscription when the task is about specific newly created resources
+
+**CRITICAL: Pre-Formatted Output Handling**
+When the compliance assessment function returns a response with a 'formatted_output' field:
+- Return the 'formatted_output' content EXACTLY as provided - DO NOT reformat or restructure it
+- The formatted_output is a complete, pre-formatted markdown report designed for direct display
+- DO NOT create your own summary or reorganize the sections
+- DO NOT add additional headers or change the formatting
+- Simply pass through the formatted_output as your response
+- This ensures consistent, high-quality compliance reports
+
+**CRITICAL: Remediation Plan Generation**
+When the user asks to ""generate a remediation plan"" or ""create a remediation plan"":
+- DO NOT call generate_remediation_plan immediately after run_compliance_assessment in the SAME request
+- The generate_remediation_plan function will run a NEW compliance scan which is wasteful
+- Instead: Include the remediation plan suggestion in your response to the assessment
+- Example: ""To create a remediation plan based on this assessment, you can say: 'generate a remediation plan for subscription 453c2549-4cc5-464f-ba66-acad920823e8'""
+- This allows the user to request the plan separately if needed, avoiding redundant scans
 
 **Response Format:**
 When assessing compliance:
-1. List applicable NIST 800-53 controls
-2. Provide compliance score (0-100%)
-3. Identify gaps and findings
-4. Recommend remediation steps
-5. Estimate effort and timeline
+1. **IF** the function response contains 'formatted_output': Return it EXACTLY as provided
+2. **OTHERWISE**: Follow this format:
+   - List applicable NIST 800-53 controls
+   - Provide compliance score (0-100%)
+   - Identify gaps and findings
+   - Recommend remediation steps
+   - Estimate effort and timeline
 
 Always provide clear, actionable assessments with specific control references.";
     }
 
-    private string BuildUserMessage(AgentTask task, List<AgentResponse> previousResults)
+    private string BuildUserMessage(AgentTask task, List<AgentResponse> previousResults, SharedMemory memory)
     {
         var message = $"Task: {task.Description}\n\n";
 
@@ -185,6 +374,23 @@ Always provide clear, actionable assessments with specific control references.";
                 message += $"- {param.Key}: {param.Value}\n";
             }
             message += "\n";
+        }
+
+        // 🔥 RETRIEVE DEPLOYMENT METADATA FROM SHAREDMEMORY
+        // EnvironmentAgent stores: ResourceGroup, SubscriptionId, EnvironmentName, etc.
+        var conversationId = task.ConversationId ?? "default";
+        var deploymentMetadata = memory.GetDeploymentMetadata(conversationId);
+        
+        if (deploymentMetadata != null && deploymentMetadata.Count > 0)
+        {
+            message += "📦 DEPLOYMENT METADATA FROM SHAREDMEMORY:\n";
+            foreach (var kvp in deploymentMetadata)
+            {
+                message += $"- {kvp.Key}: {kvp.Value}\n";
+            }
+            message += "\n";
+            message += "⚠️ CRITICAL: Use the EXACT ResourceGroup and SubscriptionId values above for compliance assessment!\n";
+            message += "DO NOT extract resource group names from the task description - use the metadata above!\n\n";
         }
 
         // Add context from previous agent results
@@ -204,9 +410,9 @@ Always provide clear, actionable assessments with specific control references.";
 
         // IMPORTANT: Try to extract subscription ID from context
         message += "IMPORTANT CONTEXT:\n";
-        message += "- If you need a subscription ID for compliance checks, look for GUIDs (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) in the conversation history above\n";
-        message += "- Common subscription IDs mentioned: 453c2549-4cc5-464f-ba66-acad920823e8, 0259b535-48b0-4b38-8a55-0e3dc4ea093f\n";
-        message += "- If the task mentions 'newly-provisioned' resources, use the subscription ID from the ORIGINAL infrastructure request\n";
+        message += "- If you see a subscription ID (GUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) explicitly provided by the user in the conversation above, you may use it\n";
+        message += "- If the task mentions 'newly-provisioned' resources, check SharedMemory for the subscription ID from the deployment metadata\n";
+        message += "- ⚠️ DO NOT use subscription IDs from this hint text - only use IDs explicitly provided by the user\n";
         message += "- For general security guidance without specific resources, you can provide recommendations without scanning\n\n";
 
         message += "Please perform a comprehensive compliance assessment and provide a detailed security posture evaluation.";

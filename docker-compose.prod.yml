@@ -4,6 +4,27 @@ version: "3.9"
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
 
 services:
+  # MCP Server (Multi-Agent Orchestrator)
+  platform-mcp:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://0.0.0.0:5100
+      - ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Platform API (DEPRECATED - legacy support only)
   platform-api:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production

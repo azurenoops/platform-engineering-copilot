@@ -1,24 +1,23 @@
 using Microsoft.Extensions.Logging;
-using Platform.Engineering.Copilot.Mcp.Models;
-using Platform.Engineering.Copilot.Mcp.Services;
 using Platform.Engineering.Copilot.Mcp.Tools;
+using Platform.Engineering.Copilot.Mcp.Models;
 using System.Text.Json;
 
 namespace Platform.Engineering.Copilot.Mcp.Server;
 
 /// <summary>
-/// MCP server that acts as a thin proxy to Platform.API
-/// Handles MCP protocol communication (STDIO) and delegates all tool operations to Platform.API (HTTP)
+/// MCP server that exposes the Platform Engineering Copilot's multi-agent orchestrator via stdio
+/// Handles MCP protocol communication (JSONRPC over stdin/stdout) for GitHub Copilot, Claude Desktop, and other AI tools
 /// </summary>
 public class McpServer
 {
-    private readonly PlatformTools _platformTools;
+    private readonly PlatformEngineeringCopilotTools _chatTool;
     private readonly ILogger<McpServer> _logger;
     private readonly JsonSerializerOptions _jsonOptions;
 
-    public McpServer(PlatformTools platformTools, ILogger<McpServer> logger)
+    public McpServer(PlatformEngineeringCopilotTools chatTool, ILogger<McpServer> logger)
     {
-        _platformTools = platformTools;
+        _chatTool = chatTool;
         _logger = logger;
         _jsonOptions = new JsonSerializerOptions
         {
@@ -138,7 +137,7 @@ public class McpServer
                 protocolVersion = "2024-11-05",
                 capabilities = new McpServerCapabilities
                 {
-                    Tools = new { }
+                    Tools = new ToolsCapabilities { ListChanged = false }
                 },
                 serverInfo = new
                 {
@@ -150,24 +149,85 @@ public class McpServer
     }
 
     /// <summary>
-    /// Handle tools list request - dynamically fetch from Platform.API
+    /// Handle tools list request - expose platform engineering tools
     /// </summary>
-    private async Task<McpResponse> HandleToolsListAsync(McpRequest request)
+    private Task<McpResponse> HandleToolsListAsync(McpRequest request)
     {
-        var tools = await _platformTools.GetToolsAsync();
+        var tools = new List<McpTool>
+        {
+            new McpTool
+            {
+                Name = "platform_engineering_chat",
+                Description = "Process platform engineering requests through the multi-agent orchestrator. Supports infrastructure provisioning, compliance scanning, cost analysis, resource discovery, environment management, and mission onboarding. The orchestrator automatically selects and coordinates the appropriate specialized agents.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        message = new
+                        {
+                            type = "string",
+                            description = "The user's platform engineering request (e.g., 'Generate a Bicep template for AKS', 'Check NIST compliance', 'Estimate costs')"
+                        },
+                        conversationId = new
+                        {
+                            type = "string",
+                            description = "Optional conversation ID to maintain context across multiple requests"
+                        }
+                    },
+                    required = new[] { "message" }
+                }
+            },
+            new McpTool
+            {
+                Name = "get_conversation_history",
+                Description = "Retrieve the conversation history for a specific conversation, including all messages and tools used.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        conversationId = new
+                        {
+                            type = "string",
+                            description = "The conversation ID to retrieve history for"
+                        }
+                    },
+                    required = new[] { "conversationId" }
+                }
+            },
+            new McpTool
+            {
+                Name = "get_proactive_suggestions",
+                Description = "Get AI-generated suggestions for next actions based on the current conversation context.",
+                InputSchema = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        conversationId = new
+                        {
+                            type = "string",
+                            description = "The conversation ID to generate suggestions for"
+                        }
+                    },
+                    required = new[] { "conversationId" }
+                }
+            }
+        };
         
-        return new McpResponse
+        return Task.FromResult(new McpResponse
         {
             Id = request.Id,
             Result = new
             {
                 tools = tools
             }
-        };
+        });
     }
 
     /// <summary>
-    /// Handle tool call request - delegate to Platform.API
+    /// Handle tool call request - execute through multi-agent orchestrator
     /// </summary>
     private async Task<McpResponse> HandleToolCallAsync(McpRequest request)
     {
@@ -190,7 +250,31 @@ public class McpServer
                 };
             }
 
-            var result = await _platformTools.ExecuteToolAsync(toolCall.Name, toolCall.Arguments ?? new Dictionary<string, object?>());
+            _logger.LogInformation("Executing tool: {ToolName}", toolCall.Name);
+
+            // Convert arguments to nullable dictionary
+            var args = toolCall.Arguments?.ToDictionary(
+                kvp => kvp.Key,
+                kvp => (object?)kvp.Value);
+
+            McpToolResult result = toolCall.Name switch
+            {
+                "platform_engineering_chat" => await ExecutePlatformChatAsync(args),
+                "get_conversation_history" => await ExecuteGetHistoryAsync(args),
+                "get_proactive_suggestions" => await ExecuteGetSuggestionsAsync(args),
+                _ => new McpToolResult
+                {
+                    Content = new List<McpContent>
+                    {
+                        new McpContent
+                        {
+                            Type = "text",
+                            Text = $"Unknown tool: {toolCall.Name}"
+                        }
+                    },
+                    IsError = true
+                }
+            };
 
             return new McpResponse
             {
@@ -210,6 +294,161 @@ public class McpServer
                     Message = "Tool execution failed",
                     Data = ex.Message
                 }
+            };
+        }
+    }
+
+    /// <summary>
+    /// Execute platform engineering chat through orchestrator
+    /// </summary>
+    private async Task<McpToolResult> ExecutePlatformChatAsync(Dictionary<string, object?>? arguments)
+    {
+        try
+        {
+            var message = arguments?.GetValueOrDefault("message")?.ToString() ?? "";
+            var conversationId = arguments?.GetValueOrDefault("conversationId")?.ToString();
+
+            if (string.IsNullOrEmpty(message))
+            {
+                return new McpToolResult
+                {
+                    Content = new List<McpContent>
+                    {
+                        new McpContent { Type = "text", Text = "Error: message is required" }
+                    },
+                    IsError = true
+                };
+            }
+
+            var result = await _chatTool.ProcessRequestAsync(message, conversationId);
+
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new McpContent
+                    {
+                        Type = "text",
+                        Text = result.Response
+                    }
+                },
+                IsError = !result.Success
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error executing platform chat");
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new McpContent { Type = "text", Text = $"Error: {ex.Message}" }
+                },
+                IsError = true
+            };
+        }
+    }
+
+    /// <summary>
+    /// Get conversation history
+    /// </summary>
+    private async Task<McpToolResult> ExecuteGetHistoryAsync(Dictionary<string, object?>? arguments)
+    {
+        try
+        {
+            var conversationId = arguments?.GetValueOrDefault("conversationId")?.ToString();
+
+            if (string.IsNullOrEmpty(conversationId))
+            {
+                return new McpToolResult
+                {
+                    Content = new List<McpContent>
+                    {
+                        new McpContent { Type = "text", Text = "Error: conversationId is required" }
+                    },
+                    IsError = true
+                };
+            }
+
+            var result = await _chatTool.GetConversationHistoryAsync(conversationId);
+
+            var historyText = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new McpContent
+                    {
+                        Type = "text",
+                        Text = historyText
+                    }
+                },
+                IsError = false
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting conversation history");
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new McpContent { Type = "text", Text = $"Error: {ex.Message}" }
+                },
+                IsError = true
+            };
+        }
+    }
+
+    /// <summary>
+    /// Get proactive suggestions
+    /// </summary>
+    private async Task<McpToolResult> ExecuteGetSuggestionsAsync(Dictionary<string, object?>? arguments)
+    {
+        try
+        {
+            var conversationId = arguments?.GetValueOrDefault("conversationId")?.ToString();
+
+            if (string.IsNullOrEmpty(conversationId))
+            {
+                return new McpToolResult
+                {
+                    Content = new List<McpContent>
+                    {
+                        new McpContent { Type = "text", Text = "Error: conversationId is required" }
+                    },
+                    IsError = true
+                };
+            }
+
+            var result = await _chatTool.GetProactiveSuggestionsAsync(conversationId);
+
+            var suggestionsText = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
+
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new McpContent
+                    {
+                        Type = "text",
+                        Text = suggestionsText
+                    }
+                },
+                IsError = false
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting proactive suggestions");
+            return new McpToolResult
+            {
+                Content = new List<McpContent>
+                {
+                    new McpContent { Type = "text", Text = $"Error: {ex.Message}" }
+                },
+                IsError = true
             };
         }
     }

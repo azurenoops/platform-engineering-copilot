@@ -246,7 +246,7 @@ curl -X POST http://localhost:7001/api/chat/intelligent-query \
 ├─────────────────────────────────────────────────────────┤
 │  Platform.Engineering.Copilot.Data                      │
 │  • Entity Framework Core 9.0                            │
-│  • EnvironmentManagementContext (20+ DbSets)            │
+│  • PlatformEngineeringCopilotContext (20+ DbSets)            │
 │  • Entities: OnboardingRequest, EnvironmentTemplate,    │
 │    ApprovalWorkflow, ComplianceAssessment               │
 │  • Supports: SQL Server, SQLite, In-Memory              │

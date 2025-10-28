@@ -12,7 +12,7 @@ public static class DatabaseSeeder
     /// <summary>
     /// Seed the database with initial data
     /// </summary>
-    public static async Task SeedAsync(EnvironmentManagementContext context)
+    public static async Task SeedAsync(PlatformEngineeringCopilotContext context)
     {
         await context.Database.EnsureCreatedAsync();
 
@@ -25,7 +25,7 @@ public static class DatabaseSeeder
         await context.SaveChangesAsync();
     }
 
-    private static async Task SeedEnvironmentTemplatesAsync(EnvironmentManagementContext context)
+    private static async Task SeedEnvironmentTemplatesAsync(PlatformEngineeringCopilotContext context)
     {
         if (await context.EnvironmentTemplates.AnyAsync())
             return;
@@ -186,7 +186,7 @@ public static class DatabaseSeeder
         await context.EnvironmentTemplates.AddRangeAsync(templates);
     }
 
-    private static async Task SeedIntentPatternsAsync(EnvironmentManagementContext context)
+    private static async Task SeedIntentPatternsAsync(PlatformEngineeringCopilotContext context)
     {
         if (await context.IntentPatterns.AnyAsync())
             return;

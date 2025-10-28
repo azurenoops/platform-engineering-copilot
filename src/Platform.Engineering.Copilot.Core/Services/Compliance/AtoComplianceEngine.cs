@@ -10,6 +10,9 @@ using Microsoft.Extensions.Options;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Configuration;
+using Platform.Engineering.Copilot.Data.Context;
+using Platform.Engineering.Copilot.Data.Entities;
+using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
 namespace Platform.Engineering.Copilot.Core.Services.Compliance;
@@ -26,6 +29,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
     private readonly IAzureResourceHealthService _azureHealthService;
     private readonly IAzureCostManagementService _azureCostService;
     private readonly IMemoryCache _cache;
+    private readonly PlatformEngineeringCopilotContext _dbContext;
     // private readonly IAtoComplianceReportService _reportService; // TODO: Implement this service
     private readonly ComplianceMetricsService _metricsService;
     private readonly GovernanceOptions _options;
@@ -44,6 +48,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         IAzureResourceHealthService azureHealthService,
         IAzureCostManagementService azureCostService,
         IMemoryCache cache,
+        PlatformEngineeringCopilotContext dbContext,
         // IAtoComplianceReportService reportService, // TODO: Implement this service
         ComplianceMetricsService metricsService,
         IOptions<GovernanceOptions> options,
@@ -55,6 +60,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         _azureHealthService = azureHealthService ?? throw new ArgumentNullException(nameof(azureHealthService));
         _azureCostService = azureCostService ?? throw new ArgumentNullException(nameof(azureCostService));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+        _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         // _reportService = reportService ?? throw new ArgumentNullException(nameof(reportService));
         _metricsService = metricsService ?? throw new ArgumentNullException(nameof(metricsService));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
@@ -623,10 +629,10 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         // Verify compliance status
         var currentAssessment = await GetLatestAssessmentAsync(subscriptionId, cancellationToken);
         
-        if (currentAssessment.OverallComplianceScore < 80)
+        if (currentAssessment == null || currentAssessment.OverallComplianceScore < 80)
         {
             throw new InvalidOperationException(
-                $"Cannot generate certificate. Compliance score {currentAssessment.OverallComplianceScore}% is below required 80%");
+                $"Cannot generate certificate. Compliance score {currentAssessment?.OverallComplianceScore ?? 0}% is below required 80%");
         }
 
         var certificate = new ComplianceCertificate
@@ -1202,8 +1208,85 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         AtoComplianceAssessment assessment, 
         CancellationToken cancellationToken)
     {
-        // Store in database/blob storage
-        _logger.LogInformation("Stored assessment results {AssessmentId}", assessment.AssessmentId);
+        try
+        {
+            // Calculate passed/failed counts from control families
+            var passedControls = assessment.ControlFamilyResults.Values.Sum(cf => cf.PassedControls);
+            var totalControls = assessment.ControlFamilyResults.Values.Sum(cf => cf.TotalControls);
+            var failedControls = totalControls - passedControls;
+
+            // Create ComplianceScan entity
+            var scan = new ComplianceScan
+            {
+                Id = Guid.Parse(assessment.AssessmentId),
+                DeploymentId = null, // Null for subscription-level scans
+                SubscriptionId = assessment.SubscriptionId, // Store for efficient caching lookups
+                ScanType = "compliance", // AtoComplianceEngine only performs compliance scans
+                Standard = "nist-800-53", // AtoComplianceEngine is NIST 800-53 specific
+                Status = "completed", // This method is only called after successful completion
+                TotalChecks = totalControls,
+                PassedChecks = passedControls,
+                FailedChecks = failedControls,
+                WarningChecks = 0,
+                ComplianceScore = (decimal)assessment.OverallComplianceScore,
+                Results = JsonSerializer.Serialize(new
+                {
+                    assessment.SubscriptionId,
+                    assessment.OverallComplianceScore,
+                    assessment.TotalFindings,
+                    assessment.CriticalFindings,
+                    assessment.HighFindings,
+                    assessment.MediumFindings,
+                    assessment.LowFindings,
+                    ControlFamilies = assessment.ControlFamilyResults.Select(cf => new
+                    {
+                        Family = cf.Key,
+                        Score = cf.Value.ComplianceScore,
+                        FindingsCount = cf.Value.Findings.Count
+                    })
+                }),
+                InitiatedBy = "System",
+                StartedAt = assessment.StartTime.UtcDateTime,
+                CompletedAt = assessment.EndTime.UtcDateTime,
+                Duration = assessment.Duration
+            };
+
+            // Add findings
+            foreach (var familyResult in assessment.ControlFamilyResults.Values)
+            {
+                foreach (var finding in familyResult.Findings)
+                {
+                    scan.Findings.Add(new ComplianceFinding
+                    {
+                        Id = Guid.NewGuid(),
+                        ScanId = scan.Id,
+                        RuleId = finding.RuleId,
+                        Title = finding.Title,
+                        Description = finding.Description,
+                        Severity = finding.Severity.ToString().ToLower(),
+                        Status = "failed",
+                        ResourceName = finding.ResourceName,
+                        ControlId = finding.AffectedNistControls.FirstOrDefault() ?? finding.RuleId,
+                        Evidence = finding.Evidence,
+                        Remediation = finding.Recommendation,
+                        IsRemediable = finding.IsRemediable,
+                        IsAutomaticallyFixable = finding.IsAutoRemediable,
+                        DetectedAt = finding.DetectedAt
+                    });
+                }
+            }
+
+            _dbContext.ComplianceScans.Add(scan);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            
+            _logger.LogInformation("✅ Stored assessment {AssessmentId} with {FindingsCount} findings to database", 
+                assessment.AssessmentId, scan.Findings.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to store assessment results {AssessmentId}", assessment.AssessmentId);
+            // Don't throw - assessment still succeeded even if storage failed
+        }
     }
 
     private async Task StoreEvidencePackageAsync(
@@ -1333,21 +1416,131 @@ public class AtoComplianceEngine : IAtoComplianceEngine
                $"Trend: {assessment.RiskTrend}";
     }
 
-    private async Task<AtoComplianceAssessment> GetLatestAssessmentAsync(
+    public async Task<AtoComplianceAssessment?> GetLatestAssessmentAsync(
         string subscriptionId, 
         CancellationToken cancellationToken)
     {
-        // Retrieve latest assessment from storage
-        // For now, create a mock assessment
-        
-        await Task.CompletedTask; // TODO: Implement async operations
-        return await Task.FromResult(new AtoComplianceAssessment
+        try
         {
-            AssessmentId = Guid.NewGuid().ToString(),
-            SubscriptionId = subscriptionId,
-            OverallComplianceScore = 85,
-            ControlFamilyResults = new Dictionary<string, ControlFamilyAssessment>()
-        });
+            _logger.LogInformation("🔍 Searching for cached assessment with subscription ID: {SubscriptionId}", subscriptionId);
+            
+            // Query database for most recent completed scan using indexed SubscriptionId column
+            var latestScan = await _dbContext.ComplianceScans
+                .Include(s => s.Findings)
+                .Where(s => s.SubscriptionId == subscriptionId && s.Status == "completed")
+                .OrderByDescending(s => s.CompletedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (latestScan == null)
+            {
+                _logger.LogWarning("❌ No cached assessment found for subscription {SubscriptionId}", subscriptionId);
+                return null;
+            }
+
+            _logger.LogInformation("Found cached assessment {ScanId} from {CompletedAt}", 
+                latestScan.Id, latestScan.CompletedAt);
+
+            // Deserialize Results JSON to reconstruct assessment
+            var resultsData = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(latestScan.Results ?? "{}");
+            
+            // Reconstruct control family results from findings
+            var controlFamilyResults = new Dictionary<string, ControlFamilyAssessment>();
+            var findingsByFamily = latestScan.Findings
+                .GroupBy(f => f.ControlId?.Split('-')[0] ?? "AC") // Extract family prefix (e.g., AC from AC-2)
+                .ToList();
+
+            foreach (var familyGroup in findingsByFamily)
+            {
+                var familyFindings = familyGroup
+                    .Select(dbFinding => new AtoFinding
+                    {
+                        Id = dbFinding.Id.ToString(),
+                        ResourceId = dbFinding.ResourceName ?? "",
+                        ResourceName = dbFinding.ResourceName ?? "",
+                        RuleId = dbFinding.RuleId,
+                        Severity = ParseSeverity(dbFinding.Severity),
+                        Title = dbFinding.Title,
+                        Description = dbFinding.Description,
+                        Recommendation = dbFinding.Remediation ?? "",
+                        RemediationGuidance = dbFinding.Remediation ?? "",
+                        IsAutoRemediable = dbFinding.IsAutomaticallyFixable,
+                        IsRemediable = dbFinding.IsRemediable,
+                        AffectedNistControls = new List<string> { dbFinding.ControlId ?? dbFinding.RuleId },
+                        Evidence = dbFinding.Evidence ?? "",
+                        DetectedAt = dbFinding.DetectedAt
+                    })
+                    .ToList();
+
+                controlFamilyResults[familyGroup.Key] = new ControlFamilyAssessment
+                {
+                    ControlFamily = familyGroup.Key,
+                    FamilyName = GetControlFamilyName(familyGroup.Key),
+                    TotalControls = latestScan.TotalChecks / findingsByFamily.Count, // Approximate
+                    PassedControls = latestScan.PassedChecks / findingsByFamily.Count, // Approximate
+                    ComplianceScore = (double)latestScan.ComplianceScore,
+                    Findings = familyFindings
+                };
+            }
+
+            // Reconstruct full assessment
+            return new AtoComplianceAssessment
+            {
+                AssessmentId = latestScan.Id.ToString(),
+                SubscriptionId = subscriptionId,
+                StartTime = latestScan.StartedAt,
+                EndTime = latestScan.CompletedAt ?? DateTime.UtcNow,
+                Duration = latestScan.Duration ?? TimeSpan.FromMinutes(5),
+                ControlFamilyResults = controlFamilyResults,
+                OverallComplianceScore = (double)latestScan.ComplianceScore,
+                TotalFindings = latestScan.Findings.Count,
+                CriticalFindings = latestScan.Findings.Count(f => f.Severity == "critical"),
+                HighFindings = latestScan.Findings.Count(f => f.Severity == "high"),
+                MediumFindings = latestScan.Findings.Count(f => f.Severity == "medium"),
+                LowFindings = latestScan.Findings.Count(f => f.Severity == "low")
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve latest assessment for {SubscriptionId}", subscriptionId);
+            return null;
+        }
+    }
+
+    private AtoFindingSeverity ParseSeverity(string severity)
+    {
+        return severity.ToLowerInvariant() switch
+        {
+            "critical" => AtoFindingSeverity.Critical,
+            "high" => AtoFindingSeverity.High,
+            "medium" => AtoFindingSeverity.Medium,
+            "low" => AtoFindingSeverity.Low,
+            _ => AtoFindingSeverity.Informational
+        };
+    }
+
+    private string GetControlFamilyName(string familyCode)
+    {
+        return familyCode switch
+        {
+            "AC" => "Access Control",
+            "AU" => "Audit and Accountability",
+            "AT" => "Awareness and Training",
+            "CM" => "Configuration Management",
+            "CP" => "Contingency Planning",
+            "IA" => "Identification and Authentication",
+            "IR" => "Incident Response",
+            "MA" => "Maintenance",
+            "MP" => "Media Protection",
+            "PE" => "Physical and Environmental Protection",
+            "PL" => "Planning",
+            "PS" => "Personnel Security",
+            "RA" => "Risk Assessment",
+            "CA" => "Security Assessment and Authorization",
+            "SC" => "System and Communications Protection",
+            "SI" => "System and Information Integrity",
+            "SA" => "System and Services Acquisition",
+            _ => familyCode
+        };
     }
 
     private string GenerateCertificateHash(ComplianceCertificate certificate)
@@ -1446,30 +1639,6 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         };
     }
 
-    private string GetControlFamilyName(string familyCode)
-    {
-        return familyCode switch
-        {
-            "AC" => "Access Control",
-            "AU" => "Audit and Accountability",
-            "AT" => "Awareness and Training",
-            "CM" => "Configuration Management",
-            "CP" => "Contingency Planning",
-            "IA" => "Identification and Authentication",
-            "IR" => "Incident Response",
-            "MA" => "Maintenance",
-            "MP" => "Media Protection",
-            "PE" => "Physical and Environmental Protection",
-            "PL" => "Planning",
-            "PS" => "Personnel Security",
-            "RA" => "Risk Assessment",
-            "CA" => "Security Assessment and Authorization",
-            "SC" => "System and Communications Protection",
-            "SI" => "System and Information Integrity",
-            "SA" => "System and Services Acquisition",
-            _ => familyCode
-        };
-    }
 
     #endregion
 }

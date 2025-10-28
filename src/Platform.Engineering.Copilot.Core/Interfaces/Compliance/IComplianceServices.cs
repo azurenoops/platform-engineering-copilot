@@ -23,6 +23,10 @@ public interface IAtoComplianceEngine
         IProgress<AssessmentProgress>? progress = null,
         CancellationToken cancellationToken = default);
     
+    Task<AtoComplianceAssessment?> GetLatestAssessmentAsync(
+        string subscriptionId,
+        CancellationToken cancellationToken = default);
+    
     Task<ContinuousComplianceStatus> GetContinuousComplianceStatusAsync(string subscriptionId, CancellationToken cancellationToken = default);
     
     Task<EvidencePackage> CollectComplianceEvidenceAsync(

@@ -23,6 +23,7 @@ public class OrchestratorAgent
     private readonly Dictionary<AgentType, ISpecializedAgent> _agents;
     private readonly SharedMemory _sharedMemory;
     private readonly ExecutionPlanValidator _planValidator;
+    private readonly ExecutionPlanCache _planCache;
     private readonly ILogger<OrchestratorAgent> _logger;
 
     public OrchestratorAgent(
@@ -30,11 +31,13 @@ public class OrchestratorAgent
         IEnumerable<ISpecializedAgent> agents,
         SharedMemory sharedMemory,
         ExecutionPlanValidator planValidator,
+        ExecutionPlanCache planCache,
         ILogger<OrchestratorAgent> logger)
     {
         _logger = logger;
         _sharedMemory = sharedMemory;
         _planValidator = planValidator;
+        _planCache = planCache;
 
         // Create orchestrator's own kernel
         _kernel = semanticKernelService.CreateSpecializedKernel(AgentType.Orchestrator);
@@ -75,6 +78,48 @@ public class OrchestratorAgent
 
         try
         {
+            // OPTIMIZATION: Fast-path for unambiguous single-agent requests (skip planning LLM call)
+            // Only use when request clearly maps to ONE specific agent with no multi-agent coordination needed
+            var fastPathAgent = DetectUnambiguousSingleAgentRequest(userMessage, context);
+            if (fastPathAgent.HasValue)
+            {
+                _logger.LogInformation("⚡ Fast-path detected: Unambiguous {AgentType} request - skipping orchestrator planning", 
+                    fastPathAgent.Value);
+                
+                var agent = _agents[fastPathAgent.Value];
+                var task = new AgentTask
+                {
+                    TaskId = Guid.NewGuid().ToString(),
+                    AgentType = fastPathAgent.Value,
+                    Description = userMessage,
+                    Priority = 1,
+                    IsCritical = true,
+                    ConversationId = conversationId
+                };
+                
+                var response = await agent.ProcessAsync(task, _sharedMemory);
+                
+                var fastPathExecutionTime = (DateTime.UtcNow - startTime).TotalMilliseconds;
+                
+                return new OrchestratedResponse
+                {
+                    FinalResponse = response.Content,
+                    PrimaryIntent = fastPathAgent.Value.ToString().ToLowerInvariant(),
+                    AgentsInvoked = new List<AgentType> { fastPathAgent.Value },
+                    ExecutionPattern = ExecutionPattern.Sequential,
+                    TotalAgentCalls = 1,
+                    ExecutionTimeMs = fastPathExecutionTime,
+                    Success = response.Success,
+                    RequiresFollowUp = DetermineIfFollowUpNeeded(new List<AgentResponse> { response }),
+                    FollowUpPrompt = GenerateFollowUpPrompt(new List<AgentResponse> { response }),
+                    MissingFields = ExtractMissingFields(new List<AgentResponse> { response }),
+                    QuickReplies = GenerateQuickReplies(fastPathAgent.Value.ToString().ToLowerInvariant(), 
+                        new List<AgentResponse> { response }),
+                    Metadata = response.Metadata,
+                    Errors = response.Errors
+                };
+            }
+            
             // Step 1: Analyze intent and create execution plan
             var plan = await CreateExecutionPlanAsync(userMessage, context);
 
@@ -101,8 +146,17 @@ public class OrchestratorAgent
                     throw new ArgumentException($"Unknown execution pattern: {plan.ExecutionPattern}");
             }
 
-            // Step 3: Synthesize final response
-            var finalResponse = await SynthesizeResponseAsync(userMessage, responses, context);
+            // Step 3: Synthesize final response (OPTIMIZATION: Skip LLM call for single-agent responses)
+            string finalResponse;
+            if (responses.Count == 1 && responses[0].Success)
+            {
+                _logger.LogInformation("⚡ Single agent response - skipping synthesis LLM call");
+                finalResponse = responses[0].Content;
+            }
+            else
+            {
+                finalResponse = await SynthesizeResponseAsync(userMessage, responses, context);
+            }
 
             var executionTime = (DateTime.UtcNow - startTime).TotalMilliseconds;
 
@@ -155,6 +209,14 @@ public class OrchestratorAgent
     {
         _logger.LogDebug("📋 Creating execution plan for: {Message}", userMessage);
 
+        // OPTIMIZATION: Try to get cached plan for similar request
+        var cachedPlan = _planCache.TryGetCachedPlan(userMessage, context);
+        if (cachedPlan != null)
+        {
+            _logger.LogInformation("♻️  Using cached execution plan - skipping planning LLM call");
+            return cachedPlan;
+        }
+
         var availableAgents = string.Join("\n", _agents.Keys.Select(a =>
             $"- {a}: {GetAgentDescription(a)}"));
 
@@ -163,118 +225,30 @@ public class OrchestratorAgent
             ? "\n\nRecent conversation history:\n" + string.Join("\n", context.MessageHistory.TakeLast(5).Select(m => $"{m.Role}: {m.Content}"))
             : "";
 
-        var planningPrompt = $@"
-You are an expert orchestrator for a multi-agent platform engineering system.
-
-Available specialized agents:
-{availableAgents}
+        // OPTIMIZATION: Simplified planning prompt (70% token reduction from 2000 to ~600 tokens)
+        var planningPrompt = $@"Available agents: {string.Join(", ", _agents.Keys)}
 {conversationHistory}
 
-Current user message: ""{userMessage}""
+User: ""{userMessage}""
 
-Analyze this request and create an execution plan in JSON format with:
-1. **primaryIntent**: Main category (infrastructure, compliance, cost, environment, discovery, onboarding, or mixed)
-2. **tasks**: Array of tasks, each with:
-   - agentType: Which agent to use (Infrastructure, Compliance, CostManagement, Environment, Discovery, Onboarding)
-   - description: What the agent should do
-   - priority: Number (higher = more important)
-   - isCritical: Boolean (if task failure should stop execution)
-3. **executionPattern**: How to execute tasks:
-   - ""Sequential"": Tasks depend on each other (do them in order)
-   - ""Parallel"": Tasks are independent (do them simultaneously)
-   - ""Collaborative"": Agents need to iterate and refine together
-4. **estimatedTimeSeconds**: How long you think this will take
+Create JSON execution plan:
+{{
+  ""primaryIntent"": ""infrastructure|compliance|cost|environment|discovery|onboarding|mixed"",
+  ""tasks"": [{{ ""agentType"": ""Infrastructure"", ""description"": ""task"", ""priority"": 1, ""isCritical"": true }}],
+  ""executionPattern"": ""Sequential|Parallel|Collaborative"",
+  ""estimatedTimeSeconds"": 30
+}}
 
-CRITICAL Guidelines - READ CAREFULLY:
+CRITICAL Rules (apply in order):
+1. **Conversation continuation**: If assistant previously asked questions and user is answering → continue same task
+2. **Compliance scanning** (""check""/""scan""/""assess"" + compliance) → Compliance agent, primaryIntent: ""compliance""
+3. **Template generation** (""create""/""deploy""/""I need"" infra) → Infrastructure ONLY, primaryIntent: ""infrastructure""
+4. **Actual provisioning** (""actually provision""/""make it live"") → All 5 agents Sequential
+5. **Informational** (""What are...""/""How do..."") → Single relevant agent
 
-**🚨 COMPLIANCE ASSESSMENT vs COMPLIANT INFRASTRUCTURE - CRITICAL DISTINCTION:**
-- **""check compliance"" / ""run assessment"" / ""scan"" = ComplianceAgent ONLY** (scan existing resources)
-- **""create compliant"" / ""generate template"" = InfrastructureAgent ONLY** (generate new templates)
-- **NEVER use InfrastructureAgent for compliance scanning!**
+Default: Template generation (Infrastructure only) - safe, no real Azure resources.
 
-Examples:
-- ❌ WRONG: ""check compliance"" → Infrastructure → generates templates
-- ✅ CORRECT: ""check compliance"" → Compliance → scans existing resources
-- ❌ WRONG: ""create NIST-compliant storage"" → Compliance → tries to scan
-- ✅ CORRECT: ""create NIST-compliant storage"" → Infrastructure → generates template
-
-- **Check conversation context FIRST** - if the conversation history shows the user is answering follow-up questions about template generation, this is STILL template generation!
-  * Look for patterns: User asked to generate templates → Assistant asked clarifying questions → User provided answers
-  * **If last assistant message asked questions and user is now answering** → This is a continuation of the original request
-  * Example: Assistant asked ""What region?"" and user says ""us gov virginia, dev, yes"" → Still template generation, use ONLY Infrastructure
-  
-- **Be CONSERVATIVE with agent invocation** - only invoke agents when the user explicitly requests ACTION on EXISTING resources
-
-- **Distinguish between FOUR types of requests**:
-  
-  1. **COMPLIANCE SCANNING/ASSESSMENT** (Analyzing existing resources) - MUST use Compliance agent:
-     * User says: ""check compliance"", ""run a compliance assessment"", ""scan my subscription"", ""compliance status"", ""security assessment""
-     * User mentions checking EXISTING resources for compliance (""my cluster"", ""my subscription"", ""current environment"")
-     * Keywords: ""assess"", ""scan"", ""check"", ""validate"", ""audit"", ""evaluate"" + compliance/security
-     * Examples: ""Check if my subscription is compliant"", ""Run a NIST assessment on my resources"", ""Scan my AKS cluster for compliance""
-     * **Action**: Use ONLY ComplianceAgent to scan existing resources
-     * **DO NOT EVER**: Use InfrastructureAgent for compliance assessments - that's for generating NEW compliant templates
-     * **IMPORTANT**: ""compliance assessment"" = scan existing, NOT generate new templates
-     * **primaryIntent**: ""compliance"" (NOT ""infrastructure"")
-  
-  2. **TEMPLATE GENERATION** (Infrastructure-as-Code design - DEFAULT for safety):
-     * User says: ""deploy"", ""create"", ""set up"", ""I need"" infrastructure WITHOUT ""actually""/""provision""/""make it live""
-     * User asks for ""template"", ""Bicep"", ""Terraform"", ""ARM template"", ""IaC"", ""infrastructure code""
-     * User asks for ""compliant infrastructure"", ""FedRAMP template"", ""NIST-compliant cluster""
-     * Examples: ""Deploy an AKS cluster"", ""Create a storage account"", ""I need infrastructure for X""
-     * User confirms after requirements gathering: ""yes"", ""proceed"", ""sounds good""
-     * **Action**: Use ONLY InfrastructureAgent to generate templates/code
-     * **DO NOT**: Invoke Environment, Compliance, Discovery, or CostManagement agents
-     * **IMPORTANT**: This is the SAFE default - generates CODE only, creates NO real Azure resources
-     * **Safety**: Prevents accidental resource creation and unexpected costs
-     * **primaryIntent**: ""infrastructure""
-  
-  3. **ACTUAL PROVISIONING** (Deploying real Azure resources - REQUIRES explicit intent):
-     * User EXPLICITLY says: ""actually provision"", ""make it live"", ""deploy the template"", ""create the resources now""
-     * User says: ""execute the deployment"", ""provision for real"", ""I want to deploy this now""
-     * **Action**: Sequential execution - Infrastructure → Environment → Compliance → Discovery → Cost
-     * **WARNING**: This creates REAL Azure resources and incurs REAL costs
-     * **IMPORTANT**: Only trigger this when user explicitly confirms deployment intent
-  
-  4. **INFORMATIONAL** (Questions/guidance):
-     * User asks: ""What are..."", ""How do I..."", ""Best practices..."", ""Show me examples""
-     * **Action**: Use ONLY the relevant agent for guidance
-     * **DO NOT**: Invoke any other agents
-  
-- **For existing resource queries**:
-  * Only scan resources that actually exist (user mentions ""my cluster"", ""my subscription"", etc.)
-  * Do NOT assume resources exist based on hypothetical questions
-  
-- **Execution patterns**:
-  * Use Sequential when tasks depend on each other (e.g., provision THEN scan)
-  * Use Parallel when tasks are independent on EXISTING resources (e.g., list resources AND check compliance)
-  * Use Collaborative when quality requires iteration on ACTUAL deployments
-  * **For template generation**: Always use Sequential with ONLY Infrastructure agent
-
-- **Estimated time**:
-  * Template generation (Infrastructure only - DEFAULT): 10-30 seconds (creates code, no Azure deployment)
-  * Compliance scanning: 30-60 seconds (scans existing Azure resources)
-  * Actual provisioning (EXPLICIT intent only): 60-180 seconds (creates REAL Azure resources + costs)
-  * Resource discovery: 30-60 seconds
-  
-- **Key indicators - READ CAREFULLY**:
-  * **COMPLIANCE SCANNING (use Compliance agent)**: ""check compliance"", ""run assessment"", ""scan my subscription"", ""is my cluster compliant"", ""compliance status"", ""assess security""
-  * **TEMPLATE GENERATION (use Infrastructure agent)**: ""deploy"", ""create"", ""set up"", ""I need"", ""generate template"", ""create compliant infrastructure""
-  * **ACTUAL PROVISIONING (use all 5 agents)**: ""actually provision"", ""make it live"", ""execute deployment"", ""provision for real""
-  * **INFORMATIONAL (use single agent)**: ""What are..."", ""How do I..."", ""Best practices...""
-  * **CONFIRMATION (use Infrastructure agent)**: ""yes"", ""proceed"" after template questions
-
-**🚨 CRITICAL DECISION TREE for ""compliance"" keyword:**
-1. Does user say ""check"", ""scan"", ""assess"", or ""run assessment""? → YES = Compliance agent
-2. Does user say ""create"", ""generate"", ""deploy"", or ""I need""? → YES = Infrastructure agent
-3. User message: ""I need to check if my Azure subscription is compliant""
-   - Contains ""check"" + ""compliant"" → Compliance agent (scan existing)
-   - primaryIntent: ""compliance""
-4. User message: ""Create a NIST-compliant storage account""  
-   - Contains ""create"" + ""compliant"" → Infrastructure agent (generate template)
-   - primaryIntent: ""infrastructure""
-
-Respond ONLY with valid JSON, no other text.";
+Respond ONLY with JSON.";
 
         try
         {
@@ -288,7 +262,7 @@ Respond ONLY with valid JSON, no other text.";
                 {
                     ResponseFormat = "json_object",
                     Temperature = 0.3,
-                    MaxTokens = 2000
+                    MaxTokens = 500  // OPTIMIZATION: Reduced from 2000 (only need small JSON plan)
                 });
 
             var planJson = result.Content ?? "{}";
@@ -326,6 +300,9 @@ Respond ONLY with valid JSON, no other text.";
 
             // Validate and potentially correct the plan
             var validatedPlan = _planValidator.ValidateAndCorrect(executionPlan, userMessage, context.ConversationId);
+
+            // OPTIMIZATION: Cache the validated plan for future similar requests
+            _planCache.CachePlan(userMessage, validatedPlan);
 
             return validatedPlan;
         }
@@ -764,6 +741,98 @@ Synthesized response:";
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// OPTIMIZATION: Fast-path detection for UNAMBIGUOUS single-agent requests
+    /// Returns the agent type ONLY if request clearly maps to one agent with NO multi-agent coordination needed
+    /// Treats ALL agents equally - no bias toward any specific agent type
+    /// </summary>
+    private AgentType? DetectUnambiguousSingleAgentRequest(string userMessage, ConversationContext context)
+    {
+        var lowerMessage = userMessage.ToLowerInvariant();
+        
+        // Check if this is a follow-up answer (user providing details after assistant asked questions)
+        var isFollowUpAnswer = context.MessageHistory.Count > 0 &&
+            context.MessageHistory.Last().Role == "assistant" &&
+            context.MessageHistory.Last().Content.Contains("?");
+        
+        if (isFollowUpAnswer && context.MessageHistory.Count >= 2)
+        {
+            // Continue with the agent from previous interaction
+            var previousMessage = context.MessageHistory[^2];
+            if (previousMessage.Content.Contains("infrastructure", StringComparison.OrdinalIgnoreCase))
+                return AgentType.Infrastructure;
+            if (previousMessage.Content.Contains("compliance", StringComparison.OrdinalIgnoreCase))
+                return AgentType.Compliance;
+            if (previousMessage.Content.Contains("cost", StringComparison.OrdinalIgnoreCase))
+                return AgentType.CostManagement;
+        }
+        
+        // Exclude multi-agent scenarios (these need orchestration)
+        var requiresMultipleAgents = 
+            lowerMessage.Contains("and then") ||
+            lowerMessage.Contains("also") ||
+            lowerMessage.Contains("actually provision") ||  // Provision = all 5 agents
+            lowerMessage.Contains("make it live") ||
+            lowerMessage.Contains("with compliance") ||     // "X with compliance" = 2 agents
+            lowerMessage.Contains("and cost");              // "X and cost" = 2 agents
+        
+        if (requiresMultipleAgents)
+            return null;
+        
+        // COMPLIANCE AGENT - Unambiguous compliance scanning/assessment
+        if ((lowerMessage.Contains("check") || lowerMessage.Contains("scan") || lowerMessage.Contains("assess") || 
+             lowerMessage.Contains("audit") || lowerMessage.Contains("validate")) &&
+            (lowerMessage.Contains("compliance") || lowerMessage.Contains("nist") || lowerMessage.Contains("fedramp") ||
+             lowerMessage.Contains("security") || lowerMessage.Contains("ato")))
+        {
+            return AgentType.Compliance;
+        }
+        
+        // INFRASTRUCTURE AGENT - Unambiguous template generation (NOT provisioning)
+        if ((lowerMessage.Contains("generate") || lowerMessage.Contains("create") || lowerMessage.Contains("deploy")) &&
+            (lowerMessage.Contains("template") || lowerMessage.Contains("bicep") || lowerMessage.Contains("terraform")) &&
+            !lowerMessage.Contains("provision"))
+        {
+            return AgentType.Infrastructure;
+        }
+        
+        // COST MANAGEMENT AGENT - Unambiguous cost analysis
+        if ((lowerMessage.Contains("cost") || lowerMessage.Contains("price") || lowerMessage.Contains("budget") || 
+             lowerMessage.Contains("spend")) &&
+            (lowerMessage.Contains("estimate") || lowerMessage.Contains("analyze") || lowerMessage.Contains("optimize") ||
+             lowerMessage.Contains("how much")))
+        {
+            return AgentType.CostManagement;
+        }
+        
+        // DISCOVERY AGENT - Unambiguous resource discovery
+        if ((lowerMessage.Contains("list") || lowerMessage.Contains("find") || lowerMessage.Contains("show") || 
+             lowerMessage.Contains("discover") || lowerMessage.Contains("inventory")) &&
+            (lowerMessage.Contains("resource") || lowerMessage.Contains("vm") || lowerMessage.Contains("storage") ||
+             lowerMessage.Contains("subscription") || lowerMessage.Contains("cluster")))
+        {
+            return AgentType.Discovery;
+        }
+        
+        // ENVIRONMENT AGENT - Unambiguous environment operations
+        if ((lowerMessage.Contains("clone") || lowerMessage.Contains("copy") || lowerMessage.Contains("duplicate")) &&
+            lowerMessage.Contains("environment"))
+        {
+            return AgentType.Environment;
+        }
+        
+        // ONBOARDING AGENT - Unambiguous mission onboarding
+        if ((lowerMessage.Contains("onboard") || lowerMessage.Contains("setup mission") || 
+             lowerMessage.Contains("new mission")) &&
+            !lowerMessage.Contains("infrastructure"))
+        {
+            return AgentType.Onboarding;
+        }
+        
+        // No clear single-agent match - use orchestrator for planning
+        return null;
     }
 
     // DTO for JSON deserialization

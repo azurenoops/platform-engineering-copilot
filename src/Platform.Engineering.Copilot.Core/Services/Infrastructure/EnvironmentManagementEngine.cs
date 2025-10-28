@@ -1,20 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Models.EnvironmentManagement;
 using Azure;
-using Azure.Core;
-using Azure.Identity;
-using Azure.ResourceManager;
-using Azure;
-using Azure.Core;
-using Azure.Identity;
-using Azure.ResourceManager;
 
 namespace Platform.Engineering.Copilot.Core.Services.Infrastructure
 {
@@ -115,7 +103,9 @@ namespace Platform.Engineering.Copilot.Core.Services.Infrastructure
                     {
                         Name = request.Name,
                         Content = request.TemplateContent ?? string.Empty,
-                        Files = request.TemplateFiles ?? new List<ServiceTemplateFile>()
+                        Files = request.TemplateFiles ?? new List<ServiceTemplateFile>(),
+                        Format = "Bicep", // Default to Bicep for inline templates (matches InfrastructureAgent output)
+                        TemplateType = "infrastructure-only" // Matches DynamicTemplateGeneratorService output
                     };
                 }
 

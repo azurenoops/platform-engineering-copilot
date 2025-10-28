@@ -124,7 +124,7 @@ The Platform Engineering Copilot is an AI-powered infrastructure provisioning an
 │  │                          Data                                 │  │
 │  │                                                               │  │
 │  │  • Entity Framework Core 9.0                                 │  │
-│  │  • EnvironmentManagementContext (20+ DbSets)                 │  │
+│  │  • PlatformEngineeringCopilotContext (20+ DbSets)                 │  │
 │  │  • Entities: OnboardingRequest, EnvironmentTemplate, etc.    │  │
 │  │  • Migrations, Seeding, Factories                            │  │
 │  │  • Supports: SQL Server, SQLite, In-Memory                   │  │
@@ -297,7 +297,7 @@ Core/
 ```
 Data/
 ├── Context/
-│   └── EnvironmentManagementContext.cs  # Main DbContext (20+ DbSets)
+│   └── PlatformEngineeringCopilotContext.cs  # Main DbContext (20+ DbSets)
 ├── Entities/                            # Database entities
 │   ├── OnboardingRequest.cs             # Complete entity (343 lines)
 │   ├── OnboardingStatus.cs              # Enum (Draft → Completed)
@@ -497,7 +497,7 @@ public enum OnboardingStatus
      │ Saves entity
      ▼
 ┌────────────────────────────────────────────────────────────────┐
-│  Data.Context.EnvironmentManagementContext                     │
+│  Data.Context.PlatformEngineeringCopilotContext                     │
 │  • Persists OnboardingRequest to database                      │
 │  • Triggers audit logging                                      │
 └────┬───────────────────────────────────────────────────────────┘
@@ -928,7 +928,7 @@ public async Task<bool> DeleteResourceGroupAsync(
    }
    ```
 
-2. **Add DbSet** to `EnvironmentManagementContext`
+2. **Add DbSet** to `PlatformEngineeringCopilotContext`
    ```csharp
    public DbSet<MyEntity> MyEntities { get; set; }
    ```
