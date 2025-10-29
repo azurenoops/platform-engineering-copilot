@@ -1,8 +1,9 @@
 # Development Guide
 
-**Last Updated:** January 17, 2025
+**Last Updated:** October 29, 2025  
+**Version:** 2.1
 
-This comprehensive guide covers the architecture, development setup, contribution guidelines, and API documentation for the Platform Engineering Copilot.
+This comprehensive guide covers the MCP-centric architecture, development setup, contribution guidelines, and API documentation for the Platform Engineering Copilot.
 
 ## 📋 Table of Contents
 
