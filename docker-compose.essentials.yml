@@ -1,0 +1,115 @@
+# Docker Compose - Essentials Only (MCP Server)
+# This configuration includes only the MCP Server and SQL Server
+# Use this for minimal deployments or when connecting AI clients via stdio mode
+
+version: '3.8'
+
+services:
+  # SQL Server Database
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: plaform-engineering-copilot-sqlserver
+    hostname: sqlserver
+    restart: unless-stopped
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=${SA_PASSWORD:-SupervisorDB123!}
+      - MSSQL_PID=Developer
+      - MSSQL_TCP_PORT=1433
+    ports:
+      - "1433:1433"
+    volumes:
+      - plaform-engineering-copilot-sqlserver-data:/var/opt/mssql
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+    networks:
+      - plaform-engineering-copilot-network
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${SA_PASSWORD}" -Q "SELECT 1" -C || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # MCP Server (Multi-Agent Orchestrator)
+  platform-mcp:
+    build:
+      context: .
+      dockerfile: src/Platform.Engineering.Copilot.Mcp/Dockerfile
+      target: final
+    container_name: plaform-engineering-copilot-mcp
+    hostname: platform-mcp
+    restart: unless-stopped
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://0.0.0.0:5100
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=McpDb;User=sa;Password=$${SA_PASSWORD:-SupervisorDB123!};TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
+      
+      # Azure Configuration
+      - Gateway__Azure__SubscriptionId=${AZURE_SUBSCRIPTION_ID}
+      - Gateway__Azure__TenantId=${AZURE_TENANT_ID}
+      - Gateway__Azure__CloudEnvironment=${AZURE_CLOUD_ENVIRONMENT:-AzureGovernment}
+      - Gateway__Azure__UseManagedIdentity=${AZURE_USE_MANAGED_IDENTITY:-false}
+      - Gateway__Azure__Enabled=${AZURE_ENABLED:-true}
+      
+      # Azure OpenAI Configuration
+      - Gateway__AzureOpenAI__ApiKey=${AZURE_OPENAI_API_KEY}
+      - Gateway__AzureOpenAI__Endpoint=${AZURE_OPENAI_ENDPOINT:-https://mcp-ai.openai.azure.us/}
+      - Gateway__AzureOpenAI__DeploymentName=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+      - Gateway__AzureOpenAI__ChatDeployment=${AZURE_OPENAI_CHAT_DEPLOYMENT:-gpt-4o}
+      - Gateway__AzureOpenAI__EmbeddingDeployment=${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:-text-embedding-ada-002}
+      
+      # NIST Controls Configuration
+      - NistControls__BaseUrl=${NIST_CONTROLS_BASE_URL:-https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json}
+      - NistControls__TimeoutSeconds=${NIST_CONTROLS_TIMEOUT:-60}
+      - NistControls__CacheDurationHours=${NIST_CONTROLS_CACHE_DURATION:-24}
+      - NistControls__UseOfflineFallback=${NIST_CONTROLS_OFFLINE_FALLBACK:-true}
+      
+      # GitHub Configuration (Optional)
+      - Gateway__GitHub__AccessToken=${GITHUB_TOKEN}
+      - Gateway__GitHub__ApiBaseUrl=${GITHUB_API_BASE_URL:-https://api.github.com}
+      - Gateway__GitHub__DefaultOwner=${GITHUB_DEFAULT_OWNER}
+      - Gateway__GitHub__Enabled=${GITHUB_ENABLED:-true}
+      
+      # Email Notifications (Azure Communication Services)
+      - EmailNotifications__ConnectionString=${EMAIL_CONNECTION_STRING}
+      - EmailNotifications__SenderEmail=${EMAIL_SENDER_EMAIL}
+      - EmailNotifications__SenderName=${EMAIL_SENDER_NAME}
+      - EmailNotifications__EnableNotifications=${EMAIL_ENABLE_NOTIFICATIONS:-true}
+      - EmailNotifications__MockMode=${EMAIL_MOCK_MODE:-false}
+      
+      # Slack Notifications
+      - SlackNotifications__WebhookUrl=${SLACK_WEBHOOK_URL}
+      - SlackNotifications__EnableNotifications=${SLACK_ENABLE_NOTIFICATIONS:-true}
+      - SlackNotifications__ChannelName=${SLACK_CHANNEL_NAME}
+      - SlackNotifications__BotUsername=${SLACK_BOT_USERNAME}
+      
+      # Teams Notifications
+      - TeamsNotifications__WebhookUrl=${TEAMS_WEBHOOK_URL}
+      - TeamsNotifications__EnableNotifications=${TEAMS_ENABLE_NOTIFICATIONS:-false}
+    ports:
+      - "5100:5100"
+    volumes:
+      - plaform-engineering-copilot-logs:/app/logs
+    networks:
+      - plaform-engineering-copilot-network
+    healthcheck:
+      test: curl -f http://localhost:5100/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    command: ["dotnet", "Platform.Engineering.Copilot.Mcp.dll", "--http"]
+
+volumes:
+  plaform-engineering-copilot-sqlserver-data:
+    driver: local
+  plaform-engineering-copilot-logs:
+    driver: local
+
+networks:
+  plaform-engineering-copilot-network:
+    driver: bridge
+    name: plaform-engineering-copilot-network

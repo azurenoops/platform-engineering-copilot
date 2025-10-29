@@ -465,9 +465,25 @@ dotnet run --project src/Platform.Engineering.Copilot.API
 ```
 
 ### Docker Compose
+
+**Multiple configurations available for different deployment scenarios:**
+
 ```bash
-docker-compose -f docker-compose.dev.yml up -d
+# MCP Server only (essentials)
+docker-compose -f docker-compose.essentials.yml up -d
+
+# All services (default)
+docker-compose up -d
+
+# Development with hot reload
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+# Production with scaling
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
+
+**📖 See [DOCKER-COMPOSE-GUIDE.md](./DOCKER-COMPOSE-GUIDE.md) for configuration details**  
+**📖 See [DOCKER.md](./DOCKER.md) for comprehensive Docker documentation**
 
 ### Kubernetes
 ```bash

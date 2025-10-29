@@ -1043,8 +1043,6 @@ Predict my scaling needs for tomorrow, then optimize my auto-scaling rules to ha
 
 #### 🛡️ Compliance-Aware Template Generation Tests
 
-#### 🛡️ Compliance-Aware Template Generation Tests
-
 **Test 1.24: Compliance - FedRAMP High AKS**
 ```
 I need to deploy an AKS cluster that meets FedRAMP High compliance requirements. Can you generate the Bicep template with all necessary controls?

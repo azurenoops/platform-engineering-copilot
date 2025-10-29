@@ -4,7 +4,7 @@
 
 The Platform Engineering Copilot application is containerized using Docker with separate containers for each service:
 
-- **platform-api** (Port 7001): Main API service
+- **platform-mcp** (Port 5100): MCP Server - Multi-Agent Orchestrator (Primary Service)
 - **platform-chat** (Port 5001): Chat interface service
 - **admin-api** (Port 5002): Admin API service
 - **admin-client** (Port 5003): Admin client interface
@@ -15,44 +15,89 @@ The Platform Engineering Copilot application is containerized using Docker with 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    Docker Network                        │
-│                  (supervisor-network)                    │
+│          (plaform-engineering-copilot-network)           │
 │                                                          │
+│  ┌──────────────────────────────────────────┐           │
+│  │         MCP Server (Primary)             │           │
+│  │            :5100                         │           │
+│  │  Multi-Agent Orchestrator:               │           │
+│  │  - Infrastructure Agent                  │           │
+│  │  - Cost Optimization Agent               │           │
+│  │  - Compliance (RMF/NIST) Agent          │           │
+│  │  - Security Agent                        │           │
+│  │  - Document Agent                        │           │
+│  │  - ATO Preparation Agent                 │           │
+│  └────────┬─────────────────────────────────┘           │
+│           │                                              │
+│           │ HTTP (5100)                                  │
+│           ▼                                              │
 │  ┌──────────────┐    ┌──────────────┐                  │
-│  │ Platform API │    │ Platform Chat│                  │
-│  │   :7001      │◄───┤   :5001      │                  │
-│  └──────┬───────┘    └──────┬───────┘                  │
-│         │                   │                           │
-│         │                   │                           │
-│         ▼                   ▼                           │
-│  ┌─────────────────────────────┐                       │
-│  │      SQL Server 2022         │                       │
-│  │         :1433                │                       │
-│  │  - SupervisorPlatformDb      │                       │
-│  │  - SupervisorPlatformChatDb  │                       │
-│  │  - SupervisorAdminDb         │                       │
-│  └─────────────────────────────┘                       │
-│         ▲                   ▲                           │
-│         │                   │                           │
-│  ┌──────┴───────┐    ┌──────┴───────┐                  │
-│  │  Admin API   │    │ Admin Client │                  │
-│  │   :5002      │────►│   :5003      │                  │
+│  │Platform Chat │    │ AI Clients   │                  │
+│  │   :5001      │    │ (stdio mode) │                  │
 │  └──────────────┘    └──────────────┘                  │
+│                                                          │
+│         ┌────────────────┐                              │
+│         │ SQL Server 2022│                              │
+│         │     :1433      │                              │
+│         │ - McpDb        │                              │
+│         │ - ChatDb       │                              │
+│         │ - AdminDb      │                              │
+│         └────────────────┘                              │
+│         ▲           ▲                                    │
+│  ┌──────┴───────┐  │                                    │
+│  │  Admin API   │  │                                    │
+│  │   :5002      │──┘                                    │
+│  └──────────────┘                                       │
+│         ▲                                                │
+│  ┌──────┴───────┐                                       │
+│  │ Admin Client │                                       │
+│  │   :5003      │                                       │
+│  └──────────────┘                                       │
 └─────────────────────────────────────────────────────────┘
 ```
 
+## Docker Compose Files
+
+### docker-compose.yml
+Main configuration file with all services (MCP Server, Chat, Admin API, Admin Client, SQL Server, optional Nginx and Redis).
+
+### docker-compose.essentials.yml
+Minimal configuration with only the MCP Server and its dependencies (SQL Server). Use this for:
+- MCP Server development with AI clients (GitHub Copilot, Claude Desktop)
+- Minimal resource usage
+- Testing MCP server functionality in isolation
+
+### docker-compose.dev.yml
+Development overrides with hot reload for all services.
+
+### docker-compose.prod.yml
+Production overrides with scaling, resource limits, and production-ready configuration.
+
 ## Services
 
-### 1. Platform API (Main Service)
-- **Port**: 7001
-- **Dockerfile**: `src/Platform.Engineering.Copilot.API/Dockerfile`
-- **Database**: `SupervisorPlatformDb`
-- **Purpose**: Core platform infrastructure provisioning and management
+### 1. MCP Server (Primary Service)
+- **Port**: 5100 (HTTP mode)
+- **Dockerfile**: `src/Platform.Engineering.Copilot.Mcp/Dockerfile`
+- **Database**: `McpDb`
+- **Purpose**: Multi-agent orchestrator with 6 specialized agents
+- **Modes**:
+  - **HTTP Mode** (default in Docker): Accessible via HTTP for Chat web app
+  - **stdio Mode**: For AI clients like GitHub Copilot and Claude Desktop
+
+**Agents:**
+1. **Infrastructure Agent**: Azure resource provisioning and management
+2. **Cost Optimization Agent**: Cost analysis, budgets, and recommendations
+3. **Compliance Agent**: RMF/NIST 800-53 compliance and gap analysis
+4. **Security Agent**: Security scanning and vulnerability assessment
+5. **Document Agent**: ATO documentation generation and management
+6. **ATO Preparation Agent**: ATO package orchestration and submission
 
 ### 2. Platform Chat
 - **Port**: 5001
 - **Dockerfile**: `src/Platform.Engineering.Copilot.Chat/Dockerfile`
-- **Database**: `SupervisorPlatformChatDb`
-- **Purpose**: Chat interface for natural language infrastructure management
+- **Database**: `ChatDb`
+- **Purpose**: Web-based chat interface for natural language infrastructure management
+- **Connects to**: MCP Server via HTTP (`http://platform-mcp:5100`)
 - **Requirements**: Node.js 20.x (included in Docker image for frontend build)
 
 ### 3. Admin API
@@ -71,13 +116,43 @@ The Platform Engineering Copilot application is containerized using Docker with 
 - **Port**: 1433
 - **Image**: `mcr.microsoft.com/mssql/server:2022-latest`
 - **Databases**: 
-  - `SupervisorPlatformDb` (Platform API)
-  - `SupervisorPlatformChatDb` (Chat Service)
-  - `SupervisorAdminDb` (Admin API)
+  - `McpDb` (MCP Server)
+  - `ChatDb` (Chat Service)
+  - `AdminDb` (Admin API)
+
+### 6. Optional Services
+
+#### Nginx (Reverse Proxy)
+- **Ports**: 80, 443
+- **Profile**: `proxy`
+- **Purpose**: Reverse proxy for production deployments
+
+#### Redis (Cache)
+- **Port**: 6379
+- **Profile**: `cache`
+- **Purpose**: Distributed caching and session management
 
 ## Quick Start
 
-### Development Environment
+### MCP Server Only (Essentials)
+
+```bash
+# Start just the MCP Server and SQL Server
+docker-compose -f docker-compose.essentials.yml up -d
+
+# View logs
+docker-compose -f docker-compose.essentials.yml logs -f
+
+# Stop
+docker-compose -f docker-compose.essentials.yml down
+```
+
+**Use this when:**
+- Connecting with GitHub Copilot or Claude Desktop (stdio mode)
+- Testing MCP server functionality in isolation
+- Minimal resource usage needed
+
+### All Services - Development Environment
 
 ```bash
 # Start all services with hot reload
@@ -90,14 +165,14 @@ docker-compose logs -f
 docker-compose down
 ```
 
-### Production Environment
+### All Services - Production Environment
 
 ```bash
 # Start all services in production mode
 docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 # View logs
-docker-compose logs -f platform-api
+docker-compose logs -f platform-mcp
 
 # Stop all services
 docker-compose down
@@ -213,9 +288,9 @@ Server=sqlserver,1433;Database={DatabaseName};User=sa;Password=SupervisorDB123!;
 ```
 
 ### Databases:
-- **SupervisorPlatformDb**: Platform API data
-- **SupervisorPlatformChatDb**: Chat history and sessions
-- **SupervisorAdminDb**: Admin and configuration data
+- **McpDb**: MCP Server data (agents, sessions, artifacts)
+- **ChatDb**: Chat history and sessions
+- **AdminDb**: Admin and configuration data
 
 ### Database Initialization
 Databases are automatically created on first startup via `scripts/init-databases.sql`.
@@ -223,8 +298,8 @@ Databases are automatically created on first startup via `scripts/init-databases
 ## Building Individual Services
 
 ```bash
-# Build Platform API
-docker-compose build platform-api --no-cache
+# Build MCP Server
+docker-compose build platform-mcp --no-cache
 
 # Build Platform Chat
 docker-compose build platform-chat --no-cache
@@ -241,14 +316,14 @@ docker-compose build --no-cache
 
 ## Volumes
 
-- **sqlserver-data**: Persistent SQL Server data
-- **supervisor-logs**: Application logs from all services
+- **plaform-engineering-copilot-sqlserver-data**: Persistent SQL Server data
+- **plaform-engineering-copilot-logs**: Application logs from all services
 
 ## Health Checks
 
 All services include health checks:
 
-- **Platform API**: `http://localhost:7001/health`
+- **MCP Server**: `http://localhost:5100/health`
 - **Platform Chat**: `http://localhost:5001/health`
 - **Admin API**: `http://localhost:5002/health`
 - **Admin Client**: `http://localhost:5003/health`
@@ -279,18 +354,18 @@ docker-compose ps
 docker-compose logs -f
 
 # Specific service
-docker-compose logs -f platform-api
+docker-compose logs -f platform-mcp
 docker-compose logs -f sqlserver
 ```
 
 ### Restart a Service
 ```bash
-docker-compose restart platform-api
+docker-compose restart platform-mcp
 ```
 
 ### Rebuild and Restart
 ```bash
-docker-compose up -d --build platform-api
+docker-compose up -d --build platform-mcp
 ```
 
 ### Access SQL Server
@@ -313,17 +388,19 @@ docker-compose up -d --build
 
 ## Network Configuration
 
-All services run on the `supervisor-network` bridge network, allowing them to communicate using service names as hostnames.
+All services run on the `plaform-engineering-copilot-network` bridge network, allowing them to communicate using service names as hostnames.
 
 ## Port Mapping
 
-| Service        | Container Port | Host Port |
-|---------------|----------------|-----------|
-| Platform API  | 7001          | 7001      |
-| Platform Chat | 5001          | 5001      |
-| Admin API     | 5002          | 5002      |
-| Admin Client  | 5003          | 5003      |
-| SQL Server    | 1433          | 1433      |
+| Service        | Container Port | Host Port | Mode    |
+|---------------|----------------|-----------|---------|
+| MCP Server    | 5100          | 5100      | HTTP    |
+| Platform Chat | 5001          | 5001      | HTTP    |
+| Admin API     | 5002          | 5002      | HTTP    |
+| Admin Client  | 5003          | 5003      | HTTP    |
+| SQL Server    | 1433          | 1433      | TCP     |
+| Nginx         | 80/443        | 80/443    | HTTP(S) |
+| Redis         | 6379          | 6379      | TCP     |
 
 ## Development vs Production
 
@@ -348,11 +425,49 @@ All services run on the `supervisor-network` bridge network, allowing them to co
 4. **Configure firewall rules** appropriately
 5. **Use managed identities** where possible
 
+## Connecting AI Clients to MCP Server
+
+### GitHub Copilot
+Add to `.github/copilot/config.json`:
+```json
+{
+  "mcp": {
+    "servers": {
+      "platform-engineering-copilot": {
+        "command": "docker",
+        "args": ["exec", "-i", "plaform-engineering-copilot-mcp", "dotnet", "run", "--project", "/app/Platform.Engineering.Copilot.Mcp.csproj"]
+      }
+    }
+  }
+}
+```
+
+### Claude Desktop
+Add to Claude Desktop config:
+```json
+{
+  "mcpServers": {
+    "platform-engineering-copilot": {
+      "command": "docker",
+      "args": ["exec", "-i", "plaform-engineering-copilot-mcp", "dotnet", "run", "--project", "/app/Platform.Engineering.Copilot.Mcp.csproj"]
+    }
+  }
+}
+```
+
 ## Next Steps
 
+### For MCP Server Only (Essentials)
 1. Configure your `.env` file with actual credentials
-2. Start services: `docker-compose up -d`
+2. Start MCP server: `docker-compose -f docker-compose.essentials.yml up -d`
+3. Verify MCP server is healthy: `docker-compose -f docker-compose.essentials.yml ps`
+4. Test the MCP API: `curl http://localhost:5100/health`
+5. Connect AI clients (GitHub Copilot or Claude Desktop)
+
+### For All Services
+1. Configure your `.env` file with actual credentials
+2. Start all services: `docker-compose up -d`
 3. Verify all services are healthy: `docker-compose ps`
 4. Access the admin console: `http://localhost:5003`
 5. Access the chat interface: `http://localhost:5001`
-6. Test the API: `curl http://localhost:7001/health`
+6. Test the MCP API: `curl http://localhost:5100/health`

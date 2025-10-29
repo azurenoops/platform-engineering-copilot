@@ -4,7 +4,7 @@ version: "3.9"
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 services:
-  # MCP Server (replaces platform-api)
+  # MCP Server (Multi-Agent Orchestrator)
   platform-mcp:
     build:
       context: .
@@ -15,31 +15,9 @@ services:
       - DOTNET_USE_POLLING_FILE_WATCHER=true
     volumes:
       - ./src:/src:ro  # Mount source for hot reload
-      - supervisor-logs:/app/logs
+      - plaform-engineering-copilot-logs:/app/logs
     command: >
       sh -c "dotnet watch run --project src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj -- --http"
-
-  # Platform API (DEPRECATED - legacy support only)
-  platform-api:
-    build:
-      context: .
-      dockerfile: src/Platform.Engineering.Copilot.API/Dockerfile
-      target: build  # Use build stage for hot reload
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://0.0.0.0:7001;https://0.0.0.0:7002
-      - ASPNETCORE_HTTPS_PORT=7002
-      - ASPNETCORE_Kestrel__Certificates__Default__Password=supervisor
-      - ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
-    volumes:
-      - ./src:/src:ro  # Mount source for hot reload
-      - ./https:/https:ro  # Mount SSL certificate
-      - supervisor-logs:/app/logs
-    ports:
-      - "7001:7001"
-      - "7002:7002"
-    command: >
-      sh -c "dotnet watch run --project src/Platform.Engineering.Copilot.API/Platform.Engineering.Copilot.API.csproj --urls http://0.0.0.0:7001"
 
   platform-chat:
     build:
@@ -51,9 +29,9 @@ services:
       - DOTNET_USE_POLLING_FILE_WATCHER=true
     volumes:
       - ./src/Platform.Engineering.Copilot.Chat:/src:ro  # Mount source for hot reload
-      - supervisor-logs:/app/logs
+      - plaform-engineering-copilot-logs:/app/logs
     command: >
-      sh -c "dotnet watch run --project Platform.Engineering.Copilot.Chat.App.csproj --urls http://0.0.0.0:5001"
+      sh -c "dotnet watch run --project Platform.Engineering.Copilot.Chat.csproj --urls http://0.0.0.0:5001"
 
   admin-api:
     build:
@@ -65,7 +43,7 @@ services:
       - DOTNET_USE_POLLING_FILE_WATCHER=true
     volumes:
       - ./src/Platform.Engineering.Copilot.Admin.API:/src:ro  # Mount source for hot reload
-      - supervisor-logs:/app/logs
+      - plaform-engineering-copilot-logs:/app/logs
     command: >
       sh -c "dotnet watch run --project Platform.Engineering.Copilot.Admin.API.csproj --urls http://0.0.0.0:5002"
 
@@ -79,7 +57,7 @@ services:
       - DOTNET_USE_POLLING_FILE_WATCHER=true
     volumes:
       - ./src/Platform.Engineering.Copilot.Admin.Client:/src:ro  # Mount source for hot reload
-      - supervisor-logs:/app/logs
+      - plaform-engineering-copilot-logs:/app/logs
     command: >
       sh -c "dotnet watch run --project Platform.Engineering.Copilot.Admin.Client.csproj --urls http://0.0.0.0:5003"
 

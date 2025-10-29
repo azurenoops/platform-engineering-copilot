@@ -391,8 +391,8 @@ public class ChatService : IChatService
 
             var request = new
             {
-                message = message,
-                conversationId = conversationId,
+                message,
+                conversationId,
                 context = (object?)null // Context is managed server-side
             };
 
