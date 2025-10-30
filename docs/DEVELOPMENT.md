@@ -22,163 +22,113 @@ This comprehensive guide covers the MCP-centric architecture, development setup,
 
 ### System Architecture
 
-The Platform Engineering Copilot uses a **direct integration architecture** with clean separation of concerns:
+The Platform Engineering Copilot is now an **MCP-centric platform** with dual-mode operation. The MCP Server (port 5100) orchestrates six specialized AI agents and services both web clients (HTTP) and AI clients (stdio MCP protocol).
 
 ```mermaid
 graph TB
-    subgraph "Client Layer"
-        User[Platform Engineer] --> Browser[Web Browser]
-        User --> VSCode[VS Code + Copilot]
-    end
-    
-    subgraph "Application Layer"
-        Browser --> AdminConsole[Admin Console :3001]
-        Browser --> ChatApp[Chat App :3000]
-        VSCode --> API[Platform API :7001]
-    end
-    
-    subgraph "Service Layer"
-        API --> Core[Core Services]
-        AdminConsole --> AdminAPI[Admin API :7002]
-        Core --> Azure[Azure Services]
-        Core --> Compliance[ATO Compliance]
-        Core --> Cost[Cost Management]
-    end
-    
-    subgraph "Data Layer"
-        API --> Database[(SQLite/SQL Server)]
-        API --> Cache[(Redis - Optional)]
-        API --> KeyVault[Azure Key Vault]
-    end
-    
-    subgraph "External Services"
-        Azure --> AzureGov[Azure Government]
-        Azure --> AzureCommercial[Azure Commercial]
-        Core --> AzureOpenAI[Azure OpenAI]
-    end
-```
-        Azure --> AzureGov[Azure Government]
-        Azure --> AzureCommercial[Azure Commercial]
-        Tools --> GitHub[GitHub APIs]
-        Tools --> K8s[Kubernetes APIs]
-    end
-```
+  subgraph "Client Layer"
+    ChatUI[Platform Chat :5001]
+    AdminUI[Admin Client :5003]
+    MCPClients[GitHub Copilot / Claude Desktop]
+  end
 
-### Core Components
-
-#### Platform API (`Platform.Engineering.Copilot.API`)
-- **Purpose**: Core platform services and tool execution
-- **Port**: 7001
-- **Technology**: ASP.NET Core Web API, Entity Framework Core 9.0
-- **Responsibilities**:
-  - RESTful API endpoints for infrastructure operations
-  - Semantic Kernel plugin orchestration
-  - Azure Resource Manager integration
-  - ATO compliance scanning (NIST 800-53 Rev 5)
-  - Cost analysis and optimization
-  - Natural language query processing
-
-#### Admin API (`Platform.Engineering.Copilot.Admin.API`)
-- **Purpose**: Administrative backend API
-- **Port**: 7002
-- **Technology**: ASP.NET Core Web API
-- **Responsibilities**:
-  - Template management
-  - Approval workflow administration
-  - User management
-  - Configuration management
-
-#### Admin Console (`Platform.Engineering.Copilot.Admin.Client`)
-- **Purpose**: React-based administrative UI
-- **Port**: 3001
-- **Technology**: React 18, ASP.NET Core (host)
-- **Responsibilities**:
-  - Template browsing and management
-  - Approval workflow UI
-  - System configuration
-  - User administration
-
-#### Chat App (`Platform.Engineering.Copilot.Chat`)
-- **Purpose**: Real-time chat interface for onboarding
-- **Port**: 3000
-- **Technology**: React, SignalR, ASP.NET Core
-- **Responsibilities**:
-  - Real-time conversational AI interface
-  - Onboarding workflow guidance
-  - Natural language interaction
-  - Integration with Platform API
-
-#### Core Library (`Platform.Engineering.Copilot.Core`)
-- **Purpose**: Business logic and domain services
-- **Technology**: .NET 9.0 Class Library
-- **Responsibilities**:
-  - Semantic Kernel plugins (7 plugins)
-  - Domain services (40+ services)
-  - Azure service integration
-  - Compliance engines (NIST 800-53, Azure Policy)
-  - Cost management services
-  - Infrastructure provisioning services
+  subgraph "MCP Server Layer"
+    MCP[MCP Server :5100\nHTTP + stdio]
+  end
+    ```
+    platform-engineering-copilot/
+    ├── Platform.Engineering.Copilot.sln               # Solution root
+    ├── appsettings.json                               # Shared configuration (loaded by Admin API)
+    ├── docs/                                          # Architecture, development, integration guides
+    ├── extensions/                                    # MCP extension packages (GitHub, M365)
+    ├── infra/                                         # Bicep and Terraform infrastructure modules
+    ├── scripts/                                       # Utility scripts (Docker, data seeding, tooling)
+    ├── src/
+    │   ├── Platform.Engineering.Copilot.Mcp/          # Dual-mode MCP server (stdio + HTTP bridge)
+    │   │   ├── Server/                                # Minimal API bridge for /mcp/chat
+    │   │   └── Tools/                                 # MCP tool surface backed by Semantic Kernel
+    │   ├── Platform.Engineering.Copilot.Chat/         # Chat service + React SPA host
+    │   │   ├── Controllers/                           # REST endpoints for conversations/messages
+    │   │   ├── Hubs/                                  # SignalR hubs for streaming responses
+    │   │   ├── Services/                              # Chat orchestration services
+    │   │   └── ClientApp/                             # React 18 front-end with Tailwind
+    │   ├── Platform.Engineering.Copilot.Admin.API/    # Admin REST API (Swagger-enabled)
+    │   │   ├── Controllers/                           # Template, deployment, governance endpoints
+    │   │   └── Services/                              # Business logic wiring to Core & Data
+    │   ├── Platform.Engineering.Copilot.Admin.Client/ # Admin SPA host + React client
+    │   │   ├── Controllers/                           # Razor fallback endpoints
+    │   │   └── ClientApp/                             # React 18 admin dashboard
+    │   ├── Platform.Engineering.Copilot.Core/         # Multi-agent orchestration, plugins, services
+    │   │   ├── Plugins/                               # Semantic Kernel plugins per agent domain
+    │   │   ├── Services/                              # Cost, compliance, infrastructure engines
+    │   │   └── Models/                                # Domain models shared across services
+    │   └── Platform.Engineering.Copilot.Data/         # EF Core context, migrations, seeding
+    │       ├── Context/                               # `PlatformEngineeringCopilotContext`
+    │       ├── Entities/                              # Persistent entity definitions
+    │       ├── Migrations/                            # EF Core migrations history
+    │       └── Seed/                                  # Optional data seeding helpers
+    ├── tests/
+    │   ├── Platform.Engineering.Copilot.Tests.Unit/   # xUnit + FluentAssertions unit tests
+    │   ├── Platform.Engineering.Copilot.Tests.Integration/
+    │   └── Platform.Engineering.Copilot.Tests.Manual/
+    ├── docker-compose.yml                             # Full platform deployment
+    ├── docker-compose.dev.yml                         # Hot-reload friendly developer compose file
+    ├── DOCKER.md                                      # Container orchestration documentation
+    └── README.md                                      # Project overview and quick start
+    ```
+  - Provides services for infrastructure provisioning, compliance assessments, cost analysis, security scanning, documentation automation
+  - Shared abstractions used by MCP Server, Platform Chat, and Admin services
 
 #### Data Layer (`Platform.Engineering.Copilot.Data`)
-- **Purpose**: Data access and persistence
 - **Technology**: Entity Framework Core 9.0
 - **Responsibilities**:
-  - Entity definitions (20+ entities)
-  - Database context (PlatformEngineeringCopilotContext)
-  - Migrations and seeding
-  - Supports: SQLite, SQL Server, In-Memory
+  - Hosts the consolidated `PlatformEngineeringCopilotContext` for templates, deployments, approvals, and analytics
+  - Provides migrations, seed scripts, and data access services consumed by MCP, Chat, and Admin workloads
+  - Ships with SQLite by default and can switch to SQL Server for shared environments
 
-#### MCP Server (`Platform.Engineering.Copilot.Mcp`)
-- **Purpose**: Model Context Protocol server for AI agents
-- **Technology**: .NET 9.0 Console Application
+#### Test Projects (`Platform.Engineering.Copilot.Tests.*`)
+- **Technology**: xUnit, FluentAssertions, AutoFixture
 - **Responsibilities**:
-  - MCP protocol implementation
-  - AI agent integration
-  - Tool execution for external agents
-- **Responsibilities**:
-  - Azure Government Cloud integration
-  - Authentication and authorization
-  - API rate limiting and throttling
-  - Cross-cloud service coordination
+  - Unit, integration, and manual tests covering MCP Server, agents, web applications
+  - Regression validation for agent workflows and infrastructure provisioning scenarios
 
 ### Technology Stack
 
 #### Backend
-- **.NET 9.0**: Primary framework
-- **ASP.NET Core 9.0**: Web API and hosting
-- **Entity Framework Core 9.0**: Data access layer
-- **Microsoft Semantic Kernel 1.26.0**: AI orchestration
-- **Azure SDK 1.48.0+**: Azure service integration (11+ packages)
-- **SignalR 9.0**: Real-time communication
-- **Serilog**: Structured logging
+- **.NET 9.0 / C# 12** across all services
+- **ASP.NET Core 9.0** for MCP HTTP surface and Admin API
+- **Entity Framework Core 9.0** with shared `PlatformEngineeringCopilotContext`
+- **Microsoft.SemanticKernel 1.26.0** for agent orchestration and function calling
+- **SignalR 1.1** for streaming responses to Platform Chat
+- **Serilog 4.2+** for structured logging (console, file, Application Insights)
+- **Swashbuckle 9.0.5** for Admin API Swagger documentation
 
 #### Frontend
-- **React 18**: UI framework for Admin Console and Chat App
-- **SignalR Client**: Real-time communication
-- **Axios**: HTTP client
-- **Tailwind CSS**: Styling framework
-- **Monaco Editor**: Code editor component
+- **React 18** single-page applications (Admin Client)
+- **ASP.NET Core Razor + React hybrid** for Platform Chat (SignalR streaming UI)
+- **TypeScript 4.9** for client-side typing
+- **Tailwind CSS 3.3** for utility-first styling
+- **Axios** for Admin API and MCP HTTP calls
 
 #### AI & ML
-- **Azure OpenAI GPT-4o**: Natural language understanding
-- **Semantic Kernel**: AI plugin orchestration and function calling
-- **Intent Classification**: Query routing to specialized plugins
-- **Context Management**: Conversation memory across sessions
-#### Data Storage
-- **SQLite**: Default development database (environment_management.db)
-- **SQL Server**: Production database option
-- **Redis**: Optional caching and session storage
-- **Azure Key Vault**: Secrets management
-- **Azure Blob Storage**: File storage
+- **Azure OpenAI GPT-4o** (primary LLM) with function calling enabled
+- **Semantic Kernel Plugins** (`InfrastructurePlugin`, `CompliancePlugin`, `CostManagementPlugin`, etc.)
+- **ManagedAgentRouter** for intent detection and multi-agent handoffs
+- **Context Memory Providers** for session persistence across HTTP and stdio modes
 
-#### Cloud Services
-- **Azure Government**: Primary cloud platform (management.usgovcloudapi.net)
-- **Azure Commercial**: Secondary cloud support
-- **Azure OpenAI**: AI/ML services (GPT-4o deployment)
-- **Azure Resource Manager**: Infrastructure provisioning
-- **Azure Policy Insights API**: Policy evaluation
-- **Azure Cost Management API**: Cost analysis
-- **Azure Monitor**: Observability and monitoring
+#### Data & Messaging
+- **SQLite** (default development store for environment management + chat transcripts)
+- **SQL Server 2022** (optional shared database for team environments)
+- **Redis** (optional distributed cache for chat sessions and rate limiting)
+- **Azure Key Vault** for secrets and API keys
+
+#### Cloud Integrations
+- **Azure Resource Manager SDK** (Compute, Network, Storage, AppService, ContainerService)
+- **Azure Policy Insights SDK** for compliance evaluation
+- **Azure Cost Management API** for budgeting and optimization insights
+- **Azure Monitor Query** for logs and metrics
+- **GitHub Octokit** for repository automation (ATO documentation workflows)
+- **KubernetesClient** for future multi-cloud agent operations
 
 ---
 
@@ -186,258 +136,194 @@ graph TB
 
 ### Prerequisites
 
-- **.NET 9.0 SDK** or later
-- **Visual Studio 2022** or **VS Code** with C# extension
-- **SQL Server** (LocalDB, Express, or full version)
-- **Redis** (optional, can use in-memory cache)
-- **Azure CLI** (for Azure integration)
-- **Docker Desktop** (for containerized development)
-- **Git** (version control)
+- **.NET 9.0 SDK**
+- **VS Code (C# Dev Kit)** or **Visual Studio 2022 17.11+**
+- **Node.js 18 LTS**
+- **SQL Server 2022** or Docker Desktop *(optional; SQLite is default)*
+- **Azure CLI** *(optional but recommended)*
+- **Docker Desktop**
+- **Git**
+- **Redis** *(optional cache provider for production parity)*
 
 ### 1. Environment Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/jrspinella/platform-mcp-Platform.Engineering.Copilot.git
-cd platform-mcp-supervisor
+git clone https://github.com/azurenoops/platform-engineering-copilot.git
+cd platform-engineering-copilot
 
-# Install .NET dependencies
-dotnet restore
+dotnet restore Platform.Engineering.Copilot.sln
+dotnet build Platform.Engineering.Copilot.sln
+dotnet test Platform.Engineering.Copilot.sln
 
-# Build the solution
-dotnet build
-
-# Run tests
-dotnet test
+npm install --prefix src/Platform.Engineering.Copilot.Chat/ClientApp
+npm install --prefix src/Platform.Engineering.Copilot.Admin.Client/ClientApp
 ```
 
 ### 2. Database Setup
 
-#### Using SQL Server LocalDB
+#### Environment Management Database (default: SQLite)
 
 ```bash
-# Install Entity Framework tools
-dotnet tool install --global dotnet-ef
-
-# Create and apply migrations
-cd src/Platform.Engineering.Copilot.API
-dotnet ef database update
-
-# Seed sample data (optional)
-dotnet run --seed-data
+dotnet tool update --global dotnet-ef
+dotnet ef database update \
+  --project src/Platform.Engineering.Copilot.Data/Platform.Engineering.Copilot.Data.csproj
 ```
 
-#### Using Docker SQL Server
+This creates `environment_management.db` at the repository root. Use `ConnectionStrings:DefaultConnection` in `appsettings.json` to change the location.
+
+#### Switch to SQL Server
 
 ```bash
-# Start SQL Server container
+dotnet ef database update \
+  --project src/Platform.Engineering.Copilot.Data/Platform.Engineering.Copilot.Data.csproj \
+  --connection "Server=localhost,1433;Database=PlatformCopilot;User Id=sa;Password=YourStrongPassword!;TrustServerCertificate=true"
+```
+
+Set `DatabaseProvider` to `SqlServer` in the relevant configuration file to make SQL Server the default provider.
+
+#### Chat Transcript Store
+
+`Platform.Engineering.Copilot.Chat` uses SQLite (`chat.db`) and calls `EnsureCreated()` on startup. Override `ConnectionStrings:DefaultConnection` in `src/Platform.Engineering.Copilot.Chat/appsettings.Development.json` if you want SQL Server instead.
+
+#### SQL Server via Docker
+
+```bash
 docker run -e "ACCEPT_EULA=Y" -e "SA_PASSWORD=YourStrong@Passw0rd" \
-   -p 1433:1433 --name sqlserver \
+   -p 1433:1433 --name platform-engineering-sql \
    -d mcr.microsoft.com/mssql/server:2022-latest
-
-# Update connection string in appsettings.Development.json
 ```
+
+Update `ConnectionStrings:SqlServerConnection` to `Server=localhost,1433` and rerun migrations.
 
 ### 3. Azure Setup (Optional)
 
 ```bash
-# Login to Azure (choose Government or Commercial)
-az login --environment AzureUSGovernment  # For Government
-az login                                   # For Commercial
+# Azure Government
+az cloud set --name AzureUSGovernment
+az login
 
-# Set subscription
-az account set --subscription "your-subscription-id"
+# Azure Commercial (uncomment if applicable)
+# az cloud set --name AzureCloud
+# az login
 
-# Create a service principal (for automation)
-az ad sp create-for-rbac --name "platform-supervisor-dev" \
-  --role contributor \
-  --scopes /subscriptions/your-subscription-id
-```
+dotnet clean Platform.Engineering.Copilot.sln
+dotnet restore Platform.Engineering.Copilot.sln
+dotnet build Platform.Engineering.Copilot.sln --configuration Debug
 
-### 4. Configuration
-
-#### Development Settings (`appsettings.Development.json`)
-
+# Build individual services in Release if needed
+dotnet build src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj --configuration Release
+dotnet build src/Platform.Engineering.Copilot.Chat/Platform.Engineering.Copilot.Chat.csproj --configuration Release
+dotnet build src/Platform.Engineering.Copilot.Admin.API/Platform.Engineering.Copilot.Admin.API.csproj --configuration Release
+dotnet build src/Platform.Engineering.Copilot.Admin.Client/Platform.Engineering.Copilot.Admin.Client.csproj --configuration Release
 ```json
 {
-  "Logging": {
-    "LogLevel": {
-      "Default": "Debug",
-      "Microsoft.AspNetCore": "Information",
-      "Platform.Engineering.Copilot.API": "Trace",
-      "Platform.Engineering.Copilot.Chat": "Trace"
-    }
-  },
   "ConnectionStrings": {
-    "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=PlatformSupervisor;Trusted_Connection=true;MultipleActiveResultSets=true;",
-    "Redis": "localhost:6379"
-  },
-  "Azure": {
-    "SubscriptionId": "your-subscription-id",
-    "TenantId": "your-tenant-id",
-    "CloudEnvironment": "AzureUSGovernment"
-  },
-  "PlatformServices": {
-    "ApiBaseUrl": "http://localhost:7001",
-    "EnableCaching": false,
-    "CacheExpirationMinutes": 5
-  },
-  "AzureOpenAI": {
-    "Endpoint": "your-openai-endpoint",
-    "ApiKey": "your-api-key",
-    "DeploymentName": "gpt-4o"
-  }
-}
-```
+    "DefaultConnection": "Data Source=/path/to/environment_management.db",
+    "SqlServerConnection": "Server=localhost,1433;Database=PlatformCopilot;User Id=sa;Password=YourStrongPassword!;TrustServerCertificate=true"
+dotnet build Platform.Engineering.Copilot.sln --configuration Release --no-restore
 
-#### User Secrets (for sensitive data)
+dotnet publish src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj \
+  --configuration Release \
+  --output ./publish/mcp \
+  --runtime linux-x64 \
+  --self-contained false
 
-```bash
-# Initialize user secrets
-cd src/Platform.Engineering.Copilot.API
-dotnet user-secrets init
+dotnet publish src/Platform.Engineering.Copilot.Chat/Platform.Engineering.Copilot.Chat.csproj \
+  --configuration Release \
+  --output ./publish/chat \
+  --runtime linux-x64 \
+  --self-contained false
 
-# Set secrets
-dotnet user-secrets set "Azure:SubscriptionId" "your-subscription-id"
-dotnet user-secrets set "Azure:TenantId" "your-tenant-id"
-dotnet user-secrets set "AzureOpenAI:ApiKey" "your-api-key"
-```
+dotnet publish src/Platform.Engineering.Copilot.Admin.API/Platform.Engineering.Copilot.Admin.API.csproj \
+  --configuration Release \
+  --output ./publish/admin-api \
+  --runtime linux-x64 \
+  --self-contained false
+
+# Build the Admin SPA assets before publishing the host
+npm run build --prefix src/Platform.Engineering.Copilot.Admin.Client/ClientApp
+dotnet publish src/Platform.Engineering.Copilot.Admin.Client/Platform.Engineering.Copilot.Admin.Client.csproj \
+  --configuration Release \
+  --output ./publish/admin-client \
+  --runtime linux-x64 \
+  --self-contained false
+    "AzureOpenAI": {
+      "Endpoint": "https://your-openai-endpoint/",
+      "ApiKey": "<api-key>",
+      "DeploymentName": "gpt-4o",
+      "ChatDeploymentName": "gpt-4o",
+      "EmbeddingDeploymentName": "text-embedding-ada-002"
+```dockerfile
+# src/Platform.Engineering.Copilot.Mcp/Dockerfile
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+COPY ["src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj", "src/Platform.Engineering.Copilot.Mcp/"]
+COPY ["src/Platform.Engineering.Copilot.Core/Platform.Engineering.Copilot.Core.csproj", "src/Platform.Engineering.Copilot.Core/"]
+RUN dotnet restore "src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj"
+
+COPY . .
+WORKDIR "/src/src/Platform.Engineering.Copilot.Mcp"
+RUN dotnet publish "Platform.Engineering.Copilot.Mcp.csproj" -c Release -o /app/publish
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
+WORKDIR /app
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "Platform.Engineering.Copilot.Mcp.dll", "--http"]
+
+> Keep secrets outside source control. Use environment variables, `.env` (for Docker), or [user secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets).
+
+#### User Secrets (optional)
+
+docker build -t platform-copilot-mcp:latest -f src/Platform.Engineering.Copilot.Mcp/Dockerfile .
+docker build -t platform-copilot-chat:latest -f src/Platform.Engineering.Copilot.Chat/Dockerfile .
+docker build -t platform-copilot-admin-api:latest -f src/Platform.Engineering.Copilot.Admin.API/Dockerfile .
+docker build -t platform-copilot-admin-client:latest -f src/Platform.Engineering.Copilot.Admin.Client/Dockerfile .
 
 ### 5. Running the Application
 
-#### Using .NET CLI
+#### MCP Server (dual mode)
 
 ```bash
-# Terminal 1: Start API Server
-cd src/Platform.Engineering.Copilot.API
-dotnet run  # http://localhost:7001
+# stdio mode for GitHub Copilot / Claude Desktop
+dotnet run --project src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj
 
-# Terminal 2: Start Chat Service
-cd src/Platform.Engineering.Copilot.Chat
-dotnet run  # http://localhost:5000
+# HTTP bridge for web clients (default port 5100)
+    <TargetFramework>net9.0</TargetFramework>
 ```
 
-#### Using Visual Studio
-
-1. Set multiple startup projects:
-   - Right-click solution → Properties
-   - Select "Multiple startup projects"
-   - Set both `Platform.Engineering.Copilot.API` and `Platform.Engineering.Copilot.Chat` to "Start"
-
-2. Press F5 to run both projects
-
-#### Using Docker Compose (Development)
+#### Platform Chat (REST + SignalR)
 
 ```bash
-# Start all services
-docker-compose -f docker-compose.dev.yml up -d
+dotnet run --project src/Platform.Engineering.Copilot.Chat/Platform.Engineering.Copilot.Chat.csproj --urls http://0.0.0.0:5001
+npm start --prefix src/Platform.Engineering.Copilot.Chat/ClientApp
+```
 
-# View logs
-docker-compose logs -f platform-api
-docker-compose logs -f chat-service
+Run `npm run build --prefix src/Platform.Engineering.Copilot.Chat/ClientApp` if you prefer serving static assets instead of the React dev server.
+
+#### Admin API & Admin Client
+
+```bash
+dotnet run --project src/Platform.Engineering.Copilot.Admin.API/Platform.Engineering.Copilot.Admin.API.csproj --urls http://0.0.0.0:5002
+dotnet run --project src/Platform.Engineering.Copilot.Admin.Client/Platform.Engineering.Copilot.Admin.Client.csproj --urls http://0.0.0.0:5003
+npm start --prefix src/Platform.Engineering.Copilot.Admin.Client/ClientApp
+```
+
+#### IDE Tooling
+
+- Visual Studio: configure multiple startup projects (MCP HTTP, Chat, Admin API, Admin Client).
+- VS Code: define a compound launch configuration targeting the same projects.
+
+#### Docker Compose (Development)
+
+```bash
+docker-compose -f docker-compose.dev.yml up --build
+docker-compose logs -f platform-mcp
 ```
 
 ---
 
 ## 📁 Project Structure
-
-```
-platform-mcp-supervisor/
-├── src/
-│   ├── Platform.Engineering.Copilot.Core/                    # Shared contracts and models
-│   │   ├── Contracts/                      # Interfaces and contracts
-│   │   │   ├── IAzureGatewayService.cs
-│   │   │   ├── IComplianceService.cs
-│   │   │   └── IPlatformToolService.cs
-│   │   ├── Extensions/                     # Extension methods
-│   │   ├── Models/                         # Data models and DTOs
-│   │   └── Utilities/                      # Helper classes
-│   │
-│   ├── Platform.Engineering.Copilot.API/           # Main API server
-│   │   ├── Controllers/                    # API controllers
-│   │   │   ├── ToolsController.cs         # Tool execution endpoint
-│   │   │   ├── HealthController.cs        # Health checks
-│   │   │   └── ChatController.cs          # Chat integration
-│   │   ├── Services/                       # Application services
-│   │   │   ├── PlatformToolService.cs     # Tool orchestration
-│   │   │   ├── AzureGatewayService.cs     # Azure integration
-│   │   │   └── ComplianceService.cs       # ATO compliance
-│   │   ├── Tools/                          # Individual tool implementations
-│   │   │   ├── AzureDiscoveryTool.cs
-│   │   │   ├── AtoComplianceTool.cs
-│   │   │   ├── CostAnalysisTool.cs
-│   │   │   └── BicepGeneratorTool.cs
-│   │   ├── Data/                           # Entity Framework context
-│   │   └── Program.cs                      # Application startup
-│   │
-│   ├── Platform.Engineering.Copilot.Chat/          # Chat service with SignalR
-│   │   ├── Hubs/                          # SignalR hubs
-│   │   │   └── ChatHub.cs                 # Main chat hub
-│   │   ├── Services/                       # Chat services
-│   │   │   ├── McpCommandParser.cs        # MCP command parsing
-│   │   │   ├── McpIntegrationService.cs   # MCP tool execution
-│   │   │   └── AzureOpenAiService.cs      # AI integration
-│   │   ├── wwwroot/                        # Static web assets
-│   │   │   ├── js/chat.js                 # Chat client JavaScript
-│   │   │   └── css/site.css               # Styles
-│   │   ├── Views/                          # Razor views
-│   │   └── Program.cs                      # Application startup
-│   │
-│   ├── Platform.Engineering.Copilot.Gateway/                # Multi-cloud gateway
-│   │   ├── Services/                       # Gateway services
-│   │   │   ├── AzureGovernmentService.cs
-│   │   │   ├── AzureCommercialService.cs
-│   │   │   └── AuthenticationService.cs
-│   │   └── Models/                         # Gateway models
-│   │
-│   ├── Platform.Engineering.Copilot.Data/                   # Data access layer
-│   │   ├── Entities/                       # Entity models
-│   │   ├── Configurations/                # EF configurations
-│   │   ├── Migrations/                     # Database migrations
-│   │   └── PlatformDbContext.cs           # Main DB context
-│   │
-│   └── Platform.Engineering.Copilot.Extensions/             # Tool extensions
-│       ├── Azure/                          # Azure-specific tools
-│       ├── Kubernetes/                     # K8s tools
-│       ├── Security/                       # Security tools
-│       └── Compliance/                     # Compliance tools
-│
-├── tests/
-│   ├── Platform.Engineering.Copilot.Tests.Unit/             # Unit tests
-│   │   ├── Services/                       # Service tests
-│   │   ├── Controllers/                    # Controller tests
-│   │   └── Tools/                          # Tool tests
-│   └── Platform.Engineering.Copilot.Tests.Integration/      # Integration tests
-│       ├── API/                            # API integration tests
-│       └── EndToEnd/                       # E2E tests
-│
-├── infra/                                 # Infrastructure as Code
-│   ├── bicep/                             # Azure Bicep templates
-│   │   ├── main.bicep                     # Main infrastructure
-│   │   ├── modules/                       # Reusable modules
-│   │   └── parameters/                    # Environment parameters
-│   └── terraform/                         # Terraform alternatives
-│
-├── scripts/                               # Build and deployment scripts
-│   ├── build.sh                          # Build script
-│   ├── deploy.sh                          # Deployment script
-│   └── docker-manage.sh                   # Docker management
-│
-├── .github/                               # GitHub workflows
-│   └── workflows/
-│       ├── ci.yml                         # Continuous integration
-│       └── cd.yml                         # Continuous deployment
-│
-├── docker-compose.yml                     # Production Docker Compose
-├── docker-compose.dev.yml                # Development Docker Compose
-├── Dockerfile.api                         # API server Dockerfile
-├── Dockerfile.chat                        # Chat service Dockerfile
-└── README.md                              # Project overview
-```
-
----
-
-## 🤝 Contributing Guidelines
 
 ### Getting Started
 
@@ -469,45 +355,74 @@ Examples:
 #### C# Code Style
 
 ```csharp
-// Use PascalCase for public members
-public class PlatformToolService : IPlatformToolService
+// Prefer PascalCase for public members and methods
+public sealed class EnvironmentProvisioningCoordinator : IEnvironmentProvisioningCoordinator
 {
-    // Use camelCase for private fields with underscore prefix
-    private readonly IAzureGatewayService _azureGateway;
-    
-    // Use PascalCase for properties
-    public string ServiceName { get; set; }
-    
-    // Use async/await pattern for asynchronous operations
-    public async Task<ToolResult> ExecuteToolAsync(string toolName, Dictionary<string, object> parameters)
+  // Use _camelCase for private readonly dependencies
+  private readonly IInfrastructureProvisioningService _provisioningService;
+  private readonly ITemplateStorageService _templateStorage;
+  private readonly ILogger<EnvironmentProvisioningCoordinator> _logger;
+
+  public EnvironmentProvisioningCoordinator(
+    IInfrastructureProvisioningService provisioningService,
+    ITemplateStorageService templateStorage,
+    ILogger<EnvironmentProvisioningCoordinator> logger)
+  {
+    _provisioningService = provisioningService;
+    _templateStorage = templateStorage;
+    _logger = logger;
+  }
+
+  // Always use async/await for asynchronous operations
+  public async Task<EnvironmentProvisioningResult> ProvisionAsync(
+    EnvironmentProvisioningRequest request,
+    CancellationToken cancellationToken = default)
+  {
+    ArgumentNullException.ThrowIfNull(request);
+
+    var template = await _templateStorage.GetTemplateByIdAsync(
+      request.TemplateId,
+      cancellationToken);
+
+    if (template is null)
     {
-        // Use var when type is obvious
-        var result = await _azureCore.DiscoverResourcesAsync(parameters);
-        
-        // Use explicit types when not obvious
-        IEnumerable<AzureResource> resources = result.Resources;
-        
-        return new ToolResult
-        {
-            Success = true,
-            Data = resources
-        };
+      return EnvironmentProvisioningResult.Fail("Template not found.");
     }
+
+    var deploymentResult = await _provisioningService.DeployAsync(
+      template,
+      request.Parameters,
+      cancellationToken);
+
+    _logger.LogInformation("Provisioned environment {EnvironmentName} in resource group {ResourceGroup}",
+      deploymentResult.EnvironmentName,
+      deploymentResult.ResourceGroup);
+
+    return EnvironmentProvisioningResult.Success(deploymentResult);
+  }
 }
 ```
 
 #### Configuration Standards
 
 ```json
-// Use PascalCase for configuration keys
+// Prefer PascalCase for section names and camelCase for individual keys
 {
-  "Azure": {
-    "SubscriptionId": "value",
-    "CloudEnvironment": "AzureUSGovernment"
+  "Gateway": {
+    "Azure": {
+      "SubscriptionId": "<subscription-id>",
+      "TenantId": "<tenant-id>",
+      "CloudEnvironment": "AzureUSGovernment",
+      "UseManagedIdentity": false
+    },
+    "AzureOpenAI": {
+      "Endpoint": "https://your-endpoint.openai.azure.us/",
+      "DeploymentName": "gpt-4o"
+    }
   },
-  "PlatformServices": {
-    "ApiBaseUrl": "http://localhost:7001",
-    "EnableCaching": true
+  "McpServer": {
+    "HttpPort": 5100,
+    "EnableAuditLogging": true
   }
 }
 ```
@@ -517,57 +432,72 @@ public class PlatformToolService : IPlatformToolService
 #### Unit Tests
 
 ```csharp
-[TestClass]
-public class PlatformToolServiceTests
+public class EnvironmentManagementEngineTests
 {
-    [TestMethod]
-    public async Task ExecuteToolAsync_WithValidParameters_ReturnsSuccess()
+  private readonly EnvironmentManagementEngine _engine;
+  private readonly Mock<IAzureResourceService> _azureResourceService = new();
+  private readonly Mock<IDeploymentOrchestrationService> _orchestrator = new();
+
+  public EnvironmentManagementEngineTests()
+  {
+    _engine = new EnvironmentManagementEngine(
+      Mock.Of<ILogger<EnvironmentManagementEngine>>(),
+      _orchestrator.Object,
+      _azureResourceService.Object,
+      Mock.Of<IGitHubServices>(),
+      Mock.Of<ITemplateStorageService>(),
+      Mock.Of<IDynamicTemplateGenerator>());
+  }
+
+  [Fact]
+  public async Task ProvisionAsync_WithMissingResourceGroup_ReturnsFailure()
+  {
+    // Arrange
+    var request = new EnvironmentCreationRequest
     {
-        // Arrange
-        var mockAzureGateway = new Mock<IAzureGatewayService>();
-        var service = new PlatformToolService(mockAzureCore.Object);
-        
-        // Act
-        var result = await service.ExecuteToolAsync("azure_discover_resources", 
-            new Dictionary<string, object> { ["subscription_id"] = "test-id" });
-        
-        // Assert
-        Assert.IsTrue(result.Success);
-        Assert.IsNotNull(result.Data);
-    }
+      Name = "env-dev",
+      ResourceGroup = string.Empty,
+      Type = EnvironmentType.AKS,
+      Location = "usgovvirginia"
+    };
+
+    // Act
+    var result = await _engine.CreateEnvironmentAsync(request);
+
+    // Assert
+    result.Success.Should().BeFalse();
+    result.ErrorMessage.Should().Contain("Resource group is required");
+  }
 }
 ```
 
 #### Integration Tests
 
 ```csharp
-[TestClass]
-public class ToolsControllerIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public class ConversationsControllerTests : IClassFixture<WebApplicationFactory<Program>>
 {
-    private readonly WebApplicationFactory<Program> _factory;
-    
-    public ToolsControllerIntegrationTests(WebApplicationFactory<Program> factory)
+  private readonly HttpClient _client;
+
+  public ConversationsControllerTests(WebApplicationFactory<Program> factory)
+  {
+    _client = factory.WithWebHostBuilder(builder =>
     {
-        _factory = factory;
-    }
-    
-    [TestMethod]
-    public async Task ExecuteTool_ValidRequest_ReturnsOk()
-    {
-        // Arrange
-        var client = _factory.CreateClient();
-        var request = new ToolExecutionRequest
-        {
-            ToolName = "azure_discover_resources",
-            Parameters = new Dictionary<string, object> { ["subscription_id"] = "test" }
-        };
-        
-        // Act
-        var response = await client.PostAsJsonAsync("/api/tools/execute", request);
-        
-        // Assert
-        response.EnsureSuccessStatusCode();
-    }
+      builder.UseSetting("ConnectionStrings:DefaultConnection", "Data Source=:memory:");
+    }).CreateClient();
+  }
+
+  [Fact]
+  public async Task CreateConversation_ReturnsCreatedConversation()
+  {
+    // Arrange
+    var payload = new { title = "Infra request", userId = "test-user" };
+
+    // Act
+    var response = await _client.PostAsJsonAsync("/api/conversations", payload);
+
+    // Assert
+    response.StatusCode.Should().Be(HttpStatusCode.Created);
+  }
 }
 ```
 
@@ -628,258 +558,177 @@ Feature requests should include:
 
 ### Base URLs
 
-- **API Server**: `http://localhost:7001` (development)
-- **Chat Service**: `http://localhost:5000` (development)
-- **Production**: `https://yourdomain.com`
+- **MCP HTTP Bridge**: `http://localhost:5100`
+- **Platform Chat API**: `http://localhost:5001`
+- **Admin API**: `http://localhost:5002`
+- **SignalR Hub**: `ws://localhost:5001/chathub`
 
-### Authentication
+### MCP HTTP Bridge
 
-The API uses Azure AD authentication for production environments:
+The MCP server exposes a minimal HTTP surface so that web clients can reuse the same multi-agent orchestration used by stdio integrations.
 
-```http
-Authorization: Bearer <jwt-token>
-```
+#### `POST /mcp/chat`
 
-For development, authentication can be bypassed by setting:
 ```json
 {
-  "Authentication": {
-    "RequireAuthentication": false
+  "message": "Generate a landing zone in usgovvirginia",
+  "conversationId": "optional-session-id",
+  "context": {
+    "subscriptionId": "<subscription-id>",
+    "environment": "dev"
   }
 }
 ```
 
-### Core Endpoints
+**Response (ChatMcpResult):**
 
-#### Tool Execution
-
-Execute platform engineering tools through the API.
-
-**POST** `/api/tools/execute`
-
-```json
-{
-  "toolName": "azure_discover_resources",
-  "parameters": {
-    "subscription_id": "your-subscription-id",
-    "resource_group": "optional-rg-filter"
-  }
-}
-```
-
-**Response:**
 ```json
 {
   "success": true,
-  "data": {
-    "resources": [
-      {
-        "id": "/subscriptions/.../resourceGroups/rg1/providers/Microsoft.Storage/storageAccounts/storage1",
-        "name": "storage1",
-        "type": "Microsoft.Storage/storageAccounts",
-        "location": "usgovvirginia",
-        "resourceGroup": "rg1"
-      }
-    ],
-    "summary": {
-      "totalResources": 12,
-      "resourceGroups": 4,
-      "locations": ["usgovvirginia", "usgovarizona"]
-    }
+  "response": "Created a landing zone template targeting usgovvirginia.",
+  "conversationId": "b0f2dc71-c486-4e3a-9d83-33f3c44fd15f",
+  "intentType": "infrastructure.provision",
+  "confidence": 0.91,
+  "toolExecuted": true,
+  "toolResult": {
+    "templatePath": "terraform/platform-landing-zone/main.tf"
   },
-  "executionTime": "00:00:02.1234567"
-}
-```
-
-#### Health Checks
-
-**GET** `/health`
-```json
-{
-  "status": "Healthy",
-  "checks": {
-    "database": "Healthy",
-    "azure": "Healthy",
-    "redis": "Healthy"
-  },
-  "duration": "00:00:00.0123456"
-}
-```
-
-**GET** `/health/ready`
-```json
-{
-  "status": "Ready"
-}
-```
-
-#### Tool Information
-
-**GET** `/api/tools`
-```json
-{
-  "tools": [
+  "processingTimeMs": 742,
+  "suggestions": [
     {
-      "name": "azure_discover_resources",
-      "description": "Discover and inventory Azure resources",
-      "category": "Infrastructure",
-      "parameters": [
-        {
-          "name": "subscription_id",
-          "type": "string",
-          "required": true,
-          "description": "Azure subscription ID"
-        },
-        {
-          "name": "resource_group",
-          "type": "string",
-          "required": false,
-          "description": "Filter by resource group"
-        }
-      ]
+      "title": "Validate cost baseline",
+      "description": "Run the cost optimization agent for the new landing zone." ,
+      "priority": "Medium"
     }
   ]
 }
 ```
 
-### Available Tools
+#### `GET /health`
 
-#### Infrastructure Management
+Returns simple status metadata:
 
-##### azure_discover_resources
-Discover and inventory Azure resources across subscriptions.
-
-**Parameters:**
-- `subscription_id` (string, required): Azure subscription ID
-- `resource_group` (string, optional): Filter by resource group
-- `resource_type` (string, optional): Filter by resource type
-- `location` (string, optional): Filter by location
-
-**Example:**
 ```json
 {
-  "toolName": "azure_discover_resources",
-  "parameters": {
-    "subscription_id": "12345678-1234-1234-1234-123456789012",
-    "resource_group": "production-rg"
+  "status": "healthy",
+  "mode": "dual (http+stdio)",
+  "server": "Platform Engineering Copilot MCP",
+  "version": "1.0.0"
+}
+```
+
+> **Tip:** Add `conversationId` to correlate chat sessions across HTTP and SignalR clients.
+
+### Platform Chat REST API
+
+The Chat service hosts both REST endpoints and SignalR hubs for managing conversations and messages.
+
+| Endpoint | Description |
+| --- | --- |
+| `GET /api/conversations` | List conversations for a user (`userId` query optional). |
+| `POST /api/conversations` | Create a new conversation (`title`, `userId`). |
+| `GET /api/conversations/{conversationId}` | Retrieve a specific conversation. |
+| `DELETE /api/conversations/{conversationId}` | Soft-delete a conversation. |
+| `GET /api/conversations/search?query=` | Full-text search across transcripts. |
+| `GET /api/messages?conversationId=` | Paginated message history. |
+| `POST /api/messages` | Send a message and stream MCP response. |
+| `POST /api/messages/{messageId}/attachments` | Upload message attachments (<=10 MB). |
+
+#### Message Example
+
+```http
+POST /api/messages
+Content-Type: application/json
+
+{
+  "conversationId": "b0f2dc71-c486-4e3a-9d83-33f3c44fd15f",
+  "userId": "john.doe",
+  "message": "Scan subscription 1234 for FedRAMP gaps"
+}
+```
+
+**Response:** returns the persisted chat message while the MCP server streams updates over SignalR.
+
+### SignalR Channels
+
+```javascript
+const connection = new signalR.HubConnectionBuilder()
+  .withUrl("http://localhost:5001/chathub")
+  .build();
+
+connection.on("ReceiveMessage", (user, message) => {
+  console.log(`${user}: ${message}`);
+});
+
+connection.on("ReceiveToolResult", result => {
+  renderToolOutput(result);
+});
+
+await connection.start();
+await connection.invoke("SendMessage", "john.doe", "/mcp show_cost_trends subscription=1234");
+```
+
+### Admin API
+
+Swagger UI is available at `http://localhost:5002` (development). Core controller routes include:
+
+| Controller | Route | Highlights |
+| --- | --- | --- |
+| `TemplateAdminController` | `api/admin/templates` | CRUD for environment templates, validation, preview rendering. |
+| `EnvironmentAdminController` | `api/admin/environments` | Environment inventory, status updates, lifecycle management. |
+| `DeploymentAdminController` | `api/admin/deployments` | Trigger redeployments, fetch history, retrieve artifacts. |
+| `GovernanceAdminController` | `api/admin/governance` | Policy evaluation, approval workflows, compliance snapshots. |
+| `CostAdminController` | `api/admin/cost` | Cost trend reports, budget status, optimization insights. |
+| `OnboardingAdminController` | `api/admin/onboarding` | Navy Flankspeed onboarding workflows. |
+
+#### Create Template
+
+```http
+POST /api/admin/templates
+Content-Type: application/json
+
+{
+  "templateName": "aks-standard",
+  "serviceName": "AKS",
+  "templateType": "Terraform",
+  "infrastructure": {
+    "format": "terraform",
+    "content": "..."
   }
 }
 ```
 
-##### azure_resource_health
-Check the health status of Azure resources.
+**Selected Response:**
 
-**Parameters:**
-- `subscription_id` (string, required): Azure subscription ID
-- `resource_ids` (array, optional): Specific resource IDs to check
-
-##### bicep_template_generator
-Generate Bicep templates for infrastructure as code.
-
-**Parameters:**
-- `resource_type` (string, required): Type of resource to template
-- `parameters` (object, required): Resource-specific parameters
-
-#### Compliance & Security
-
-##### ato_compliance_scan
-Perform Authority to Operate (ATO) compliance scanning.
-
-**Parameters:**
-- `resource_group` (string, required): Resource group to scan
-- `compliance_framework` (string, optional): Compliance framework (default: "FedRAMP")
-- `scan_depth` (string, optional): "basic" or "comprehensive"
-
-**Example:**
 ```json
 {
-  "toolName": "ato_compliance_scan",
-  "parameters": {
-    "resource_group": "production-rg",
-    "compliance_framework": "FedRAMP",
-    "scan_depth": "comprehensive"
-  }
+  "success": true,
+  "templateId": "template_aks_standard",
+  "message": "Template created successfully"
 }
 ```
 
-##### security_policy_validator
-Validate security policies against resources.
+### Authentication & Authorization
 
-**Parameters:**
-- `policy_type` (string, required): Type of policy to validate
-- `resource_ids` (array, required): Resources to validate
-
-#### Cost Management
-
-##### azure_cost_analysis
-Analyze Azure spending patterns and provide optimization recommendations.
-
-**Parameters:**
-- `subscription_id` (string, required): Azure subscription ID
-- `time_period` (string, optional): "last_month", "last_3_months", "last_year"
-- `granularity` (string, optional): "daily", "monthly"
+- Development builds run without authentication.
+- Production deployments should front the MCP, Chat, and Admin APIs with Azure AD / Entra ID (see `docs/AZURE-AUTHENTICATION.md`).
+- Secure secrets (OpenAI keys, GitHub tokens) via Azure Key Vault or user secrets.
 
 ### Error Handling
 
-The API uses standard HTTP status codes and provides detailed error information:
+All services follow structured error payloads:
 
 ```json
 {
   "success": false,
-  "error": {
-    "code": "TOOL_NOT_FOUND",
-    "message": "The specified tool 'invalid_tool' was not found",
-    "details": {
-      "toolName": "invalid_tool",
-      "availableTools": ["azure_discover_resources", "ato_compliance_scan"]
-    }
-  },
-  "traceId": "00-1234567890abcdef-fedcba0987654321-01"
+  "errors": [
+    "Azure subscription 1234 not found"
+  ],
+  "traceId": "00-d1f6e1f2690f214a6f3a5b8fd3c0d4f1-88dc340c2a2d9546-01"
 }
 ```
 
-**Common Error Codes:**
-- `TOOL_NOT_FOUND`: Requested tool doesn't exist
-- `INVALID_PARAMETERS`: Missing or invalid parameters
-- `AUTHENTICATION_FAILED`: Authentication token invalid
-- `AUTHORIZATION_FAILED`: Insufficient permissions
-- `AZURE_API_ERROR`: Azure service error
-- `INTERNAL_ERROR`: Unexpected server error
-
-### Rate Limiting
-
-The API implements rate limiting to prevent abuse:
-
-**Headers:**
-- `X-RateLimit-Limit`: Requests per window
-- `X-RateLimit-Remaining`: Remaining requests
-- `X-RateLimit-Reset`: Window reset time
-
-**Limits:**
-- **Authenticated users**: 1000 requests per hour
-- **Unauthenticated users**: 100 requests per hour
-
-### WebSocket/SignalR Integration
-
-The Chat service provides real-time communication through SignalR:
-
-**Connection:** `http://localhost:5000/chathub`
-
-**Client Methods:**
-```javascript
-// Send message
-connection.invoke("SendMessage", "user", "/mcp azure_discover_resources subscription_id=test");
-
-// Receive responses
-connection.on("ReceiveMessage", function (user, message) {
-    // Handle incoming messages
-});
-
-// Receive tool results
-connection.on("ReceiveToolResult", function (result) {
-    // Handle tool execution results
-});
-```
+Include the `traceId` when reporting issues—the value maps to Serilog and Application Insights telemetry.
 
 ---
 
@@ -907,7 +756,7 @@ dotnet test tests/Platform.Engineering.Copilot.Tests.Unit
 dotnet test --collect:"XPlat Code Coverage"
 
 # Run specific test
-dotnet test --filter "FullyQualifiedName~PlatformToolServiceTests.ExecuteToolAsync_WithValidParameters_ReturnsSuccess"
+dotnet test --filter "FullyQualifiedName~EnvironmentManagementEngineTests.ProvisionAsync_WithMissingResourceGroup_ReturnsFailure"
 
 # Run tests with detailed output
 dotnet test --logger "console;verbosity=detailed"
@@ -921,8 +770,8 @@ Tests use an in-memory database for isolation:
 
 ```csharp
 // In test setup
-services.AddDbContext<PlatformDbContext>(options =>
-    options.UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString()));
+services.AddDbContext<PlatformEngineeringCopilotContext>(options =>
+  options.UseInMemoryDatabase(Guid.NewGuid().ToString()));
 ```
 
 #### Mock Services
@@ -930,39 +779,37 @@ services.AddDbContext<PlatformDbContext>(options =>
 Use Moq for mocking dependencies:
 
 ```csharp
-[TestClass]
-public class AzureGatewayServiceTests
+public class AzureCostManagementServiceTests
 {
-    private Mock<IAzureResourceClient> _mockAzureClient;
-    private AzureGatewayService _service;
-    
-    [TestInitialize]
-    public void Setup()
-    {
-        _mockAzureClient = new Mock<IAzureResourceClient>();
-        _service = new AzureGatewayService(_mockAzureClient.Object);
-    }
-    
-    [TestMethod]
-    public async Task DiscoverResourcesAsync_ValidSubscription_ReturnsResources()
-    {
-        // Arrange
-        var expectedResources = new List<AzureResource>
-        {
-            new() { Id = "test-id", Name = "test-resource" }
-        };
-        
-        _mockAzureClient
-            .Setup(x => x.GetResourcesAsync(It.IsAny<string>()))
-            .ReturnsAsync(expectedResources);
-        
-        // Act
-        var result = await _service.DiscoverResourcesAsync("test-subscription");
-        
-        // Assert
-        Assert.AreEqual(1, result.Count());
-        Assert.AreEqual("test-resource", result.First().Name);
-    }
+  private readonly Mock<IAzureCostClient> _costClient = new();
+  private readonly AzureCostManagementService _service;
+
+  public AzureCostManagementServiceTests()
+  {
+    _service = new AzureCostManagementService(
+      _costClient.Object,
+      Mock.Of<ILogger<AzureCostManagementService>>());
+  }
+
+  [Fact]
+  public async Task GetCostBreakdownAsync_WhenClientReturnsValues_EmitsSameTotals()
+  {
+    // Arrange
+    _costClient
+      .Setup(client => client.GetCostBreakdownAsync("subscription-id", It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+      .ReturnsAsync(new AzureCostBreakdown
+      {
+        TotalCost = 1250.42m,
+        Services = new[] { new AzureServiceCost("Compute", 950.11m) }
+      });
+
+    // Act
+    var result = await _service.GetCostBreakdownAsync("subscription-id", DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
+
+    // Assert
+    result.TotalCost.Should().Be(1250.42m);
+    result.Services.Should().ContainSingle(service => service.Name == "Compute" && service.Cost == 950.11m);
+  }
 }
 ```
 
@@ -1037,34 +884,30 @@ public class ToolsControllerIntegrationTests : IClassFixture<WebApplicationFacto
 Test system performance under load:
 
 ```csharp
-[TestClass]
-public class PerformanceTests
+public class LoadTests : IClassFixture<WebApplicationFactory<Program>>
 {
-    [TestMethod]
-    public async Task ToolExecution_UnderLoad_MaintainsPerformance()
+  private readonly HttpClient _client;
+
+  public LoadTests(WebApplicationFactory<Program> factory)
+  {
+    _client = factory.CreateClient();
+  }
+
+  [Fact]
+  public async Task ChatEndpoint_WithConcurrentRequests_CompletesSuccessfully()
+  {
+    const int concurrentRequests = 50;
+
+    async Task<HttpResponseMessage> InvokeAsync(int index)
     {
-        // Arrange
-        var factory = new WebApplicationFactory<Program>();
-        var client = factory.CreateClient();
-        var tasks = new List<Task<HttpResponseMessage>>();
-        
-        // Act - Execute 100 concurrent requests
-        for (int i = 0; i < 100; i++)
-        {
-            var request = new ToolExecutionRequest
-            {
-                ToolName = "azure_discover_resources",
-                Parameters = new Dictionary<string, object> { ["subscription_id"] = "test" }
-            };
-            
-            tasks.Add(client.PostAsJsonAsync("/api/tools/execute", request));
-        }
-        
-        var responses = await Task.WhenAll(tasks);
-        
-        // Assert - All requests should complete successfully
-        Assert.IsTrue(responses.All(r => r.IsSuccessStatusCode));
+      var payload = new { message = $"status check #{index}" };
+      return await _client.PostAsJsonAsync("/mcp/chat", payload);
     }
+
+    var responses = await Task.WhenAll(Enumerable.Range(0, concurrentRequests).Select(InvokeAsync));
+
+    responses.Should().OnlyContain(response => response.IsSuccessStatusCode);
+  }
 }
 ```
 
@@ -1087,7 +930,6 @@ reportgenerator -reports:"coverage/**/coverage.cobertura.xml" -targetdir:coverag
 - **Critical Paths**: 95%+ coverage for security and compliance code
 
 ---
-
 ## 🔨 Building and Packaging
 
 ### Build Process
@@ -1095,38 +937,46 @@ reportgenerator -reports:"coverage/**/coverage.cobertura.xml" -targetdir:coverag
 #### Local Development Build
 
 ```bash
-# Clean solution
-dotnet clean
+dotnet clean Platform.Engineering.Copilot.sln
+dotnet restore Platform.Engineering.Copilot.sln
+dotnet build Platform.Engineering.Copilot.sln --configuration Debug
 
-# Restore packages
-dotnet restore
-
-# Build solution
-dotnet build --configuration Debug
-
-# Build specific project
-dotnet build src/Platform.Engineering.Copilot.API --configuration Release
+# Build individual services in Release
+dotnet build src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj --configuration Release
+dotnet build src/Platform.Engineering.Copilot.Chat/Platform.Engineering.Copilot.Chat.csproj --configuration Release
+dotnet build src/Platform.Engineering.Copilot.Admin.API/Platform.Engineering.Copilot.Admin.API.csproj --configuration Release
+dotnet build src/Platform.Engineering.Copilot.Admin.Client/Platform.Engineering.Copilot.Admin.Client.csproj --configuration Release
 ```
 
 #### Production Build
 
 ```bash
-# Full production build
-dotnet build --configuration Release --no-restore
+dotnet build Platform.Engineering.Copilot.sln --configuration Release --no-restore
 
-# Publish API for deployment
-dotnet publish src/Platform.Engineering.Copilot.API \
+dotnet publish src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj \
   --configuration Release \
-  --output ./publish/api \
   --runtime linux-x64 \
-  --self-contained false
+  --self-contained false \
+  --output ./publish/mcp
 
-# Publish Chat service
-dotnet publish src/Platform.Engineering.Copilot.Chat \
+dotnet publish src/Platform.Engineering.Copilot.Chat/Platform.Engineering.Copilot.Chat.csproj \
   --configuration Release \
-  --output ./publish/chat \
   --runtime linux-x64 \
-  --self-contained false
+  --self-contained false \
+  --output ./publish/chat
+
+dotnet publish src/Platform.Engineering.Copilot.Admin.API/Platform.Engineering.Copilot.Admin.API.csproj \
+  --configuration Release \
+  --runtime linux-x64 \
+  --self-contained false \
+  --output ./publish/admin-api
+
+npm run build --prefix src/Platform.Engineering.Copilot.Admin.Client/ClientApp
+dotnet publish src/Platform.Engineering.Copilot.Admin.Client/Platform.Engineering.Copilot.Admin.Client.csproj \
+  --configuration Release \
+  --runtime linux-x64 \
+  --self-contained false \
+  --output ./publish/admin-client
 ```
 
 ### Docker Build
@@ -1134,42 +984,31 @@ dotnet publish src/Platform.Engineering.Copilot.Chat \
 #### Multi-stage Docker Build
 
 ```dockerfile
-# Dockerfile.api
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+# src/Platform.Engineering.Copilot.Mcp/Dockerfile
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Copy project files
-COPY ["src/Platform.Engineering.Copilot.API/Platform.Engineering.Copilot.API.csproj", "src/Platform.Engineering.Copilot.API/"]
+COPY ["src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj", "src/Platform.Engineering.Copilot.Mcp/"]
 COPY ["src/Platform.Engineering.Copilot.Core/Platform.Engineering.Copilot.Core.csproj", "src/Platform.Engineering.Copilot.Core/"]
-RUN dotnet restore "src/Platform.Engineering.Copilot.API/Platform.Engineering.Copilot.API.csproj"
+RUN dotnet restore "src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj"
 
-# Copy source and build
 COPY . .
-WORKDIR "/src/src/Platform.Engineering.Copilot.API"
-RUN dotnet build "Platform.Engineering.Copilot.API.csproj" -c Release -o /app/build
+WORKDIR "/src/src/Platform.Engineering.Copilot.Mcp"
+RUN dotnet publish "Platform.Engineering.Copilot.Mcp.csproj" -c Release -o /app/publish
 
-# Publish
-FROM build AS publish
-RUN dotnet publish "Platform.Engineering.Copilot.API.csproj" -c Release -o /app/publish
-
-# Runtime
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "Platform.Engineering.Copilot.API.dll"]
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "Platform.Engineering.Copilot.Mcp.dll", "--http"]
 ```
 
 #### Build Docker Images
 
 ```bash
-# Build API image
-docker build -t platform-supervisor-api:latest -f Dockerfile.api .
-
-# Build Chat image
-docker build -t platform-supervisor-chat:latest -f Dockerfile.chat .
-
-# Build with specific tag
-docker build -t platform-supervisor-api:v1.0.0 -f Dockerfile.api .
+docker build -t platform-copilot-mcp:latest -f src/Platform.Engineering.Copilot.Mcp/Dockerfile .
+docker build -t platform-copilot-chat:latest -f src/Platform.Engineering.Copilot.Chat/Dockerfile .
+docker build -t platform-copilot-admin-api:latest -f src/Platform.Engineering.Copilot.Admin.API/Dockerfile .
+docker build -t platform-copilot-admin-client:latest -f src/Platform.Engineering.Copilot.Admin.Client/Dockerfile .
 ```
 
 ### Package Management
@@ -1182,33 +1021,30 @@ Create reusable NuGet packages for shared components:
 <!-- Platform.Engineering.Copilot.Core.csproj -->
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <PackageId>Platform.Engineering.Copilot.Core</PackageId>
     <PackageVersion>1.0.0</PackageVersion>
     <Authors>Platform Engineering Team</Authors>
-    <Description>Core contracts and models for Platform Supervisor</Description>
+    <Description>Core contracts and models for Platform Engineering Copilot</Description>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
 </Project>
 ```
 
 ```bash
-# Pack NuGet package
 dotnet pack src/Platform.Engineering.Copilot.Core --configuration Release
-
-# Push to NuGet repository
 dotnet nuget push src/Platform.Engineering.Copilot.Core/bin/Release/Platform.Engineering.Copilot.Core.1.0.0.nupkg \
   --source https://api.nuget.org/v3/index.json \
-  --api-key your-api-key
+  --api-key <your-api-key>
 ```
 
 ### Versioning Strategy
 
 Use semantic versioning (SemVer):
 
-- **Major**: Breaking changes
-- **Minor**: New features, backward compatible
-- **Patch**: Bug fixes, backward compatible
+- **Major** – breaking changes
+- **Minor** – new features, backward compatible
+- **Patch** – bug fixes, backward compatible
 
 Example: `1.2.3`
 
@@ -1232,10 +1068,14 @@ Example: `1.2.3`
 
 #### Visual Studio
 
-1. Set breakpoints in your code
-2. Set startup projects (API and Chat)
-3. Press F5 to start debugging
-4. Use Debug → Windows → Output for detailed logs
+1. Set breakpoints in the target project (MCP, Chat, Admin API, Admin Client).
+2. In Solution Properties → Common Properties → Startup Project select **Multiple startup projects** and set:
+   - `Platform.Engineering.Copilot.Mcp` → **Start** (HTTP mode)
+   - `Platform.Engineering.Copilot.Chat` → **Start**
+   - `Platform.Engineering.Copilot.Admin.API` → **Start**
+   - `Platform.Engineering.Copilot.Admin.Client` → **Start**
+3. Press F5. Visual Studio will launch each service with the configured ports (5100/5001/5002/5003).
+4. Use **Debug → Windows → Output** and Serilog sinks for detailed diagnostics.
 
 #### VS Code
 
@@ -1247,12 +1087,23 @@ Example: `1.2.3`
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Launch API",
+      "name": "MCP HTTP",
       "type": "coreclr",
       "request": "launch",
-      "program": "${workspaceFolder}/src/Platform.Engineering.Copilot.API/bin/Debug/net8.0/Platform.Engineering.Copilot.API.dll",
-      "args": [],
-      "cwd": "${workspaceFolder}/src/Platform.Engineering.Copilot.API",
+      "program": "${workspaceFolder}/src/Platform.Engineering.Copilot.Mcp/bin/Debug/net9.0/Platform.Engineering.Copilot.Mcp.dll",
+      "args": ["--http", "--port", "5100"],
+      "cwd": "${workspaceFolder}/src/Platform.Engineering.Copilot.Mcp",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    {
+      "name": "Platform Chat",
+      "type": "coreclr",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/Platform.Engineering.Copilot.Chat/bin/Debug/net9.0/Platform.Engineering.Copilot.Chat.dll",
+      "args": ["--urls", "http://0.0.0.0:5001"],
+      "cwd": "${workspaceFolder}/src/Platform.Engineering.Copilot.Chat",
       "env": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -1266,19 +1117,23 @@ Example: `1.2.3`
 #### Docker Container Debugging
 
 ```dockerfile
-# Development Dockerfile with debugging support
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
-WORKDIR /app
-EXPOSE 80
-EXPOSE 443
+# Development Dockerfile with debugging support for Admin API
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish src/Platform.Engineering.Copilot.Admin.API/Platform.Engineering.Copilot.Admin.API.csproj \
+  -c Debug -o /app/publish
 
-# Install debugger
-RUN apt-get update && apt-get install -y unzip procps
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
+WORKDIR /app
+EXPOSE 5002
+
+RUN apt-get update && apt-get install -y unzip procps \
+  && rm -rf /var/lib/apt/lists/*
 RUN curl -sSL https://aka.ms/getvsdbgsh | /bin/sh /dev/stdin -v latest -l /vsdbg
 
-FROM base AS final
-COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "Platform.Engineering.Copilot.API.dll"]
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "Platform.Engineering.Copilot.Admin.API.dll"]
 ```
 
 #### Attach to Process
