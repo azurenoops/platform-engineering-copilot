@@ -37,8 +37,9 @@ public class DeploymentPlugin : BaseSupervisorPlugin
     #region Bicep Deployment
 
     [KernelFunction("deploy_bicep_template")]
-    [Description("Deploy Azure infrastructure using a Bicep template file. " +
-                 "Use this when user provides a path to a .bicep file or wants to deploy IaC templates. " +
+    [Description("Deploy Azure infrastructure using an EXISTING Bicep template file that already exists on disk. " +
+                 "ONLY use this when the user explicitly provides a file path to an existing .bicep file. " +
+                 "DO NOT use this for creating new infrastructure - use generate_infrastructure_template instead. " +
                  "Returns deployment ID, status, and created resources.")]
     public async Task<string> DeployBicepTemplateAsync(
         [Description("Absolute path to the Bicep template file (e.g., /Users/.../main.bicep or /path/to/template.bicep)")] 

@@ -22,7 +22,7 @@ using Platform.Engineering.Copilot.Core.Interfaces.Notifications;
 using Platform.Engineering.Copilot.Core.Services.Notifications;
 using Platform.Engineering.Copilot.Core.Interfaces.Jobs;
 
-namespace Platform.Engineering.Copilot.Compliance.Agent.Extensions;
+namespace Platform.Engineering.Copilot.Compliance.Core.Extensions;
 
 /// <summary>
 /// Extension methods for registering Compliance domain services

@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Platform.Engineering.Copilot.Compliance.Agent.Configuration;
+namespace Platform.Engineering.Copilot.Compliance.Core.Configuration;
 
 /// <summary>
 /// Consolidated configuration options for the Compliance Agent

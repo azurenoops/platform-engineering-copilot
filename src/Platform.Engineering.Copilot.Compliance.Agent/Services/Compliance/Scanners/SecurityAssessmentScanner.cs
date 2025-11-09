@@ -4,6 +4,7 @@ using Platform.Engineering.Copilot.Core.Models.Compliance;
 using Platform.Engineering.Copilot.Compliance.Core.Extensions;
 using Azure.ResourceManager.Resources;
 using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
+using Platform.Engineering.Copilot.Compliance.Agent.Extensions;
 
 namespace Platform.Engineering.Copilot.Compliance.Agent.Services.Compliance;
 

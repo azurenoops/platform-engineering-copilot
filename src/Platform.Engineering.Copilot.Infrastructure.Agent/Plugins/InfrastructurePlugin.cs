@@ -366,7 +366,11 @@ public class InfrastructurePlugin : BaseSupervisorPlugin
     }
 
     [KernelFunction("generate_infrastructure_template")]
-    [Description("Generate complete Bicep or Terraform infrastructure templates for Azure resources. ALWAYS USE THIS FUNCTION instead of writing manual code. For multiple resources, call this function multiple times (once per resource type). Use this when you have enough information about location and resource type - don't overthink missing details, use smart defaults.")]
+    [Description("Generate complete Bicep or Terraform infrastructure templates for Azure resources from natural language descriptions. " +
+                 "THIS IS THE PRIMARY FUNCTION for creating new infrastructure - use this for ANY request to create/provision/deploy NEW Azure resources. " +
+                 "For multiple resources, call this function multiple times (once per resource type). " +
+                 "Examples: 'Create AKS cluster', 'Deploy storage account', 'Set up virtual network with monitoring'. " +
+                 "Use smart defaults - don't ask for missing details, infer from context.")]
     public async Task<string> GenerateInfrastructureTemplateAsync(
         [Description("Description of the specific resource to deploy. Examples: 'SQL database for application data', 'Storage account for blob storage', 'Virtual network with web/app/data subnets'")]
         string description,

@@ -6,6 +6,7 @@ using Platform.Engineering.Copilot.Compliance.Core.Extensions;
 using Azure.ResourceManager.Resources;
 using Azure.Core;
 using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
+using Platform.Engineering.Copilot.Compliance.Agent.Extensions;
 
 namespace Platform.Engineering.Copilot.Compliance.Agent.Services.Compliance;
 
@@ -75,7 +76,6 @@ public class SystemCommunicationScanner : IComplianceScanner
                 break;
         }
 
-        // Enrich all findings with auto-remediation information
         return findings.WithAutoRemediationInfo();
     }
 

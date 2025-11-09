@@ -6,11 +6,11 @@ using Polly;
 using Polly.Extensions.Http;
 using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
 using Platform.Engineering.Copilot.Core.Interfaces.Audits;
+using Platform.Engineering.Copilot.Compliance.Core.Configuration;
 using Platform.Engineering.Copilot.Compliance.Agent.Services.Compliance;
 using Platform.Engineering.Copilot.Core.Services.Audits;
-using Platform.Engineering.Copilot.Compliance.Agent.Configuration;
 
-namespace Platform.Engineering.Copilot.Compliance.Agent.Extensions;
+namespace Platform.Engineering.Copilot.Compliance.Core.Extensions;
 
 /// <summary>
 /// Service collection extensions for Governance and Compliance services
@@ -127,4 +127,35 @@ public static class GovernanceServiceCollectionExtensions
                     // Could log circuit breaker reset
                 });
     }
+}
+
+/// <summary>
+/// Polly context extensions for logging
+/// </summary>
+internal static class ContextExtensions
+{
+    private const string LoggerKey = "ILogger";
+
+    public static Context WithLogger(this Context context, ILogger logger)
+    {
+        context[LoggerKey] = logger;
+        return context;
+    }
+
+    public static ILogger? GetLogger(this Context context)
+    {
+        return context.TryGetValue(LoggerKey, out var logger) ? logger as ILogger : null;
+    }
+}
+
+public class DocumentProcessingOptions
+{
+    public string UploadsPath { get; set; } = "uploads";
+    public long MaxFileSizeBytes { get; set; } = 50 * 1024 * 1024; // 50MB
+    public int ProcessingTimeoutMinutes { get; set; } = 30;
+    public bool EnableAdvancedAnalysis { get; set; } = true;
+    public string[] SupportedFileTypes { get; set; } = {
+        ".pdf", ".docx", ".doc", ".vsdx", ".vsd", ".pptx", ".ppt", 
+        ".xlsx", ".xls", ".txt", ".md", ".png", ".jpg", ".jpeg"
+    };
 }

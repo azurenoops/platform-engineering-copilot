@@ -9,6 +9,7 @@ using Platform.Engineering.Copilot.Core.Data.Context;
 using Platform.Engineering.Copilot.Mcp.Server;
 using Platform.Engineering.Copilot.Mcp.Tools;
 using Platform.Engineering.Copilot.Mcp.Middleware;
+using Platform.Engineering.Copilot.Compliance.Core.Extensions;
 using Platform.Engineering.Copilot.Infrastructure.Core.Extensions;
 using Platform.Engineering.Copilot.CostManagement.Core.Extensions;
 using Platform.Engineering.Copilot.Environment.Core.Extensions;
@@ -17,7 +18,6 @@ using Platform.Engineering.Copilot.ServiceCreation.Core.Extensions;
 using Platform.Engineering.Copilot.Document.Core.Extensions;
 using Serilog;
 using Platform.Engineering.Copilot.Security.Agent.Extensions;
-using Platform.Engineering.Copilot.Compliance.Agent.Extensions;
 
 namespace Platform.Engineering.Copilot.Mcp;
 
