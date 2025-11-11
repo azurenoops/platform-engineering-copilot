@@ -13,6 +13,11 @@ out/
 *.db.*
 *.db-*
 
+# Configuration files with secrets
+appsettings.json
+appsettings.*.json
+!appsettings.example.json
+
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
