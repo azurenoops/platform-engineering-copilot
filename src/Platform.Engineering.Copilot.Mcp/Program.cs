@@ -4,8 +4,12 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using Platform.Engineering.Copilot.Core.Extensions;
 using Platform.Engineering.Copilot.Core.Data.Context;
+using Platform.Engineering.Copilot.Core.Configuration;
+using Platform.Engineering.Copilot.Core.Services.Azure;
 using Platform.Engineering.Copilot.Mcp.Server;
 using Platform.Engineering.Copilot.Mcp.Tools;
 using Platform.Engineering.Copilot.Mcp.Middleware;
@@ -164,6 +168,115 @@ class Program
         // Register HttpClient for services that need it (like NistControlsService)
         builder.Services.AddHttpClient();
 
+        // Register HttpContextAccessor for middleware access
+        builder.Services.AddHttpContextAccessor();
+
+        // Configure Azure AD authentication options
+        builder.Services.Configure<AzureAdOptions>(
+            builder.Configuration.GetSection(AzureAdOptions.SectionName));
+        builder.Services.Configure<GatewayOptions>(
+            builder.Configuration.GetSection(GatewayOptions.SectionName));
+
+        // Add JWT Bearer authentication for CAC token validation
+        var azureAdConfig = builder.Configuration.GetSection(AzureAdOptions.SectionName);
+        var azureAdOptions = new AzureAdOptions();
+        azureAdConfig.Bind(azureAdOptions);
+
+        if (!string.IsNullOrEmpty(azureAdOptions.TenantId) && !string.IsNullOrEmpty(azureAdOptions.Audience))
+        {
+            builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.Authority = azureAdOptions.Authority;
+                    options.Audience = azureAdOptions.Audience;
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+                        ValidIssuers = azureAdOptions.ValidIssuers.Any() 
+                            ? azureAdOptions.ValidIssuers 
+                            : new[] { azureAdOptions.Authority },
+                        ValidateAudience = true,
+                        ValidAudience = azureAdOptions.Audience,
+                        ValidateLifetime = true,
+                        ValidateIssuerSigningKey = true,
+                        ClockSkew = TimeSpan.FromMinutes(5)
+                    };
+
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnTokenValidated = context =>
+                        {
+                            var logger = context.HttpContext.RequestServices
+                                .GetRequiredService<ILogger<Program>>();
+
+                            // Verify MFA/CAC authentication if required
+                            if (azureAdOptions.RequireCac || azureAdOptions.RequireMfa)
+                            {
+                                var amrClaim = context.Principal?.FindFirst("amr")?.Value;
+                                var authMethod = amrClaim ?? "none";
+
+                                if (azureAdOptions.RequireCac)
+                                {
+                                    // Check for CAC/PIV indicators in authentication method
+                                    if (!authMethod.Contains("mfa", StringComparison.OrdinalIgnoreCase) &&
+                                        !authMethod.Contains("rsa", StringComparison.OrdinalIgnoreCase) &&
+                                        !authMethod.Contains("smartcard", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        logger.LogWarning(
+                                            "CAC/PIV authentication required but not detected. Auth method: {AuthMethod}",
+                                            authMethod);
+                                        context.Fail("Multi-factor authentication with CAC/PIV is required");
+                                        return Task.CompletedTask;
+                                    }
+                                }
+                                else if (azureAdOptions.RequireMfa)
+                                {
+                                    if (!authMethod.Contains("mfa", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        logger.LogWarning(
+                                            "Multi-factor authentication required but not detected. Auth method: {AuthMethod}",
+                                            authMethod);
+                                        context.Fail("Multi-factor authentication is required");
+                                        return Task.CompletedTask;
+                                    }
+                                }
+                            }
+
+                            var userPrincipal = context.Principal?.Identity?.Name ?? "Unknown";
+                            logger.LogInformation(
+                                "Token validated for user: {UserPrincipal}",
+                                userPrincipal);
+
+                            return Task.CompletedTask;
+                        },
+                        OnAuthenticationFailed = context =>
+                        {
+                            var logger = context.HttpContext.RequestServices
+                                .GetRequiredService<ILogger<Program>>();
+
+                            logger.LogError(
+                                context.Exception,
+                                "Authentication failed: {ErrorMessage}",
+                                context.Exception.Message);
+
+                            return Task.CompletedTask;
+                        }
+                    };
+                });
+
+            builder.Services.AddAuthorization();
+
+            Log.Information("✅ JWT Bearer authentication configured for Azure AD tenant: {TenantId}", 
+                azureAdOptions.TenantId);
+        }
+        else
+        {
+            Log.Warning("⚠️  Azure AD authentication not configured - MCP will not validate user tokens");
+        }
+
+        // Add Azure credential provider for user token passthrough
+        builder.Services.AddAzureCredentialProvider();
+
         // Add Core services (Multi-Agent Orchestrator, Plugins, etc.)
         builder.Services.AddPlatformEngineeringCopilotCore();
         
@@ -265,6 +378,13 @@ class Program
 
         // Configure URLs
         app.Urls.Add($"http://0.0.0.0:{port}");
+
+        // Add authentication middleware (must be before authorization)
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        // Add user token middleware to extract CAC identity and create Azure credentials
+        app.UseUserTokenAuthentication();
 
         // Add audit logging middleware for HTTP requests
         app.UseMiddleware<AuditLoggingMiddleware>();

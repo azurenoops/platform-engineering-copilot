@@ -59,6 +59,12 @@ public class AzureGatewayOptions
     /// Whether Azure integration is enabled
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Enable user token passthrough (client app passes user's Azure AD token)
+    /// When true, MCP uses the user's identity instead of service identity
+    /// </summary>
+    public bool EnableUserTokenPassthrough { get; set; } = false;
 }
 
 /// <summary>
