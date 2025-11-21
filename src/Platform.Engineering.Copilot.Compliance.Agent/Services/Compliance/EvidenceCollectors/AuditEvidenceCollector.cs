@@ -28,11 +28,12 @@ public class AuditEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectConfigurationEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         // Collect all audit evidence and filter for configuration-type evidence
-        var allEvidence = await CollectLogEvidenceAsync(subscriptionId, controlFamily, cancellationToken);
+        var allEvidence = await CollectLogEvidenceAsync(subscriptionId, controlFamily, collectedBy, cancellationToken);
         return allEvidence.Where(e => 
             e.EvidenceType == "StorageAccountConfiguration" ||
             e.EvidenceType == "AuditReviewProcess").ToList();
@@ -40,7 +41,8 @@ public class AuditEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectLogEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -83,7 +85,8 @@ public class AuditEvidenceCollector : IEvidenceCollector
                     ResourceId = $"/subscriptions/{subscriptionId}/providers/Microsoft.OperationalInsights/workspaces",
                     CollectedAt = DateTimeOffset.UtcNow,
                     Data = logData,
-                    ConfigSnapshot = JsonSerializer.Serialize(logData, new JsonSerializerOptions { WriteIndented = true })
+                    ConfigSnapshot = JsonSerializer.Serialize(logData, new JsonSerializerOptions { WriteIndented = true }),
+                    CollectedBy = collectedBy
                 });
             }
 
@@ -112,7 +115,8 @@ public class AuditEvidenceCollector : IEvidenceCollector
                     ResourceId = $"/subscriptions/{subscriptionId}/providers/Microsoft.Storage/storageAccounts",
                     CollectedAt = DateTimeOffset.UtcNow,
                     Data = storageData,
-                    ConfigSnapshot = JsonSerializer.Serialize(storageData, new JsonSerializerOptions { WriteIndented = true })
+                    ConfigSnapshot = JsonSerializer.Serialize(storageData, new JsonSerializerOptions { WriteIndented = true }),
+                    CollectedBy = collectedBy
                 });
             }
 
@@ -145,7 +149,8 @@ public class AuditEvidenceCollector : IEvidenceCollector
                     ResourceId = $"/subscriptions/{subscriptionId}/providers/Microsoft.SecurityInsights/workspaces",
                     CollectedAt = DateTimeOffset.UtcNow,
                     Data = sentinelData,
-                    ConfigSnapshot = JsonSerializer.Serialize(sentinelData, new JsonSerializerOptions { WriteIndented = true })
+                    ConfigSnapshot = JsonSerializer.Serialize(sentinelData, new JsonSerializerOptions { WriteIndented = true }),
+                    CollectedBy = collectedBy
                 });
             }
 
@@ -162,7 +167,8 @@ public class AuditEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectMetricEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -180,7 +186,8 @@ public class AuditEvidenceCollector : IEvidenceCollector
                 ["storageUtilizationPercent"] = 67,
                 ["averageQueryResponseTimeMs"] = 850,
                 ["failedEventIngestions"] = 0
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         await Task.Delay(100, cancellationToken);
@@ -189,7 +196,8 @@ public class AuditEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectPolicyEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         // TODO: Implement Azure Policy evidence for audit requirements (AU-2, AU-3)
@@ -200,7 +208,8 @@ public class AuditEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectAccessControlEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         // This is not part of Audit family - redirect to proper collector if needed

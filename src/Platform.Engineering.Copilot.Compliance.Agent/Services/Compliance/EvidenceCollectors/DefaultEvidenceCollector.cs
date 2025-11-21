@@ -22,7 +22,8 @@ public class DefaultEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectConfigurationEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Collecting configuration evidence for {ControlFamily}", controlFamily);
@@ -43,7 +44,8 @@ public class DefaultEvidenceCollector : IEvidenceCollector
                 ["configurationCompliant"] = true,
                 ["lastModified"] = DateTimeOffset.UtcNow.AddDays(-5)
             },
-            ConfigSnapshot = "{\n  \"subscription\": {\n    \"state\": \"Enabled\",\n    \"policies\": [\"Default\", \"SecurityBaseline\"]\n  }\n}"
+            ConfigSnapshot = "{\n  \"subscription\": {\n    \"state\": \"Enabled\",\n    \"policies\": [\"Default\", \"SecurityBaseline\"]\n  }\n}",
+            CollectedBy = collectedBy
         });
 
         await Task.Delay(100, cancellationToken); // Simulate collection work
@@ -52,7 +54,8 @@ public class DefaultEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectLogEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Collecting log evidence for {ControlFamily}", controlFamily);
@@ -75,7 +78,8 @@ public class DefaultEvidenceCollector : IEvidenceCollector
             },
             LogExcerpt = "2024-01-15T10:30:00Z | INFO | User admin@company.com accessed resource\n" +
                          "2024-01-15T10:31:00Z | INFO | Configuration change detected\n" +
-                         "2024-01-15T10:32:00Z | WARN | Unauthorized access attempt blocked"
+                         "2024-01-15T10:32:00Z | WARN | Unauthorized access attempt blocked",
+            CollectedBy = collectedBy
         });
 
         await Task.Delay(100, cancellationToken);
@@ -84,7 +88,8 @@ public class DefaultEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectMetricEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Collecting metric evidence for {ControlFamily}", controlFamily);
@@ -105,7 +110,8 @@ public class DefaultEvidenceCollector : IEvidenceCollector
                 ["responseTimeMs"] = 125,
                 ["errorRate"] = 0.001,
                 ["securityIncidents"] = 0
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         await Task.Delay(100, cancellationToken);
@@ -114,7 +120,8 @@ public class DefaultEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectPolicyEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Collecting policy evidence for {ControlFamily}", controlFamily);
@@ -135,7 +142,8 @@ public class DefaultEvidenceCollector : IEvidenceCollector
                 ["compliantPolicies"] = 43,
                 ["nonCompliantPolicies"] = 2,
                 ["enforcementMode"] = "Default"
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         await Task.Delay(100, cancellationToken);
@@ -144,7 +152,8 @@ public class DefaultEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectAccessControlEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Collecting access control evidence for {ControlFamily}", controlFamily);
@@ -165,7 +174,8 @@ public class DefaultEvidenceCollector : IEvidenceCollector
                 ["privilegedUsers"] = 5,
                 ["mfaEnabled"] = 120,
                 ["conditionalAccessPolicies"] = 8
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         await Task.Delay(100, cancellationToken);

@@ -19,6 +19,9 @@ public class CodeSecurityAssessment
 {
     public string AssessmentId { get; set; } = string.Empty;
     public string ProjectPath { get; set; } = string.Empty;
+    public string? RepositoryUrl { get; set; }
+    public string? Branch { get; set; }
+    public string? Provider { get; set; }
     public DateTimeOffset StartTime { get; set; }
     public DateTimeOffset EndTime { get; set; }
     public TimeSpan Duration { get; set; }

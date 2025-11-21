@@ -28,11 +28,12 @@ public class AccessControlEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectConfigurationEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         // Collect all AC evidence and filter for configuration-type evidence
-        var allEvidence = await CollectAccessControlEvidenceAsync(subscriptionId, controlFamily, cancellationToken);
+        var allEvidence = await CollectAccessControlEvidenceAsync(subscriptionId, controlFamily, collectedBy, cancellationToken);
         return allEvidence.Where(e => 
             e.EvidenceType == "NetworkSecurityGroups" || 
             e.EvidenceType == "KeyVaultConfiguration" ||
@@ -41,17 +42,19 @@ public class AccessControlEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectLogEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         // Collect all AC evidence and filter for log-type evidence (Log Analytics)
-        var allEvidence = await CollectAccessControlEvidenceAsync(subscriptionId, controlFamily, cancellationToken);
+        var allEvidence = await CollectAccessControlEvidenceAsync(subscriptionId, controlFamily, collectedBy, cancellationToken);
         return allEvidence.Where(e => e.EvidenceType == "LogAnalyticsWorkspaces").ToList();
     }
 
     public async Task<List<ComplianceEvidence>> CollectMetricEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         // Access Control family doesn't typically have metric-based evidence
@@ -62,7 +65,8 @@ public class AccessControlEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectPolicyEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         // TODO: Implement Azure Policy evidence collection for Access Control
@@ -73,7 +77,8 @@ public class AccessControlEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectAccessControlEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -116,7 +121,8 @@ public class AccessControlEvidenceCollector : IEvidenceCollector
                     ResourceId = $"/subscriptions/{subscriptionId}/providers/Microsoft.Network/networkSecurityGroups",
                     CollectedAt = DateTimeOffset.UtcNow,
                     Data = nsgData,
-                    Screenshot = JsonSerializer.Serialize(nsgData, new JsonSerializerOptions { WriteIndented = true })
+                    Screenshot = JsonSerializer.Serialize(nsgData, new JsonSerializerOptions { WriteIndented = true }),
+                    CollectedBy = collectedBy
                 });
             }
 
@@ -145,7 +151,8 @@ public class AccessControlEvidenceCollector : IEvidenceCollector
                     ResourceId = $"/subscriptions/{subscriptionId}/providers/Microsoft.KeyVault/vaults",
                     CollectedAt = DateTimeOffset.UtcNow,
                     Data = kvData,
-                    Screenshot = JsonSerializer.Serialize(kvData, new JsonSerializerOptions { WriteIndented = true })
+                    Screenshot = JsonSerializer.Serialize(kvData, new JsonSerializerOptions { WriteIndented = true }),
+                    CollectedBy = collectedBy
                 });
             }
 
@@ -174,7 +181,8 @@ public class AccessControlEvidenceCollector : IEvidenceCollector
                     ResourceId = $"/subscriptions/{subscriptionId}/providers/Microsoft.OperationalInsights/workspaces",
                     CollectedAt = DateTimeOffset.UtcNow,
                     Data = logData,
-                    Screenshot = JsonSerializer.Serialize(logData, new JsonSerializerOptions { WriteIndented = true })
+                    Screenshot = JsonSerializer.Serialize(logData, new JsonSerializerOptions { WriteIndented = true }),
+                    CollectedBy = collectedBy
                 });
             }
 
@@ -203,7 +211,8 @@ public class AccessControlEvidenceCollector : IEvidenceCollector
                     ResourceId = $"/subscriptions/{subscriptionId}/providers/Microsoft.Compute/virtualMachines",
                     CollectedAt = DateTimeOffset.UtcNow,
                     Data = vmData,
-                    Screenshot = JsonSerializer.Serialize(vmData, new JsonSerializerOptions { WriteIndented = true })
+                    Screenshot = JsonSerializer.Serialize(vmData, new JsonSerializerOptions { WriteIndented = true }),
+                    CollectedBy = collectedBy
                 });
             }
 

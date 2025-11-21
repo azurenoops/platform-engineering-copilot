@@ -29,7 +29,8 @@ public class IncidentResponseEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectConfigurationEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -53,7 +54,8 @@ public class IncidentResponseEvidenceCollector : IEvidenceCollector
                 ["securityContactsConfigured"] = true,
                 ["alertNotificationsEnabled"] = true,
                 ["securityResourceCount"] = securityResources.Count
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         // Collect Sentinel workspaces (IR-4, IR-6)
@@ -80,7 +82,8 @@ public class IncidentResponseEvidenceCollector : IEvidenceCollector
                         resourceGroup = ((GenericResource)ws).Data.Id.ResourceGroupName
                     }).ToList()
                 },
-                ConfigSnapshot = JsonSerializer.Serialize(sentinelWorkspaces, new JsonSerializerOptions { WriteIndented = true })
+                ConfigSnapshot = JsonSerializer.Serialize(sentinelWorkspaces, new JsonSerializerOptions { WriteIndented = true }),
+                CollectedBy = collectedBy
             });
         }
 
@@ -89,7 +92,8 @@ public class IncidentResponseEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectLogEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -110,7 +114,8 @@ public class IncidentResponseEvidenceCollector : IEvidenceCollector
                 ["openIncidents"] = 1,
                 ["averageResolutionTime"] = "2.5 hours"
             },
-            LogExcerpt = "Incident response procedures documented. Security incidents tracked and resolved."
+            LogExcerpt = "Incident response procedures documented. Security incidents tracked and resolved.",
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -118,7 +123,8 @@ public class IncidentResponseEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectMetricEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -138,7 +144,8 @@ public class IncidentResponseEvidenceCollector : IEvidenceCollector
                 ["meanTimeToRecover"] = "4 hours",
                 ["falsePositiveRate"] = 5.2,
                 ["incidentDrillsPerformed"] = 4
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -146,7 +153,8 @@ public class IncidentResponseEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectPolicyEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -165,7 +173,8 @@ public class IncidentResponseEvidenceCollector : IEvidenceCollector
                 ["escalationProceduresDefined"] = true,
                 ["rolesAndResponsibilitiesDocumented"] = true,
                 ["communicationPlanEstablished"] = true
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -173,7 +182,8 @@ public class IncidentResponseEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectAccessControlEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -200,7 +210,8 @@ public class IncidentResponseEvidenceCollector : IEvidenceCollector
                     name = ((GenericResource)ar).Data.Name,
                     type = ((GenericResource)ar).Data.ResourceType.ToString()
                 }).ToList()
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;

@@ -906,6 +906,39 @@ Synthesized response:";
             return AgentType.Compliance;
         }
         
+        // DISCOVERY AGENT - Resource details requests with resource IDs
+        // "show me details for resource /subscriptions/.../resourceGroups/..."
+        // "get details for /subscriptions/..."
+        // Check BEFORE compliance informational routing to prioritize resource detail queries
+        if ((lowerMessage.Contains("details for") || lowerMessage.Contains("details about") || 
+             lowerMessage.Contains("show me details") || lowerMessage.Contains("get details")) && 
+            (lowerMessage.Contains("/subscriptions/") || lowerMessage.Contains("resourceid") ||
+             lowerMessage.Contains("resource id") || lowerMessage.Contains("/resourcegroups/")))
+        {
+            return AgentType.Discovery;
+        }
+        
+        // DISCOVERY AGENT - Tag-based resource search
+        // "find resources with tag", "search by tag", "resources tagged with"
+        if ((lowerMessage.Contains("tag") || lowerMessage.Contains("tagged")) &&
+            (lowerMessage.Contains("find") || lowerMessage.Contains("search") || 
+             lowerMessage.Contains("list") || lowerMessage.Contains("show") ||
+             lowerMessage.Contains("discover") || lowerMessage.Contains("resources with")))
+        {
+            return AgentType.Discovery;
+        }
+        
+        // DISCOVERY AGENT - General resource discovery
+        // "list all resources", "find resources", "discover resources", "show me resources"
+        if ((lowerMessage.Contains("list") || lowerMessage.Contains("find") || 
+             lowerMessage.Contains("discover") || lowerMessage.Contains("show")) &&
+            (lowerMessage.Contains("resource") || lowerMessage.Contains("inventory")) &&
+            !lowerMessage.Contains("create") && !lowerMessage.Contains("deploy") &&
+            !lowerMessage.Contains("provision"))
+        {
+            return AgentType.Discovery;
+        }
+        
         if (isComplianceRelated)
         {
             // INFORMATIONAL QUERIES - Just asking about concepts (no assessment needed)

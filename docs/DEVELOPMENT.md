@@ -613,7 +613,7 @@ Returns simple status metadata:
   "status": "healthy",
   "mode": "dual (http+stdio)",
   "server": "Platform Engineering Copilot MCP",
-  "version": "1.0.0"
+  "version": "0.7.1"
 }
 ```
 

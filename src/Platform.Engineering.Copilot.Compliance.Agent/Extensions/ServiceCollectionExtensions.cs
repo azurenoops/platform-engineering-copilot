@@ -145,6 +145,15 @@ public static class ServiceCollectionExtensions
         // Register Code Scanning Engine - Scoped (orchestrates security analysis tools)
         services.AddScoped<ICodeScanningEngine, CodeScanningEngine>();
         
+        // Register Document Generation Service - Scoped (generates ATO compliance documents: SSP, SAR, POA&M)
+        services.AddScoped<IDocumentGenerationService, Platform.Engineering.Copilot.Compliance.Agent.Services.Documents.DocumentGenerationService>();
+        
+        // Register Document Versioning Service - Scoped (manages document versions and revisions)
+        services.AddScoped<IDocumentVersioningService, Platform.Engineering.Copilot.Compliance.Agent.Services.Documents.DocumentVersioningService>();
+        
+        // Register Collaborative Editing Service - Scoped (manages real-time collaborative editing sessions)
+        services.AddScoped<ICollaborativeEditingService, Platform.Engineering.Copilot.Compliance.Agent.Services.Documents.CollaborativeEditingService>();
+        
         // Register Pull Request Review Services - Scoped (GitHub API integration for IaC compliance)
         services.AddHttpClient("GitHub", client =>
         {
@@ -173,16 +182,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISlackService, SlackService>();
         services.AddSingleton<ITeamsNotificationService, TeamsNotificationService>();
 
-
-
-        // Register compliance service (AI-powered, requires Kernel) - Scoped to match agents
-        services.AddScoped(serviceProvider =>
-        {
-            var logger = serviceProvider.GetRequiredService<ILogger<ComplianceService>>();
-            var kernel = serviceProvider.GetRequiredService<Kernel>();
-            
-            return new ComplianceService(logger, kernel);
-        });
 
         // ========================================
         // MULTI-AGENT SYSTEM REGISTRATION

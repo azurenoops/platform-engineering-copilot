@@ -747,4 +747,145 @@ public class CodeScanningPlugin : BaseSupervisorPlugin
     }
 
     #endregion
+
+    #region Repository Scanning
+
+    /// <summary>
+    /// Scan a remote repository from GitHub, Azure DevOps, or GitHub Enterprise for security vulnerabilities.
+    /// Automatically clones the repository, performs comprehensive security analysis, and cleans up.
+    /// </summary>
+    [KernelFunction, Description("Scan a remote Git repository (GitHub, Azure DevOps, GitHub Enterprise) for security vulnerabilities and compliance issues")]
+    public async Task<string> ScanRemoteRepositoryAsync(
+        [Description("Repository URL (e.g., https://github.com/owner/repo, https://dev.azure.com/org/project/_git/repo)")] string repositoryUrl,
+        [Description("Branch to scan (optional, defaults to main/master)")] string? branch = null,
+        [Description("File patterns to include in scan")] string? filePatterns = null,
+        [Description("Compliance frameworks to check against")] string? complianceFrameworks = null,
+        [Description("Scan depth: surface, deep, or comprehensive")] string scanDepth = "deep")
+    {
+        _logger.LogInformation("Starting remote repository scan for: {RepositoryUrl}", repositoryUrl);
+
+        try
+        {
+            var progress = new Progress<SecurityScanProgress>(p =>
+            {
+                _logger.LogInformation("Repository scan progress: {Phase} ({Completed}/{Total}) - {Message}",
+                    p.CurrentPhase, p.CompletedPhases, p.TotalPhases, p.Message);
+            });
+
+            var assessment = await _codeScanningEngine.ScanRepositoryAsync(
+                repositoryUrl,
+                branch,
+                filePatterns,
+                complianceFrameworks,
+                scanDepth,
+                progress);
+
+            return GenerateFormattedSecurityReport(assessment);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Remote repository scan failed for: {RepositoryUrl}", repositoryUrl);
+            return CreateErrorResponse("scan remote repository", ex);
+        }
+    }
+
+    /// <summary>
+    /// Scan a GitHub repository by owner and repository name for security vulnerabilities.
+    /// Performs comprehensive SAST, dependency scanning, secret detection, and compliance checking.
+    /// </summary>
+    [KernelFunction, Description("Scan a GitHub repository by owner and name for security vulnerabilities, exposed secrets, and compliance violations")]
+    public async Task<string> ScanGitHubRepositoryAsync(
+        [Description("GitHub repository owner (username or organization)")] string owner,
+        [Description("GitHub repository name")] string repository,
+        [Description("Branch to scan (optional, defaults to main)")] string? branch = null,
+        [Description("Compliance frameworks to check against")] string? complianceFrameworks = null)
+    {
+        _logger.LogInformation("Starting GitHub repository scan for: {Owner}/{Repository}", owner, repository);
+
+        try
+        {
+            var assessment = await _codeScanningEngine.ScanGitHubRepositoryAsync(
+                owner,
+                repository,
+                branch,
+                complianceFrameworks);
+
+            return GenerateFormattedSecurityReport(assessment);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GitHub repository scan failed for: {Owner}/{Repository}", owner, repository);
+            return CreateErrorResponse("scan GitHub repository", ex);
+        }
+    }
+
+    /// <summary>
+    /// Scan an Azure DevOps repository for security vulnerabilities and compliance issues.
+    /// Analyzes code, dependencies, secrets, IaC templates, and container configurations.
+    /// </summary>
+    [KernelFunction, Description("Scan an Azure DevOps repository for security vulnerabilities, compliance violations, and configuration issues")]
+    public async Task<string> ScanAzureDevOpsRepositoryAsync(
+        [Description("Azure DevOps organization name")] string organization,
+        [Description("Azure DevOps project name")] string project,
+        [Description("Azure DevOps repository name")] string repository,
+        [Description("Branch to scan (optional, defaults to main)")] string? branch = null,
+        [Description("Compliance frameworks to check against")] string? complianceFrameworks = null)
+    {
+        _logger.LogInformation("Starting Azure DevOps repository scan for: {Organization}/{Project}/{Repository}",
+            organization, project, repository);
+
+        try
+        {
+            var assessment = await _codeScanningEngine.ScanAzureDevOpsRepositoryAsync(
+                organization,
+                project,
+                repository,
+                branch,
+                complianceFrameworks);
+
+            return GenerateFormattedSecurityReport(assessment);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Azure DevOps repository scan failed for: {Organization}/{Project}/{Repository}",
+                organization, project, repository);
+            return CreateErrorResponse("scan Azure DevOps repository", ex);
+        }
+    }
+
+    /// <summary>
+    /// Scan a GitHub Enterprise repository for security vulnerabilities and compliance issues.
+    /// Supports custom GitHub Enterprise installations with comprehensive security analysis.
+    /// </summary>
+    [KernelFunction, Description("Scan a GitHub Enterprise repository for security vulnerabilities, exposed secrets, and compliance violations")]
+    public async Task<string> ScanGitHubEnterpriseRepositoryAsync(
+        [Description("GitHub Enterprise URL (e.g., https://github.company.com)")] string enterpriseUrl,
+        [Description("Repository owner (username or organization)")] string owner,
+        [Description("Repository name")] string repository,
+        [Description("Branch to scan (optional, defaults to main)")] string? branch = null,
+        [Description("Compliance frameworks to check against")] string? complianceFrameworks = null)
+    {
+        _logger.LogInformation("Starting GitHub Enterprise repository scan for: {EnterpriseUrl}/{Owner}/{Repository}",
+            enterpriseUrl, owner, repository);
+
+        try
+        {
+            var assessment = await _codeScanningEngine.ScanGitHubEnterpriseRepositoryAsync(
+                enterpriseUrl,
+                owner,
+                repository,
+                branch,
+                complianceFrameworks);
+
+            return GenerateFormattedSecurityReport(assessment);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GitHub Enterprise repository scan failed for: {EnterpriseUrl}/{Owner}/{Repository}",
+                enterpriseUrl, owner, repository);
+            return CreateErrorResponse("scan GitHub Enterprise repository", ex);
+        }
+    }
+
+    #endregion
 }

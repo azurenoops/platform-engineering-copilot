@@ -61,6 +61,12 @@ namespace Platform.Engineering.Copilot.Core.Interfaces.Azure
         Task<IEnumerable<AzureSubscription>> ListSubscriptionsAsync(CancellationToken cancellationToken = default);
         Task<IEnumerable<AzureResource>> ListLocationsAsync(string? subscriptionId = null, CancellationToken cancellationToken = default);
         string GetSubscriptionId(string? subscriptionId = null);
+        
+        /// <summary>
+        /// Gets the currently authenticated Azure user's identity (email/UPN)
+        /// </summary>
+        /// <returns>User principal name (email) or account identifier</returns>
+        Task<string> GetCurrentAzureUserAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Creates a new Azure Government subscription.

@@ -36,27 +36,32 @@ public interface IEvidenceCollector
 {
     Task<List<ComplianceEvidence>> CollectConfigurationEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default);
 
     Task<List<ComplianceEvidence>> CollectLogEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default);
 
     Task<List<ComplianceEvidence>> CollectMetricEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default);
 
     Task<List<ComplianceEvidence>> CollectPolicyEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default);
 
     Task<List<ComplianceEvidence>> CollectAccessControlEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default);
 }
 

@@ -111,7 +111,7 @@ What's my current compliance status for subscription 00000000-0000-0000-0000-000
 
 #### Test COMP-2.1: Collect Evidence
 ```
-Collect compliance evidence for resource group rg-prod-eastus
+Collect evidence for all NIST controls scoped to resource group rg-prod-eastus
 ```
 **Expected Function:** `collect_evidence`  
 **Expected Output:**

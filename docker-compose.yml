@@ -98,11 +98,14 @@ services:
       - NistControls__RetryDelaySeconds=${NIST_CONTROLS_RETRY_DELAY:-2}
       - NistControls__EnableOfflineFallback=${NIST_CONTROLS_OFFLINE_FALLBACK:-true}
       - NistControls__EnableDetailedLogging=${NIST_CONTROLS_DETAILED_LOGGING:-false}
+      # Evidence Storage Configuration
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-DefaultEndpointsProtocol=https;AccountName=mcpsa;AccountKey=Z4paJbETBOfhsR+u6y61KlKbwAo0DQzGKh7KBzu29elVGK2zG9jP5IKvQLqGykpYa34SjXCHcZ9X+AStiPhCyw==;EndpointSuffix=core.usgovcloudapi.net}
     ports:
       - "5100:5100"
     volumes:
       - plaform-engineering-copilot-logs:/app/logs
       - ./appsettings.json:/app/appsettings.json:ro
+      - ~/.azure:/root/.azure:ro
     networks:
       - plaform-engineering-copilot-network
     healthcheck:

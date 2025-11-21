@@ -118,4 +118,48 @@ public interface ICodeScanningEngine
     Task<ContinuousSecurityStatus> GetContinuousSecurityStatusAsync(
         string projectPath,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs comprehensive security scan of a remote repository (GitHub, Azure DevOps, GitHub Enterprise)
+    /// </summary>
+    Task<CodeSecurityAssessment> ScanRepositoryAsync(
+        string repositoryUrl,
+        string? branch = null,
+        string? filePatterns = null,
+        string? complianceFrameworks = null,
+        string scanDepth = "deep",
+        IProgress<SecurityScanProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Scans a GitHub repository by owner and name
+    /// </summary>
+    Task<CodeSecurityAssessment> ScanGitHubRepositoryAsync(
+        string owner,
+        string repository,
+        string? branch = null,
+        string? complianceFrameworks = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Scans an Azure DevOps repository
+    /// </summary>
+    Task<CodeSecurityAssessment> ScanAzureDevOpsRepositoryAsync(
+        string organization,
+        string project,
+        string repository,
+        string? branch = null,
+        string? complianceFrameworks = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Scans a GitHub Enterprise repository
+    /// </summary>
+    Task<CodeSecurityAssessment> ScanGitHubEnterpriseRepositoryAsync(
+        string enterpriseUrl,
+        string owner,
+        string repository,
+        string? branch = null,
+        string? complianceFrameworks = null,
+        CancellationToken cancellationToken = default);
 }

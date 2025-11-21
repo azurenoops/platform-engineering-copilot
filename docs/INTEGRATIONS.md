@@ -249,7 +249,7 @@ File: `openapi.json`
   "openapi": "3.0.0",
   "info": {
     "title": "Platform Engineering Copilot API",
-    "version": "1.0.0"
+    "version": "0.7.1"
   },
   "servers": [{
     "url": "https://your-mcp-server.azurewebsites.net"

@@ -27,7 +27,8 @@ public interface IAtoComplianceEngine
     
     Task<EvidencePackage> CollectComplianceEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         IProgress<EvidenceCollectionProgress>? progress = null,
         CancellationToken cancellationToken = default);
     Task<ComplianceTimeline> GetComplianceTimelineAsync(string subscriptionId, DateTimeOffset startDate, DateTimeOffset endDate, CancellationToken cancellationToken = default);

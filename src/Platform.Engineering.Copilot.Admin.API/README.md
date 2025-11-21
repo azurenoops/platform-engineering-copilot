@@ -45,7 +45,7 @@ Content-Type: application/json
   "templateName": "my-api-service",
   "serviceName": "my-api",
   "description": "Python FastAPI microservice with PostgreSQL",
-  "version": "1.0.0",
+  "version": "0.7.1",
   "createdBy": "platform-engineer@example.com",
   "isPublic": false,
   "application": {
@@ -141,7 +141,7 @@ Response:
       "id": "guid",
       "name": "my-api-service",
       "templateType": "Python",
-      "version": "1.0.0",
+      "version": "0.7.1",
       "isActive": true,
       "createdAt": "2025-10-01T10:00:00Z"
     }

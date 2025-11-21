@@ -196,17 +196,14 @@ public class CompliancePlugin : BaseSupervisorPlugin
     // ========== COMPLIANCE ASSESSMENT FUNCTIONS ==========
 
     [KernelFunction("run_compliance_assessment")]
-    [Description("Run a comprehensive NIST 800-53 compliance assessment for an Azure subscription or resource group. " +
-                 "Scans all resources and generates detailed findings with severity ratings. " +
-                 "Essential for ATO compliance verification. Can scope to a specific resource group. " +
-                 "🔴 **DEFAULT BEHAVIOR**: When user says 'run assessment', 'run compliance assessment', or similar WITHOUT specifying a subscription, " +
-                 "IMMEDIATELY call this function with subscriptionIdOrName=null (it will automatically use the default subscription from config). " +
-                 "DO NOT ask the user which subscription - just execute with null parameter. " +
-                 "If user explicitly mentions a subscription (e.g., 'run assessment for production'), then pass that subscription name/ID. " +
-                 "Accepts either a subscription GUID (like '453c2549-9efb-4d48-a4f6-6c6b42db39b5') or a friendly name (like 'production', 'dev', 'staging'). " +
-                 "Examples: User says 'Run assessment' → Call with subscriptionIdOrName=null | User says 'Run assessment for production' → Call with subscriptionIdOrName='production'. " +
-                 "CRITICAL: If the conversation mentions 'newly provisioned' or 'newly created' resources, ALWAYS extract the resource group name from context and pass it to resourceGroupName parameter. " +
-                 "Look for resource group names like 'newly-provisioned-aks', 'rg-dev-aks', 'newly-created-rg', etc. in the conversation history.")]
+    [Description("🔍 SECURITY SCANNING ONLY - Run a comprehensive NIST 800-53 compliance assessment to IDENTIFY security findings and vulnerabilities. " +
+                 "THIS FUNCTION SCANS FOR PROBLEMS - it does NOT collect evidence packages. " +
+                 "Use ONLY when user says: 'run assessment', 'scan for compliance', 'check for vulnerabilities', 'find security issues'. " +
+                 "DO NOT use for: 'collect evidence', 'generate evidence', 'evidence package', 'ATO package', 'documentation'. " +
+                 "Output: Compliance findings with severity ratings (Critical/High/Medium/Low), compliance score, and remediation recommendations. " +
+                 "🔴 **DEFAULT BEHAVIOR**: When user says 'run assessment' WITHOUT specifying subscription → Call with subscriptionIdOrName=null (uses default subscription). " +
+                 "Accepts subscription GUID or friendly name. Examples: null (use default) | 'production' | '453c2549-9efb-4d48-a4f6-6c6b42db39b5'. " +
+                 "CRITICAL: Extract resource group name from conversation if user mentions 'newly provisioned' or 'newly created' resources.")]
     public async Task<string> RunComplianceAssessmentAsync(
         [Description("Azure subscription ID (GUID) or friendly name (e.g., 'production', 'dev', 'staging'). OPTIONAL - leave as null when user doesn't specify (will use default from configuration set via set_azure_subscription). Only provide a value if user explicitly mentions a subscription. Example: 'production' or '453c2549-9efb-4d48-a4f6-6c6b42db39b5'")] 
         string? subscriptionIdOrName = null,
@@ -1449,10 +1446,13 @@ public class CompliancePlugin : BaseSupervisorPlugin
     }
 
     [KernelFunction("collect_evidence")]
-    [Description("Collect and package compliance evidence for a specific NIST control family. " +
-                 "Gathers configuration data, logs, and metrics for audit purposes. " +
-                 "Essential for ATO attestation packages. Can scope to a specific resource group. " +
-                 "Accepts either a subscription GUID or friendly name (e.g., 'production', 'dev', 'staging').")]
+    [Description("📦 EVIDENCE COLLECTION ONLY - Collect and package compliance evidence artifacts for ATO/eMASS documentation (NOT for scanning). " +
+                 "THIS FUNCTION GATHERS DOCUMENTATION - it does NOT scan for security findings. " +
+                 "Use ONLY when user says: 'collect evidence', 'generate evidence', 'evidence package', 'gather evidence', 'ATO package', 'documentation'. " +
+                 "DO NOT use for: 'run assessment', 'scan', 'check compliance', 'find vulnerabilities'. " +
+                 "Output: Evidence package with configuration data, logs, metrics, policies - suitable for ATO attestation and audits. " +
+                 "Requires NIST control family (AC, AU, CM, etc.). Can scope to specific resource group. " +
+                 "Accepts subscription GUID or friendly name (e.g., 'production', 'dev', 'staging').")]
     public async Task<string> CollectEvidenceAsync(
         [Description("Azure subscription ID (GUID) or friendly name (e.g., 'production', 'dev', 'staging')")] string subscriptionIdOrName,
         [Description("NIST control family (e.g., AC, AU, CM, IA)")] string controlFamily,
@@ -1464,12 +1464,25 @@ public class CompliancePlugin : BaseSupervisorPlugin
             // Resolve subscription name to GUID
             string subscriptionId = await ResolveSubscriptionIdAsync(subscriptionIdOrName);
             
+            // Automatically get the current authenticated Azure user
+            string userName;
+            try
+            {
+                userName = await _azureResourceService.GetCurrentAzureUserAsync(cancellationToken);
+                _logger.LogInformation("Evidence collection initiated by: {UserName}", userName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not determine current Azure user, using 'Unknown'");
+                userName = "Unknown";
+            }
+            
             var scope = string.IsNullOrWhiteSpace(resourceGroupName) 
                 ? $"subscription {subscriptionId}" 
                 : $"resource group '{resourceGroupName}' in subscription {subscriptionId}";
             
-            _logger.LogInformation("Collecting evidence for {Scope} (input: {Input}), family {Family}", 
-                scope, subscriptionIdOrName, controlFamily);
+            _logger.LogInformation("Collecting evidence for {Scope} (input: {Input}), family {Family}, user {User}", 
+                scope, subscriptionIdOrName, controlFamily, userName);
 
             if (string.IsNullOrWhiteSpace(subscriptionId) || string.IsNullOrWhiteSpace(controlFamily))
             {
@@ -1483,6 +1496,7 @@ public class CompliancePlugin : BaseSupervisorPlugin
             var evidencePackage = await _complianceEngine.CollectComplianceEvidenceAsync(
                 subscriptionId,
                 controlFamily,
+                userName,
                 null,
                 cancellationToken);
 
@@ -1554,8 +1568,8 @@ public class CompliancePlugin : BaseSupervisorPlugin
                 // ========== DOWNLOADABLE FILES ==========
                 files = new
                 {
-                    title = "📥 DOWNLOADABLE FILES",
-                    note = "💡 Copy and save these file contents to your local system",
+                    title = "📥 EVIDENCE FILES",
+                    note = "💡 Click 'Insert at Cursor' to copy file contents, then save locally",
                     json = new
                     {
                         format = "JSON",
@@ -1594,7 +1608,7 @@ public class CompliancePlugin : BaseSupervisorPlugin
                     status = "✅ Ready for submission",
                     steps = new[]
                     {
-                        "1. Copy the eMASS XML content from the 'files.emass.content' field above",
+                        "1. Copy the eMASS XML content from 'files.emass.content' above",
                         "2. Save it as a .xml file on your local system",
                         "3. Log into the DoD eMASS portal (https://emass.apps.mil)",
                         "4. Navigate to your system's ATO package section",
@@ -2580,6 +2594,19 @@ public class CompliancePlugin : BaseSupervisorPlugin
             // Resolve subscription name to GUID
             string subscriptionId = await ResolveSubscriptionIdAsync(subscriptionIdOrName);
             
+            // Automatically get the current authenticated Azure user
+            string userName;
+            try
+            {
+                userName = await _azureResourceService.GetCurrentAzureUserAsync(cancellationToken);
+                _logger.LogInformation("eMASS package generation initiated by: {UserName}", userName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not determine current Azure user, using 'Unknown'");
+                userName = "Unknown";
+            }
+            
             _logger.LogInformation("Generating eMASS package for subscription {SubscriptionId}, family {Family}", 
                 subscriptionId, controlFamily);
 
@@ -2596,6 +2623,7 @@ public class CompliancePlugin : BaseSupervisorPlugin
             var evidencePackage = await _complianceEngine.CollectComplianceEvidenceAsync(
                 subscriptionId,
                 controlFamily,
+                userName,
                 null,
                 cancellationToken);
 

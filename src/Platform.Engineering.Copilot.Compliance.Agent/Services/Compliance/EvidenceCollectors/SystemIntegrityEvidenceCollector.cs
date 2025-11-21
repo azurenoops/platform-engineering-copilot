@@ -29,7 +29,8 @@ public class SystemIntegrityEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectConfigurationEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -57,7 +58,8 @@ public class SystemIntegrityEvidenceCollector : IEvidenceCollector
                         name = ((GenericResource)ext).Data.Name,
                         resourceGroup = ((GenericResource)ext).Data.Id.ResourceGroupName
                     }).ToList()
-                }
+                },
+                CollectedBy = collectedBy
             });
         }
 
@@ -77,7 +79,8 @@ public class SystemIntegrityEvidenceCollector : IEvidenceCollector
                 ["updateManagementConfigured"] = updateManagement.Count > 0,
                 ["patchManagementEnabled"] = true,
                 ["automationAccountCount"] = updateManagement.Count
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -85,7 +88,8 @@ public class SystemIntegrityEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectLogEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -105,7 +109,8 @@ public class SystemIntegrityEvidenceCollector : IEvidenceCollector
                 ["integrityChecksPerformed"] = 1540,
                 ["fileChangesMonitored"] = true
             },
-            LogExcerpt = "File integrity monitoring enabled. Critical file changes tracked and alerted."
+            LogExcerpt = "File integrity monitoring enabled. Critical file changes tracked and alerted.",
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -113,7 +118,8 @@ public class SystemIntegrityEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectMetricEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -134,7 +140,8 @@ public class SystemIntegrityEvidenceCollector : IEvidenceCollector
                 ["mediumVulnerabilities"] = 25,
                 ["patchComplianceRate"] = 94.5,
                 ["lastScanDate"] = DateTimeOffset.UtcNow.AddDays(-1)
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -142,7 +149,8 @@ public class SystemIntegrityEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectPolicyEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -162,7 +170,8 @@ public class SystemIntegrityEvidenceCollector : IEvidenceCollector
                 ["highPatchInstallationSLA"] = "30 days",
                 ["automaticUpdatesEnabled"] = true,
                 ["maintenanceWindowDefined"] = true
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -170,7 +179,8 @@ public class SystemIntegrityEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectAccessControlEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -194,7 +204,8 @@ public class SystemIntegrityEvidenceCollector : IEvidenceCollector
                 ["continuousMonitoringEnabled"] = true,
                 ["anomalyDetectionEnabled"] = true,
                 ["realTimeAlertsConfigured"] = true
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;

@@ -572,31 +572,554 @@ public class AzureCostManagementService : IAzureCostManagementService
 
     private List<CostTrend> ParseCostTrendsResponse(JsonDocument response)
     {
-        // TODO: Implement proper Azure Cost Management API response parsing
-        // For now, return empty list - requires real Azure API integration
-        _logger.LogWarning("ParseCostTrendsResponse not yet implemented - requires Azure Cost Management API integration");
-        return new List<CostTrend>();
+        var trends = new List<CostTrend>();
+        var dailyCostsByDate = new Dictionary<DateTime, CostTrend>();
+        
+        try
+        {
+            // Azure Cost Management query response structure:
+            // { "properties": { "columns": [...], "rows": [[...]] } }
+            if (!response.RootElement.TryGetProperty("properties", out var properties))
+            {
+                _logger.LogWarning("Cost Management response missing 'properties' element");
+                return trends;
+            }
+
+            if (!properties.TryGetProperty("columns", out var columnsElement) ||
+                !properties.TryGetProperty("rows", out var rowsElement))
+            {
+                _logger.LogWarning("Cost Management response missing columns or rows");
+                return trends;
+            }
+
+            // Parse column definitions to find indices
+            var columns = columnsElement.EnumerateArray().ToList();
+            int costIndex = -1, dateIndex = -1, serviceIndex = -1, resourceGroupIndex = -1;
+            
+            for (int i = 0; i < columns.Count; i++)
+            {
+                if (columns[i].TryGetProperty("name", out var nameElement))
+                {
+                    var columnName = nameElement.GetString();
+                    if (columnName == "PreTaxCost" || columnName == "Cost") costIndex = i;
+                    else if (columnName == "UsageDate") dateIndex = i;
+                    else if (columnName == "ServiceName") serviceIndex = i;
+                    else if (columnName == "ResourceGroupName") resourceGroupIndex = i;
+                }
+            }
+
+            if (costIndex < 0)
+            {
+                _logger.LogWarning("Cost column not found in response");
+                return trends;
+            }
+
+            // Parse rows and aggregate by date
+            foreach (var row in rowsElement.EnumerateArray())
+            {
+                var rowData = row.EnumerateArray().ToList();
+                if (rowData.Count <= costIndex)
+                    continue;
+
+                var date = dateIndex >= 0 && rowData.Count > dateIndex 
+                    ? ParseDateToDateTime(rowData[dateIndex].GetString()) 
+                    : DateTime.UtcNow.Date;
+
+                var cost = rowData[costIndex].ValueKind == JsonValueKind.Number
+                    ? rowData[costIndex].GetDecimal()
+                    : 0m;
+
+                var serviceName = serviceIndex >= 0 && rowData.Count > serviceIndex
+                    ? rowData[serviceIndex].GetString() ?? "Unknown"
+                    : "Unknown";
+
+                var resourceGroup = resourceGroupIndex >= 0 && rowData.Count > resourceGroupIndex
+                    ? rowData[resourceGroupIndex].GetString() ?? "Unknown"
+                    : "Unknown";
+
+                // Get or create trend for this date
+                if (!dailyCostsByDate.TryGetValue(date, out var trend))
+                {
+                    trend = new CostTrend
+                    {
+                        Date = date,
+                        DailyCost = 0m,
+                        CumulativeMonthlyCost = 0m,
+                        ServiceCosts = new Dictionary<string, decimal>(),
+                        ResourceGroupCosts = new Dictionary<string, decimal>(),
+                        ResourceCount = 0
+                    };
+                    dailyCostsByDate[date] = trend;
+                }
+
+                // Aggregate costs
+                trend.DailyCost += cost;
+                
+                if (trend.ServiceCosts.ContainsKey(serviceName))
+                    trend.ServiceCosts[serviceName] += cost;
+                else
+                    trend.ServiceCosts[serviceName] = cost;
+
+                if (trend.ResourceGroupCosts.ContainsKey(resourceGroup))
+                    trend.ResourceGroupCosts[resourceGroup] += cost;
+                else
+                    trend.ResourceGroupCosts[resourceGroup] = cost;
+            }
+
+            // Convert to sorted list and calculate cumulative costs
+            trends = dailyCostsByDate.Values.OrderBy(t => t.Date).ToList();
+            decimal cumulative = 0m;
+            foreach (var trend in trends)
+            {
+                cumulative += trend.DailyCost;
+                trend.CumulativeMonthlyCost = cumulative;
+                
+                // Identify top cost drivers (top 3 services)
+                trend.CostDrivers = trend.ServiceCosts
+                    .OrderByDescending(kvp => kvp.Value)
+                    .Take(3)
+                    .Select(kvp => $"{kvp.Key}: ${kvp.Value:F2}")
+                    .ToList();
+            }
+
+            _logger.LogInformation("Parsed {Count} cost trend records from Azure Cost Management", trends.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error parsing cost trends response");
+        }
+
+        return trends;
+    }
+
+    private DateTime ParseDateToDateTime(string? dateString)
+    {
+        if (string.IsNullOrEmpty(dateString))
+            return DateTime.UtcNow.Date;
+
+        // Try parsing different date formats
+        if (DateTime.TryParse(dateString, out var date))
+            return date.Date;
+        
+        if (DateTime.TryParseExact(dateString, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out var dateOnly))
+            return dateOnly.Date;
+
+        return DateTime.UtcNow.Date;
     }
 
     private List<BudgetStatus> ParseBudgetsResponse(JsonDocument response)
     {
-        // TODO: Implement proper Azure Budgets API response parsing
-        _logger.LogWarning("ParseBudgetsResponse not yet implemented - requires Azure Budgets API integration");
-        return new List<BudgetStatus>();
+        var budgets = new List<BudgetStatus>();
+        
+        try
+        {
+            // Azure Budgets API response structure:
+            // { "value": [ { "id": "...", "name": "...", "properties": { ... } } ] }
+            if (!response.RootElement.TryGetProperty("value", out var budgetsArray))
+            {
+                _logger.LogWarning("Budgets response missing 'value' array");
+                return budgets;
+            }
+
+            foreach (var budgetElement in budgetsArray.EnumerateArray())
+            {
+                try
+                {
+                    if (!budgetElement.TryGetProperty("properties", out var properties))
+                        continue;
+
+                    var budget = new BudgetStatus
+                    {
+                        BudgetId = budgetElement.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
+                        Name = budgetElement.TryGetProperty("name", out var name) ? name.GetString() ?? "Unknown" : "Unknown",
+                        LastUpdated = DateTime.UtcNow
+                    };
+
+                    // Parse amount
+                    if (properties.TryGetProperty("amount", out var amount))
+                    {
+                        budget.Amount = amount.ValueKind == JsonValueKind.Number 
+                            ? amount.GetDecimal() 
+                            : 0m;
+                    }
+
+                    // Parse current spend
+                    if (properties.TryGetProperty("currentSpend", out var currentSpend) &&
+                        currentSpend.TryGetProperty("amount", out var spendAmount))
+                    {
+                        budget.CurrentSpend = spendAmount.ValueKind == JsonValueKind.Number
+                            ? spendAmount.GetDecimal()
+                            : 0m;
+                    }
+
+                    // Calculate remaining and utilization
+                    budget.RemainingBudget = budget.Amount - budget.CurrentSpend;
+                    budget.UtilizationPercentage = budget.Amount > 0 
+                        ? (budget.CurrentSpend / budget.Amount) * 100 
+                        : 0;
+
+                    // Parse time period
+                    if (properties.TryGetProperty("timeGrain", out var timeGrain))
+                    {
+                        var grain = timeGrain.GetString();
+                        budget.Period = grain switch
+                        {
+                            "Monthly" => BudgetPeriod.Monthly,
+                            "Quarterly" => BudgetPeriod.Quarterly,
+                            "Annually" => BudgetPeriod.Annually,
+                            _ => BudgetPeriod.Monthly
+                        };
+                    }
+
+                    // Parse time period dates
+                    if (properties.TryGetProperty("timePeriod", out var timePeriod))
+                    {
+                        if (timePeriod.TryGetProperty("startDate", out var startDate))
+                            budget.StartDate = DateTime.Parse(startDate.GetString() ?? DateTime.UtcNow.ToString());
+                        
+                        if (timePeriod.TryGetProperty("endDate", out var endDate))
+                            budget.EndDate = DateTime.Parse(endDate.GetString() ?? DateTime.UtcNow.ToString());
+                    }
+
+                    // Parse notifications/thresholds
+                    if (properties.TryGetProperty("notifications", out var notifications))
+                    {
+                        foreach (var notification in notifications.EnumerateObject())
+                        {
+                            if (notification.Value.TryGetProperty("threshold", out var threshold))
+                            {
+                                var thresholdValue = threshold.ValueKind == JsonValueKind.Number
+                                    ? threshold.GetDecimal()
+                                    : 0m;
+
+                                var isEnabled = notification.Value.TryGetProperty("enabled", out var enabled) && enabled.GetBoolean();
+
+                                budget.Thresholds.Add(new BudgetThreshold
+                                {
+                                    Percentage = thresholdValue,
+                                    EmailNotification = isEnabled
+                                });
+
+                                // Parse alert recipients
+                                if (notification.Value.TryGetProperty("contactEmails", out var emails))
+                                {
+                                    foreach (var email in emails.EnumerateArray())
+                                    {
+                                        var emailStr = email.GetString();
+                                        if (!string.IsNullOrEmpty(emailStr) && !budget.AlertRecipients.Contains(emailStr))
+                                            budget.AlertRecipients.Add(emailStr);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Determine health status
+                    budget.HealthStatus = budget.UtilizationPercentage switch
+                    {
+                        >= 100 => BudgetHealthStatus.Critical,
+                        >= 80 => BudgetHealthStatus.Warning,
+                        _ => BudgetHealthStatus.Healthy
+                    };
+
+                    budgets.Add(budget);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error parsing individual budget");
+                }
+            }
+
+            _logger.LogInformation("Parsed {Count} budgets from Azure Budgets API", budgets.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error parsing budgets response");
+        }
+
+        return budgets;
     }
 
     private List<CostOptimizationRecommendation> ParseAdvisorRecommendations(JsonDocument response)
     {
-        // TODO: Implement proper Azure Advisor API response parsing
-        _logger.LogWarning("ParseAdvisorRecommendations not yet implemented - requires Azure Advisor API integration");
-        return new List<CostOptimizationRecommendation>();
+        var recommendations = new List<CostOptimizationRecommendation>();
+        
+        try
+        {
+            // Azure Advisor API response structure:
+            // { "value": [ { "id": "...", "name": "...", "properties": { ... } } ] }
+            if (!response.RootElement.TryGetProperty("value", out var recommendationsArray))
+            {
+                _logger.LogWarning("Advisor response missing 'value' array");
+                return recommendations;
+            }
+
+            foreach (var recElement in recommendationsArray.EnumerateArray())
+            {
+                try
+                {
+                    if (!recElement.TryGetProperty("properties", out var properties))
+                        continue;
+
+                    var recommendation = new CostOptimizationRecommendation
+                    {
+                        RecommendationId = recElement.TryGetProperty("id", out var id) ? id.GetString() ?? Guid.NewGuid().ToString() : Guid.NewGuid().ToString(),
+                        DetectedAt = DateTime.UtcNow,
+                        Category = OptimizationCategory.Compute, // Default for Advisor cost recommendations
+                        Type = OptimizationType.Rightsizing
+                    };
+
+                    // Parse short description (title)
+                    if (properties.TryGetProperty("shortDescription", out var shortDesc) &&
+                        shortDesc.TryGetProperty("solution", out var solution))
+                    {
+                        recommendation.Title = solution.GetString() ?? "Cost optimization recommendation";
+                    }
+
+                    // Parse extended properties for cost impact
+                    if (properties.TryGetProperty("extendedProperties", out var extendedProps))
+                    {
+                        if (extendedProps.TryGetProperty("annualSavingsAmount", out var annualSavings))
+                        {
+                            recommendation.PotentialAnnualSavings = decimal.TryParse(
+                                annualSavings.GetString(), 
+                                out var annual) ? annual : 0m;
+                            recommendation.PotentialMonthlySavings = recommendation.PotentialAnnualSavings / 12;
+                            recommendation.EstimatedMonthlySavings = recommendation.PotentialMonthlySavings;
+                        }
+
+                        if (extendedProps.TryGetProperty("savingsCurrency", out var currency))
+                        {
+                            recommendation.Metadata["Currency"] = currency.GetString() ?? "USD";
+                        }
+                    }
+
+                    // Parse impacted resource
+                    if (properties.TryGetProperty("impactedField", out var impactedField) &&
+                        properties.TryGetProperty("impactedValue", out var impactedValue))
+                    {
+                        recommendation.ResourceId = impactedValue.GetString() ?? "";
+                        recommendation.ResourceType = impactedField.GetString() ?? "";
+                        recommendation.ResourceName = ExtractResourceName(recommendation.ResourceId);
+                        recommendation.ResourceGroup = ExtractResourceGroup(recommendation.ResourceId);
+                    }
+
+                    // Parse impact level
+                    if (properties.TryGetProperty("impact", out var impact))
+                    {
+                        var impactLevel = impact.GetString();
+                        recommendation.Priority = impactLevel switch
+                        {
+                            "High" => OptimizationPriority.High,
+                            "Medium" => OptimizationPriority.Medium,
+                            "Low" => OptimizationPriority.Low,
+                            _ => OptimizationPriority.Medium
+                        };
+                        recommendation.Impact = impactLevel ?? "Medium";
+                    }
+
+                    // Parse recommendation text
+                    if (properties.TryGetProperty("recommendationTypeId", out var typeId))
+                    {
+                        var typeIdStr = typeId.GetString() ?? "";
+                        recommendation.Description = MapAdvisorTypeToDescription(typeIdStr);
+                        
+                        // Set category based on type
+                        if (typeIdStr.Contains("Shutdown", StringComparison.OrdinalIgnoreCase))
+                        {
+                            recommendation.Type = OptimizationType.UnusedResources;
+                            recommendation.Category = OptimizationCategory.Compute;
+                        }
+                        else if (typeIdStr.Contains("RightSize", StringComparison.OrdinalIgnoreCase))
+                        {
+                            recommendation.Type = OptimizationType.Rightsizing;
+                            recommendation.Category = OptimizationCategory.Compute;
+                        }
+                    }
+
+                    // Set implementation defaults
+                    recommendation.ImplementationComplexity = OptimizationComplexity.Simple;
+                    recommendation.Risk = OptimizationRisk.Low;
+
+                    recommendations.Add(recommendation);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error parsing individual advisor recommendation");
+                }
+            }
+
+            _logger.LogInformation("Parsed {Count} cost recommendations from Azure Advisor", recommendations.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error parsing advisor recommendations response");
+        }
+
+        return recommendations;
+    }
+
+    private string ExtractResourceName(string resourceId)
+    {
+        if (string.IsNullOrEmpty(resourceId))
+            return "Unknown";
+        
+        var parts = resourceId.Split('/');
+        return parts.Length > 0 ? parts[^1] : "Unknown";
+    }
+
+    private string ExtractResourceGroup(string resourceId)
+    {
+        if (string.IsNullOrEmpty(resourceId))
+            return "Unknown";
+        
+        var parts = resourceId.Split('/');
+        var rgIndex = Array.FindIndex(parts, p => p.Equals("resourceGroups", StringComparison.OrdinalIgnoreCase));
+        return rgIndex >= 0 && rgIndex + 1 < parts.Length ? parts[rgIndex + 1] : "Unknown";
+    }
+
+    private string MapAdvisorTypeToDescription(string typeId)
+    {
+        return typeId.ToLowerInvariant() switch
+        {
+            var t when t.Contains("shutdown") => "Consider shutting down or deallocating underutilized resources",
+            var t when t.Contains("rightsize") => "Right-size virtual machines to optimize cost",
+            var t when t.Contains("reservedinstance") => "Purchase reserved instances for better pricing",
+            var t when t.Contains("disk") => "Optimize disk configuration and remove unattached disks",
+            _ => "Review and implement this cost optimization recommendation"
+        };
     }
 
     private List<ResourceCostBreakdown> ParseResourceCostBreakdownResponse(JsonDocument response)
     {
-        // TODO: Implement proper Azure Cost Management resource breakdown parsing
-        _logger.LogWarning("ParseResourceCostBreakdownResponse not yet implemented - requires Azure Cost Management API integration");
-        return new List<ResourceCostBreakdown>();
+        var resourceBreakdowns = new List<ResourceCostBreakdown>();
+        var resourceCostMap = new Dictionary<string, ResourceCostBreakdown>();
+        
+        try
+        {
+            // Azure Cost Management query response structure:
+            // { "properties": { "columns": [...], "rows": [[...]] } }
+            if (!response.RootElement.TryGetProperty("properties", out var properties))
+            {
+                _logger.LogWarning("Cost Management response missing 'properties' element");
+                return resourceBreakdowns;
+            }
+
+            if (!properties.TryGetProperty("columns", out var columnsElement) ||
+                !properties.TryGetProperty("rows", out var rowsElement))
+            {
+                _logger.LogWarning("Cost Management response missing columns or rows");
+                return resourceBreakdowns;
+            }
+
+            // Parse column definitions to find indices
+            var columns = columnsElement.EnumerateArray().ToList();
+            int costIndex = -1, resourceIdIndex = -1, resourceTypeIndex = -1, 
+                resourceGroupIndex = -1, locationIndex = -1, meterCategoryIndex = -1;
+            
+            for (int i = 0; i < columns.Count; i++)
+            {
+                if (columns[i].TryGetProperty("name", out var nameElement))
+                {
+                    var columnName = nameElement.GetString();
+                    if (columnName == "PreTaxCost" || columnName == "Cost") costIndex = i;
+                    else if (columnName == "ResourceId") resourceIdIndex = i;
+                    else if (columnName == "ResourceType") resourceTypeIndex = i;
+                    else if (columnName == "ResourceGroupName") resourceGroupIndex = i;
+                    else if (columnName == "ResourceLocation") locationIndex = i;
+                    else if (columnName == "MeterCategory") meterCategoryIndex = i;
+                }
+            }
+
+            if (costIndex < 0)
+            {
+                _logger.LogWarning("Cost column not found in response");
+                return resourceBreakdowns;
+            }
+
+            // Parse rows and aggregate by resource
+            foreach (var row in rowsElement.EnumerateArray())
+            {
+                var rowData = row.EnumerateArray().ToList();
+                if (rowData.Count <= costIndex)
+                    continue;
+
+                var cost = rowData[costIndex].ValueKind == JsonValueKind.Number
+                    ? rowData[costIndex].GetDecimal()
+                    : 0m;
+
+                var resourceId = resourceIdIndex >= 0 && rowData.Count > resourceIdIndex
+                    ? rowData[resourceIdIndex].GetString() ?? "Unknown"
+                    : "Unknown";
+
+                // Get or create resource breakdown
+                if (!resourceCostMap.TryGetValue(resourceId, out var breakdown))
+                {
+                    breakdown = new ResourceCostBreakdown
+                    {
+                        ResourceId = resourceId,
+                        ResourceName = ExtractResourceName(resourceId),
+                        ResourceType = resourceTypeIndex >= 0 && rowData.Count > resourceTypeIndex
+                            ? rowData[resourceTypeIndex].GetString() ?? "Unknown"
+                            : "Unknown",
+                        ResourceGroup = resourceGroupIndex >= 0 && rowData.Count > resourceGroupIndex
+                            ? rowData[resourceGroupIndex].GetString() ?? ExtractResourceGroup(resourceId)
+                            : ExtractResourceGroup(resourceId),
+                        Location = locationIndex >= 0 && rowData.Count > locationIndex
+                            ? rowData[locationIndex].GetString() ?? "Unknown"
+                            : "Unknown",
+                        DailyCost = 0m,
+                        MonthlyCost = 0m,
+                        LastUpdated = DateTime.UtcNow,
+                        MeterCosts = new Dictionary<string, decimal>()
+                    };
+                    resourceCostMap[resourceId] = breakdown;
+                }
+
+                // Aggregate costs
+                breakdown.DailyCost += cost;
+                breakdown.MonthlyCost += cost; // Will be multiplied by days later if needed
+
+                // Track meter category costs
+                if (meterCategoryIndex >= 0 && rowData.Count > meterCategoryIndex)
+                {
+                    var meterCategory = rowData[meterCategoryIndex].GetString() ?? "Other";
+                    if (breakdown.MeterCosts.ContainsKey(meterCategory))
+                        breakdown.MeterCosts[meterCategory] += cost;
+                    else
+                        breakdown.MeterCosts[meterCategory] = cost;
+                }
+            }
+
+            // Convert to list and calculate efficiency ratings
+            resourceBreakdowns = resourceCostMap.Values.OrderByDescending(r => r.DailyCost).ToList();
+            
+            foreach (var breakdown in resourceBreakdowns)
+            {
+                // Simple efficiency rating based on cost patterns
+                breakdown.Efficiency = breakdown.DailyCost switch
+                {
+                    > 100 => CostEfficiencyRating.Poor,
+                    > 50 => CostEfficiencyRating.Fair,
+                    > 10 => CostEfficiencyRating.Good,
+                    _ => CostEfficiencyRating.Excellent
+                };
+
+                // Add optimization flags for high-cost resources
+                if (breakdown.DailyCost > 50)
+                {
+                    breakdown.CostOptimizationFlags.Add("High daily cost - review for optimization opportunities");
+                }
+            }
+
+            _logger.LogInformation("Parsed {Count} resource cost breakdowns from Azure Cost Management", resourceBreakdowns.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error parsing resource cost breakdown response");
+        }
+
+        return resourceBreakdowns;
     }
 
     private async Task<List<CostOptimizationRecommendation>> GenerateCustomOptimizationRecommendationsAsync(

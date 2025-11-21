@@ -85,10 +85,16 @@ public class SecurityAssessmentScanner : IComplianceScanner
             _logger.LogInformation("Scanning security assessments (CA-2) for {Scope} in subscription {SubscriptionId}", 
                 scope, subscriptionId);
             
-            // ENHANCED: Query Defender for Cloud security assessments for detailed, actionable findings
+            // ENHANCED: Query Defender for Cloud security assessments with Secure Score context
             try
             {
-                _logger.LogInformation("Querying Defender for Cloud security assessments for subscription {SubscriptionId}", subscriptionId);
+                _logger.LogInformation("Querying Defender for Cloud security assessments and Secure Score for subscription {SubscriptionId}", subscriptionId);
+                
+                // Get Secure Score for context and prioritization
+                var secureScore = await _defenderService.GetSecureScoreAsync(subscriptionId, cancellationToken);
+                _logger.LogInformation("Current Secure Score: {Percentage}% ({Current}/{Max})", 
+                    secureScore.Percentage, secureScore.CurrentScore, secureScore.MaxScore);
+                
                 var defenderFindings = await _defenderService.GetSecurityAssessmentsAsync(subscriptionId, resourceGroupName, cancellationToken);
                 
                 if (defenderFindings != null && defenderFindings.Any())
@@ -103,6 +109,26 @@ public class SecurityAssessmentScanner : IComplianceScanner
                     if (caFindings.Any())
                     {
                         _logger.LogInformation("Found {Count} Defender findings mapped to CA controls with detailed remediation steps", caFindings.Count);
+                        
+                        // Enrich findings with Secure Score context
+                        foreach (var finding in caFindings)
+                        {
+                            finding.Metadata["SecureScorePercentage"] = secureScore.Percentage;
+                            finding.Metadata["SecureScoreImpact"] = finding.Severity switch
+                            {
+                                AtoFindingSeverity.Critical => "High impact on Secure Score",
+                                AtoFindingSeverity.High => "Moderate-High impact on Secure Score",
+                                AtoFindingSeverity.Medium => "Moderate impact on Secure Score",
+                                _ => "Low impact on Secure Score"
+                            };
+                            
+                            // Add prioritization guidance
+                            if (finding.Severity == AtoFindingSeverity.Critical || finding.Severity == AtoFindingSeverity.High)
+                            {
+                                finding.Metadata["Priority"] = "High - Addresses critical security gap and improves Secure Score";
+                            }
+                        }
+                        
                         findings.AddRange(caFindings);
                     }
                     else

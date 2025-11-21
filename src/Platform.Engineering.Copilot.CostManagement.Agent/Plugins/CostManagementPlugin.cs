@@ -689,6 +689,7 @@ public class CostManagementPlugin : BaseSupervisorPlugin
     {
         if (query.Contains("quarter")) return 90;
         if (query.Contains("year")) return 365;
+        if (query.Contains("month")) return 30;
         if (query.Contains("week")) return 7;
         return 30;
     }
@@ -698,6 +699,7 @@ public class CostManagementPlugin : BaseSupervisorPlugin
         if (query.Contains("quarter")) return 90;
         if (query.Contains("year")) return 365;
         if (query.Contains("week")) return 7;
+        if (query.Contains("month")) return 30;
         if (query.Contains("6 month")) return 180;
         return 30;
     }

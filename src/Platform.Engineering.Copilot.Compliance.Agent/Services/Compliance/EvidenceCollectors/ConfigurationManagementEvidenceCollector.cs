@@ -29,7 +29,8 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectConfigurationEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -37,7 +38,7 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
 
         // Collect Automation Account configurations (CM-2, CM-3)
         var automationAccounts = resources.Where(r => 
-            ((GenericResource)r).Data.ResourceType.ToString().Equals("Microsoft.Automation/automationAccounts", StringComparison.OrdinalIgnoreCase)).ToList();
+            r.Type.Equals("Microsoft.Automation/automationAccounts", StringComparison.OrdinalIgnoreCase)).ToList();
         
         if (automationAccounts.Any())
         {
@@ -53,19 +54,20 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
                     ["totalAutomationAccounts"] = automationAccounts.Count,
                     ["automationList"] = automationAccounts.Select(aa => new
                     {
-                        name = ((GenericResource)aa).Data.Name,
-                        id = ((GenericResource)aa).Data.Id.ToString(),
-                        location = ((GenericResource)aa).Data.Location.ToString(),
-                        resourceGroup = ((GenericResource)aa).Id.ResourceGroupName
+                        name = aa.Name,
+                        id = aa.Id,
+                        location = aa.Location,
+                        resourceGroup = aa.ResourceGroup
                     }).ToList()
                 },
-                ConfigSnapshot = JsonSerializer.Serialize(automationAccounts, new JsonSerializerOptions { WriteIndented = true })
+                ConfigSnapshot = JsonSerializer.Serialize(automationAccounts, new JsonSerializerOptions { WriteIndented = true }),
+                CollectedBy = collectedBy
             });
         }
 
         // Collect Azure Policy assignments (CM-6, CM-7)
         var policyAssignments = resources.Where(r => 
-            ((GenericResource)r).Data.ResourceType.ToString().Equals("Microsoft.Authorization/policyAssignments", StringComparison.OrdinalIgnoreCase)).ToList();
+            r.Type.Equals("Microsoft.Authorization/policyAssignments", StringComparison.OrdinalIgnoreCase)).ToList();
         
         if (policyAssignments.Any())
         {
@@ -80,7 +82,8 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
                 {
                     ["totalPolicyAssignments"] = policyAssignments.Count,
                     ["configurationBaselinesEnforced"] = policyAssignments.Count > 0
-                }
+                },
+                CollectedBy = collectedBy
             });
         }
 
@@ -89,7 +92,8 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectLogEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -109,7 +113,8 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
                 ["authorizedChanges"] = 85,
                 ["unauthorizedChangesDetected"] = 2
             },
-            LogExcerpt = "Configuration changes tracked. Change approval process enforced."
+            LogExcerpt = "Configuration changes tracked. Change approval process enforced.",
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -117,7 +122,8 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectMetricEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -136,7 +142,8 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
                 ["driftDetected"] = 12,
                 ["driftRemediated"] = 10,
                 ["baselineViolations"] = 5
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -144,7 +151,8 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectPolicyEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -152,7 +160,7 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
 
         // Collect Blueprint assignments (CM-2)
         var blueprints = resources.Where(r => 
-            ((GenericResource)r).Data.ResourceType.ToString().Contains("blueprints", StringComparison.OrdinalIgnoreCase)).ToList();
+            r.Type.Contains("blueprints", StringComparison.OrdinalIgnoreCase)).ToList();
         
         evidence.Add(new ComplianceEvidence
         {
@@ -166,7 +174,8 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
                 ["blueprintsDeployed"] = blueprints.Count,
                 ["baselineConfigurationDefined"] = blueprints.Count > 0,
                 ["standardsEnforced"] = true
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -174,7 +183,8 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectAccessControlEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -182,7 +192,7 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
 
         // Collect inventory and asset management (CM-8)
         var totalResources = resources.Count();
-        var resourcesByType = resources.GroupBy(r => ((GenericResource)r).Data.ResourceType.ToString()).ToDictionary(g => g.Key ?? "Unknown", g => g.Count());
+        var resourcesByType = resources.GroupBy(r => r.Type).ToDictionary(g => g.Key ?? "Unknown", g => g.Count());
         
         evidence.Add(new ComplianceEvidence
         {
@@ -201,7 +211,8 @@ public class ConfigurationManagementEvidenceCollector : IEvidenceCollector
             ConfigSnapshot = JsonSerializer.Serialize(new { 
                 totalCount = totalResources,
                 topResourceTypes = resourcesByType.OrderByDescending(r => r.Value).Take(5)
-            }, new JsonSerializerOptions { WriteIndented = true })
+            }, new JsonSerializerOptions { WriteIndented = true }),
+            CollectedBy = collectedBy
         });
 
         return evidence;

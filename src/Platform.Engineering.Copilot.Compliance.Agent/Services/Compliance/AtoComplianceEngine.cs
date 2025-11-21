@@ -36,7 +36,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
     private readonly Dictionary<string, IEvidenceCollector> _evidenceCollectors;
     private readonly PlatformEngineeringCopilotContext _dbContext;
     private readonly IDefenderForCloudService _defenderForCloudService;
-    private readonly EvidenceStorageService? _evidenceStorage;
+    private readonly EvidenceStorageService _evidenceStorage;
 
     // Knowledge Base Services for enhanced compliance assessment
     private readonly IRmfKnowledgeService _rmfKnowledgeService;
@@ -62,7 +62,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         IDoDInstructionService dodInstructionService,
         IDoDWorkflowService dodWorkflowService,
         IDefenderForCloudService defenderForCloudService,
-        EvidenceStorageService? evidenceStorage = null)
+        EvidenceStorageService evidenceStorage)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _nistControlsService = nistControlsService ?? throw new ArgumentNullException(nameof(nistControlsService));
@@ -79,7 +79,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         _dodInstructionService = dodInstructionService ?? throw new ArgumentNullException(nameof(dodInstructionService));
         _dodWorkflowService = dodWorkflowService ?? throw new ArgumentNullException(nameof(dodWorkflowService));
         _defenderForCloudService = defenderForCloudService ?? throw new ArgumentNullException(nameof(defenderForCloudService));
-        _evidenceStorage = evidenceStorage;
+        _evidenceStorage = evidenceStorage ?? throw new ArgumentNullException(nameof(evidenceStorage));
 
         _scanners = InitializeScanners();
         _evidenceCollectors = InitializeEvidenceCollectors();
@@ -288,11 +288,13 @@ public class AtoComplianceEngine : IAtoComplianceEngine
     /// </summary>
     /// <param name="subscriptionId">Azure subscription ID</param>
     /// <param name="controlFamily">Control family to collect evidence for</param>
+    /// <param name="collectedBy">Name or email of the user collecting evidence (for audit trail)</param>
     /// <param name="progress">Optional progress reporter for real-time status updates</param>
     /// <param name="cancellationToken">Cancellation token</param>
     public async Task<EvidencePackage> CollectComplianceEvidenceAsync(
         string subscriptionId,
         string controlFamily,
+        string collectedBy,
         IProgress<EvidenceCollectionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -305,6 +307,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
             SubscriptionId = subscriptionId,
             ControlFamily = controlFamily,
             CollectionStartTime = DateTimeOffset.UtcNow,
+            CollectedBy = collectedBy,
             Evidence = new List<ComplianceEvidence>()
         };
 
@@ -313,10 +316,27 @@ public class AtoComplianceEngine : IAtoComplianceEngine
             // Pre-warm cache for better performance
             await GetCachedAzureResourcesAsync(subscriptionId, cancellationToken);
 
-            // Get evidence collector for control family
-            if (!_evidenceCollectors.TryGetValue(controlFamily, out var collector))
+            // Get evidence collectors for control family
+            List<IEvidenceCollector> collectors;
+            
+            if (controlFamily.Equals("All", StringComparison.OrdinalIgnoreCase))
             {
-                collector = _evidenceCollectors["Default"];
+                // For "All", use all specialized collectors (exclude Default)
+                collectors = _evidenceCollectors
+                    .Where(kvp => kvp.Key != "Default")
+                    .Select(kvp => kvp.Value)
+                    .ToList();
+                _logger.LogInformation("Collecting evidence from {CollectorCount} specialized collectors for 'All' control families", collectors.Count);
+            }
+            else if (_evidenceCollectors.TryGetValue(controlFamily, out var collector))
+            {
+                collectors = new List<IEvidenceCollector> { collector };
+            }
+            else
+            {
+                // Fallback to Default only if unknown family
+                collectors = new List<IEvidenceCollector> { _evidenceCollectors["Default"] };
+                _logger.LogWarning("Unknown control family {ControlFamily}, using DefaultEvidenceCollector", controlFamily);
             }
 
             // Define evidence types to collect
@@ -329,7 +349,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
                 "Access Control"
             };
 
-            var totalTypes = evidenceTypes.Length;
+            var totalTypes = evidenceTypes.Length * collectors.Count;
             var completedTypes = 0;
 
             // Report initial progress
@@ -342,68 +362,71 @@ public class AtoComplianceEngine : IAtoComplianceEngine
                 Message = "Starting evidence collection"
             });
 
-            // Collect various types of evidence sequentially for progress reporting
+            // Collect evidence from all collectors
             var allEvidence = new List<List<ComplianceEvidence>>();
 
-            // Configuration evidence
-            progress?.Report(new EvidenceCollectionProgress
+            foreach (var collector in collectors)
             {
-                ControlFamily = controlFamily,
-                TotalItems = totalTypes,
-                CollectedItems = completedTypes,
-                CurrentEvidenceType = "Configuration",
-                Message = "Collecting configuration evidence"
-            });
-            allEvidence.Add(await collector.CollectConfigurationEvidenceAsync(subscriptionId, controlFamily, cancellationToken));
-            completedTypes++;
+                // Configuration evidence
+                progress?.Report(new EvidenceCollectionProgress
+                {
+                    ControlFamily = controlFamily,
+                    TotalItems = totalTypes,
+                    CollectedItems = completedTypes,
+                    CurrentEvidenceType = "Configuration",
+                    Message = $"Collecting configuration evidence ({collector.GetType().Name})"
+                });
+                allEvidence.Add(await collector.CollectConfigurationEvidenceAsync(subscriptionId, controlFamily, collectedBy, cancellationToken));
+                completedTypes++;
 
-            // Log evidence
-            progress?.Report(new EvidenceCollectionProgress
-            {
-                ControlFamily = controlFamily,
-                TotalItems = totalTypes,
-                CollectedItems = completedTypes,
-                CurrentEvidenceType = "Logs",
-                Message = "Collecting log evidence"
-            });
-            allEvidence.Add(await collector.CollectLogEvidenceAsync(subscriptionId, controlFamily, cancellationToken));
-            completedTypes++;
+                // Log evidence
+                progress?.Report(new EvidenceCollectionProgress
+                {
+                    ControlFamily = controlFamily,
+                    TotalItems = totalTypes,
+                    CollectedItems = completedTypes,
+                    CurrentEvidenceType = "Logs",
+                    Message = $"Collecting log evidence ({collector.GetType().Name})"
+                });
+                allEvidence.Add(await collector.CollectLogEvidenceAsync(subscriptionId, controlFamily, collectedBy, cancellationToken));
+                completedTypes++;
 
-            // Metric evidence
-            progress?.Report(new EvidenceCollectionProgress
-            {
-                ControlFamily = controlFamily,
-                TotalItems = totalTypes,
-                CollectedItems = completedTypes,
-                CurrentEvidenceType = "Metrics",
-                Message = "Collecting metric evidence"
-            });
-            allEvidence.Add(await collector.CollectMetricEvidenceAsync(subscriptionId, controlFamily, cancellationToken));
-            completedTypes++;
+                // Metric evidence
+                progress?.Report(new EvidenceCollectionProgress
+                {
+                    ControlFamily = controlFamily,
+                    TotalItems = totalTypes,
+                    CollectedItems = completedTypes,
+                    CurrentEvidenceType = "Metrics",
+                    Message = $"Collecting metric evidence ({collector.GetType().Name})"
+                });
+                allEvidence.Add(await collector.CollectMetricEvidenceAsync(subscriptionId, controlFamily, collectedBy, cancellationToken));
+                completedTypes++;
 
-            // Policy evidence
-            progress?.Report(new EvidenceCollectionProgress
-            {
-                ControlFamily = controlFamily,
-                TotalItems = totalTypes,
-                CollectedItems = completedTypes,
-                CurrentEvidenceType = "Policies",
-                Message = "Collecting policy evidence"
-            });
-            allEvidence.Add(await collector.CollectPolicyEvidenceAsync(subscriptionId, controlFamily, cancellationToken));
-            completedTypes++;
+                // Policy evidence
+                progress?.Report(new EvidenceCollectionProgress
+                {
+                    ControlFamily = controlFamily,
+                    TotalItems = totalTypes,
+                    CollectedItems = completedTypes,
+                    CurrentEvidenceType = "Policies",
+                    Message = $"Collecting policy evidence ({collector.GetType().Name})"
+                });
+                allEvidence.Add(await collector.CollectPolicyEvidenceAsync(subscriptionId, controlFamily, collectedBy, cancellationToken));
+                completedTypes++;
 
-            // Access control evidence
-            progress?.Report(new EvidenceCollectionProgress
-            {
-                ControlFamily = controlFamily,
-                TotalItems = totalTypes,
-                CollectedItems = completedTypes,
-                CurrentEvidenceType = "Access Control",
-                Message = "Collecting access control evidence"
-            });
-            allEvidence.Add(await collector.CollectAccessControlEvidenceAsync(subscriptionId, controlFamily, cancellationToken));
-            completedTypes++;
+                // Access control evidence
+                progress?.Report(new EvidenceCollectionProgress
+                {
+                    ControlFamily = controlFamily,
+                    TotalItems = totalTypes,
+                    CollectedItems = completedTypes,
+                    CurrentEvidenceType = "Access Control",
+                    Message = $"Collecting access control evidence ({collector.GetType().Name})"
+                });
+                allEvidence.Add(await collector.CollectAccessControlEvidenceAsync(subscriptionId, controlFamily, collectedBy, cancellationToken));
+                completedTypes++;
+            }
 
             // Report completion
             progress?.Report(new EvidenceCollectionProgress
@@ -705,8 +728,8 @@ public class AtoComplianceEngine : IAtoComplianceEngine
             { "CM", new ConfigurationManagementEvidenceCollector(_logger, _azureResourceService) },
             { "IR", new IncidentResponseEvidenceCollector(_logger, _azureResourceService) },
             { "SI", new SystemIntegrityEvidenceCollector(_logger, _azureResourceService) },
-            { "RA", new RiskAssessmentEvidenceCollector(_logger, _azureResourceService) },
-            { "CA", new SecurityAssessmentEvidenceCollector(_logger, _azureResourceService) },
+            { "RA", new RiskAssessmentEvidenceCollector(_logger, _azureResourceService, _defenderForCloudService) },
+            { "CA", new SecurityAssessmentEvidenceCollector(_logger, _azureResourceService, _defenderForCloudService) },
             { "Default", new DefaultEvidenceCollector(_logger) }
         };
     }
@@ -1091,25 +1114,6 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         };
     }
 
-    private List<string> GetRequiredEvidenceTypes(string controlFamily)
-    {
-        // Updated to match actual evidence type names being collected
-        return controlFamily switch
-        {
-            "AC" => new List<string> { "Configuration", "AuditLog", "Policies", "Access Control" },
-            "AU" => new List<string> { "AuditLog", "Configuration", "Metrics" },
-            "SC" => new List<string> { "Configuration", "Policies", "Metrics" },
-            "IA" => new List<string> { "Configuration", "AuditLog", "Access Control" },
-            "CM" => new List<string> { "Configuration", "Policies", "Metrics" },
-            "IR" => new List<string> { "AuditLog", "Metrics", "Policies" },
-            "RA" => new List<string> { "Metrics", "AuditLog", "Configuration" },
-            "CA" => new List<string> { "Configuration", "Policies", "Metrics" },
-            "SI" => new List<string> { "Configuration", "Metrics", "AuditLog" },
-            "CP" => new List<string> { "Configuration", "Policies", "Metrics" },
-            _ => new List<string> { "Configuration", "AuditLog", "Metrics", "Policies", "Access Control" }
-        };
-    }
-
     private string GenerateAttestationStatement(EvidencePackage package)
     {
         return $"Evidence package {package.PackageId} collected on {package.CollectionStartTime:yyyy-MM-dd} " +
@@ -1224,12 +1228,6 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         EvidencePackage package,
         CancellationToken cancellationToken)
     {
-        if (_evidenceStorage == null)
-        {
-            _logger.LogDebug("Evidence storage not configured, package {PackageId} will not be persisted to blob storage", package.PackageId);
-            return;
-        }
-
         try
         {
             // Convert EvidencePackage to a format suitable for blob storage

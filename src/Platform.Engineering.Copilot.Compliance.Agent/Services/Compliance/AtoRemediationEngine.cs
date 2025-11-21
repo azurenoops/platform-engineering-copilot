@@ -1423,6 +1423,7 @@ public class AtoRemediationEngine : IAtoRemediationEngine
         {
             FindingId = finding.Id,
             ControlId = finding.AffectedControls.FirstOrDefault() ?? "Unknown",
+            Title = finding.Title,
             ResourceId = finding.ResourceId,
             Priority = GetRemediationPriority(finding),
             AutomationAvailable = await CheckAutomationAvailabilityAsync(finding, cancellationToken),
@@ -1593,17 +1594,9 @@ public class AtoRemediationEngine : IAtoRemediationEngine
 
     private async Task<bool> CheckAutomationAvailabilityAsync(AtoFinding finding, CancellationToken cancellationToken)
     {
-        // Check if automated remediation is available for this finding type
-        var automatedRemediations = new HashSet<string>
-        {
-            "storage-encryption-disabled",
-            "vm-disk-unencrypted",
-            "nsg-port-open",
-            "keyvault-soft-delete-disabled",
-            "sql-tde-disabled"
-        };
-
-        return await Task.FromResult(automatedRemediations.Contains(finding.FindingType.ToString()));
+        // Use the IsAutoRemediable flag that's been set by FindingAutoRemediationService
+        // This flag is already enriched with comprehensive auto-remediation logic
+        return await Task.FromResult(finding.IsAutoRemediable);
     }
 
     private List<RemediationStep> GenerateManualRemediationSteps(AtoFinding finding)

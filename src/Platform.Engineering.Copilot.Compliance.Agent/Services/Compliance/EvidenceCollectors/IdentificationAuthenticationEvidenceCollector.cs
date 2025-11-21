@@ -29,7 +29,8 @@ public class IdentificationAuthenticationEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectConfigurationEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -59,7 +60,8 @@ public class IdentificationAuthenticationEvidenceCollector : IEvidenceCollector
                         resourceGroup = ((GenericResource)mi).Id.ResourceGroupName
                     }).ToList()
                 },
-                ConfigSnapshot = JsonSerializer.Serialize(managedIdentities, new JsonSerializerOptions { WriteIndented = true })
+                ConfigSnapshot = JsonSerializer.Serialize(managedIdentities, new JsonSerializerOptions { WriteIndented = true }),
+                CollectedBy = collectedBy
             });
         }
 
@@ -68,7 +70,8 @@ public class IdentificationAuthenticationEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectLogEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -88,7 +91,8 @@ public class IdentificationAuthenticationEvidenceCollector : IEvidenceCollector
                 ["failedLoginAttempts"] = 12,
                 ["successfulLogins"] = 1543
             },
-            LogExcerpt = "MFA authentication logs tracked. Failed login attempts monitored and alerted."
+            LogExcerpt = "MFA authentication logs tracked. Failed login attempts monitored and alerted.",
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -96,7 +100,8 @@ public class IdentificationAuthenticationEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectMetricEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -115,7 +120,8 @@ public class IdentificationAuthenticationEvidenceCollector : IEvidenceCollector
                 ["conditionalAccessPolicies"] = 12,
                 ["passwordlessEnabled"] = true,
                 ["legacyAuthBlocked"] = true
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -123,7 +129,8 @@ public class IdentificationAuthenticationEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectPolicyEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -143,7 +150,8 @@ public class IdentificationAuthenticationEvidenceCollector : IEvidenceCollector
                 ["passwordExpirationDays"] = 90,
                 ["accountLockoutThreshold"] = 5,
                 ["mfaRequired"] = true
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -151,7 +159,8 @@ public class IdentificationAuthenticationEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectAccessControlEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -170,7 +179,8 @@ public class IdentificationAuthenticationEvidenceCollector : IEvidenceCollector
                 ["justInTimeAccessEnabled"] = true,
                 ["approvalRequired"] = true,
                 ["maxActivationDuration"] = "8 hours"
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;

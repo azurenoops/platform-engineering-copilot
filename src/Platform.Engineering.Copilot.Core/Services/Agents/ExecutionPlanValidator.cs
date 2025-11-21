@@ -20,6 +20,9 @@ public class ExecutionPlanValidator
     /// </summary>
     public ExecutionPlan ValidateAndCorrect(ExecutionPlan plan, string userMessage, string conversationId)
     {
+        _logger.LogInformation("🔍 VALIDATOR ENTRY: message='{Message}', planTasks={TaskCount}, agents={Agents}", 
+            userMessage, plan.Tasks.Count, string.Join(",", plan.Tasks.Select(t => t.AgentType)));
+        
         // CRITICAL: Check for compliance scanning requests FIRST - this takes precedence over all other validations
         if (IsComplianceScanningRequest(userMessage))
         {
@@ -51,6 +54,13 @@ public class ExecutionPlanValidator
         }
 
         // ONLY check template generation if NOT a compliance scan or actual provisioning
+        // CRITICAL: Also skip if this is a Discovery-only request (resource discovery, tag search, etc.)
+        if (IsDiscoveryOnlyRequest(userMessage, plan))
+        {
+            _logger.LogInformation("✅ Plan validation: Discovery-only request correctly routed");
+            return plan; // Discovery requests should not be modified
+        }
+        
         // Check if this is a template generation request being treated as provisioning
         if (IsTemplateGenerationRequest(userMessage) && !IsActualProvisioningRequest(userMessage) && HasProvisioningAgents(plan))
         {
@@ -59,6 +69,38 @@ public class ExecutionPlanValidator
         }
 
         return plan;
+    }
+    
+    private bool IsDiscoveryOnlyRequest(string userMessage, ExecutionPlan plan)
+    {
+        var lowerMessage = userMessage.ToLowerInvariant();
+        
+        // Discovery-specific keywords that indicate resource querying (not provisioning)
+        var discoveryIndicators = new[]
+        {
+            "list resources", "find resources", "show resources", "discover resources",
+            "with tag", "tagged with", "search by tag", "resources with tag",
+            "tag createdby", "tag environment", "find all resources with",
+            "inventory", "what resources", "resource group", "/subscriptions/",
+            "health status", "resource health", "dependencies"
+        };
+        
+        var hasDiscoveryIndicator = discoveryIndicators.Any(i => lowerMessage.Contains(i));
+        
+        // Check if plan only has Discovery agent (and maybe KnowledgeBase for help)
+        var onlyHasDiscovery = plan.Tasks.All(t => 
+            t.AgentType == AgentType.Discovery || 
+            t.AgentType == AgentType.KnowledgeBase);
+        
+        if (hasDiscoveryIndicator || onlyHasDiscovery)
+        {
+            _logger.LogInformation("✅ IsDiscoveryOnlyRequest: TRUE - hasIndicator={HasIndicator}, onlyDiscovery={OnlyDiscovery}", 
+                hasDiscoveryIndicator, onlyHasDiscovery);
+            return true;
+        }
+        
+        _logger.LogInformation("❌ IsDiscoveryOnlyRequest: FALSE - no discovery indicators found");
+        return false;
     }
 
     private bool IsActualProvisioningRequest(string userMessage)
@@ -269,7 +311,30 @@ public class ExecutionPlanValidator
         // If user says "actually provision", they want provisioning, NOT template generation
         if (IsActualProvisioningRequest(message))
         {
+            _logger.LogInformation("🔍 IsTemplateGenerationRequest: FALSE - IsActualProvisioningRequest=true");
             return false; // NOT a template generation request - it's provisioning!
+        }
+        
+        // CRITICAL: Check if this is a Discovery request (resource querying, tag search, inventory)
+        // Discovery requests should NOT be treated as template generation
+        var isDiscoveryQuery = lowerMessage.Contains("find resources") || 
+                               lowerMessage.Contains("list resources") ||
+                               lowerMessage.Contains("show resources") ||
+                               lowerMessage.Contains("with tag") ||
+                               lowerMessage.Contains("tagged with") ||
+                               lowerMessage.Contains("tag createdby") ||
+                               lowerMessage.Contains("tag environment") ||
+                               lowerMessage.Contains("search by tag") ||
+                               lowerMessage.Contains("inventory") ||
+                               lowerMessage.Contains("what resources") ||
+                               lowerMessage.Contains("discover resources");
+        
+        _logger.LogInformation("🔍 IsTemplateGenerationRequest discovery check: isDiscoveryQuery={IsDiscoveryQuery}, message={Message}", isDiscoveryQuery, lowerMessage);
+        
+        if (isDiscoveryQuery)
+        {
+            _logger.LogInformation("🔍 IsTemplateGenerationRequest: FALSE - Discovery query detected");
+            return false; // NOT template generation - it's discovery!
         }
 
         // Indicators of template generation (when NOT provisioning)
@@ -288,7 +353,7 @@ public class ExecutionPlanValidator
         }
 
         // Generic deployment words like "deploy", "create", "set up" are template generation
-        // UNLESS they have urgency/provisioning keywords
+        // UNLESS they have urgency/provisioning keywords OR it's a discovery query
         var deploymentWords = new[] { "deploy", "create", "set up", "i need", "provision" };
         var hasDeploymentWord = deploymentWords.Any(w => lowerMessage.Contains(w));
 

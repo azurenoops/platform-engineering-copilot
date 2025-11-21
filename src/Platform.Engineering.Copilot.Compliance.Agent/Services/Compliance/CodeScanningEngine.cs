@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Platform.Engineering.Copilot.Core.Models.CodeScanning;
 
 using Platform.Engineering.Copilot.Compliance.Core.Configuration;
@@ -67,6 +68,68 @@ public class CodeScanningEngine : ICodeScanningEngine
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _codeScanningOptions = _options.CodeScanning;
         _evidenceStorage = evidenceStorage;
+    }
+
+    /// <summary>
+    /// Runs comprehensive security scan of a remote repository (GitHub, ADO, GHE)
+    /// </summary>
+    public async Task<CodeSecurityAssessment> ScanRepositoryAsync(
+        string repositoryUrl,
+        string? branch = null,
+        string? filePatterns = null,
+        string? complianceFrameworks = null,
+        string scanDepth = "deep",
+        IProgress<SecurityScanProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Starting security scan for repository: {RepositoryUrl}", repositoryUrl);
+
+        // Parse repository URL and clone to temporary directory
+        var repoInfo = ParseRepositoryUrl(repositoryUrl);
+        var tempPath = Path.Combine(Path.GetTempPath(), "copilot-scans", Guid.NewGuid().ToString());
+
+        try
+        {
+            Directory.CreateDirectory(tempPath);
+
+            // Clone repository
+            progress?.Report(new SecurityScanProgress
+            {
+                TotalPhases = 7,
+                CompletedPhases = 0,
+                CurrentPhase = "Repository Clone",
+                Message = $"Cloning repository from {repoInfo.Provider}..."
+            });
+
+            await CloneRepositoryAsync(repositoryUrl, tempPath, branch, repoInfo, cancellationToken);
+
+            // Run security scan on cloned repository
+            var result = await RunSecurityScanAsync(tempPath, filePatterns, complianceFrameworks, scanDepth, progress, cancellationToken);
+            
+            // Update result with repository information
+            result.ProjectPath = repositoryUrl;
+            result.RepositoryUrl = repositoryUrl;
+            result.Branch = branch ?? repoInfo.DefaultBranch;
+            result.Provider = repoInfo.Provider;
+
+            return result;
+        }
+        finally
+        {
+            // Cleanup temporary directory
+            try
+            {
+                if (Directory.Exists(tempPath))
+                {
+                    Directory.Delete(tempPath, true);
+                    _logger.LogDebug("Cleaned up temporary directory: {TempPath}", tempPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to clean up temporary directory: {TempPath}", tempPath);
+            }
+        }
     }
 
     /// <summary>
@@ -452,36 +515,566 @@ public class CodeScanningEngine : ICodeScanningEngine
     {
         _logger.LogInformation("Performing SAST analysis for workspace: {WorkspacePath}", workspacePath);
 
-        await Task.Delay(100, cancellationToken); // Simulate analysis
+        if (!Directory.Exists(workspacePath))
+        {
+            throw new DirectoryNotFoundException($"Workspace path not found: {workspacePath}");
+        }
+
+        var findings = new List<SastFinding>();
+        var detectedLanguages = new HashSet<string>();
+        var targetLanguages = languages?.Split(',').Select(l => l.Trim()).ToList();
+
+        // Define file extensions to scan
+        var extensionToLanguage = new Dictionary<string, string>
+        {
+            { ".cs", "C#" },
+            { ".ts", "TypeScript" },
+            { ".tsx", "TypeScript" },
+            { ".js", "JavaScript" },
+            { ".jsx", "JavaScript" },
+            { ".py", "Python" },
+            { ".java", "Java" },
+            { ".go", "Go" },
+            { ".rb", "Ruby" },
+            { ".php", "PHP" },
+            { ".cpp", "C++" },
+            { ".c", "C" },
+            { ".sql", "SQL" }
+        };
+
+        // Scan files in the workspace
+        var filesToScan = new List<string>();
+        foreach (var extension in extensionToLanguage.Keys)
+        {
+            try
+            {
+                var files = Directory.GetFiles(workspacePath, $"*{extension}", SearchOption.AllDirectories)
+                    .Where(f => !IsExcludedPath(f))
+                    .ToList();
+                filesToScan.AddRange(files);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error scanning files with extension {Extension}", extension);
+            }
+        }
+
+        _logger.LogInformation("Found {Count} code files to analyze", filesToScan.Count);
+
+        // Analyze each file
+        foreach (var filePath in filesToScan)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            if (extensionToLanguage.TryGetValue(extension, out var language))
+            {
+                if (targetLanguages == null || targetLanguages.Contains(language, StringComparer.OrdinalIgnoreCase))
+                {
+                    detectedLanguages.Add(language);
+                    var fileFindings = await AnalyzeFileForSecurityIssuesAsync(filePath, language, includeOwaspTop10, cancellationToken);
+                    findings.AddRange(fileFindings);
+                }
+            }
+        }
+
+        // Calculate statistics
+        var findingsByCategory = findings
+            .GroupBy(f => f.Category)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var findingsByOwaspTop10 = findings
+            .SelectMany(f => f.OwaspCategories.Select(o => new { Finding = f, Owasp = o }))
+            .GroupBy(x => x.Owasp)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var totalIssues = findings.Count;
+        var criticalCount = findings.Count(f => f.Severity == SecurityFindingSeverity.Critical);
+        var highCount = findings.Count(f => f.Severity == SecurityFindingSeverity.High);
+        var mediumCount = findings.Count(f => f.Severity == SecurityFindingSeverity.Medium);
+        var lowCount = findings.Count(f => f.Severity == SecurityFindingSeverity.Low);
+
+        // Calculate security score (100 - weighted penalty based on severity)
+        var securityScore = 100.0 - (criticalCount * 10.0) - (highCount * 5.0) - (mediumCount * 2.0) - (lowCount * 0.5);
+        securityScore = Math.Max(0, Math.Min(100, securityScore));
 
         var result = new SastAnalysisResult
         {
             AnalysisId = Guid.NewGuid().ToString(),
             WorkspacePath = workspacePath,
             AnalysisTime = DateTimeOffset.UtcNow,
-            Languages = new List<string> { "C#", "TypeScript", "Python", "Java" },
-            TotalIssues = 15,
-            SecurityScore = 82.3,
-            FindingsByCategory = new Dictionary<string, int>
-            {
-                { "Injection", 4 },
-                { "Authentication", 3 },
-                { "Data Exposure", 2 },
-                { "XML External Entities", 1 },
-                { "Broken Access Control", 3 },
-                { "Security Misconfiguration", 2 }
-            },
-            FindingsByOwaspTop10 = new Dictionary<string, int>
-            {
-                { "A01:2021 – Broken Access Control", 3 },
-                { "A03:2021 – Injection", 4 },
-                { "A07:2021 – Identification and Authentication Failures", 3 },
-                { "A02:2021 – Cryptographic Failures", 2 }
-            },
-            Findings = GenerateMockSastFindings()
+            Languages = detectedLanguages.OrderBy(l => l).ToList(),
+            TotalIssues = totalIssues,
+            SecurityScore = securityScore,
+            FindingsByCategory = findingsByCategory,
+            FindingsByOwaspTop10 = findingsByOwaspTop10,
+            Findings = findings
         };
 
+        _logger.LogInformation(
+            "SAST analysis complete: {TotalIssues} issues found (Critical: {Critical}, High: {High}, Medium: {Medium}, Low: {Low}), Score: {Score:F1}%",
+            totalIssues, criticalCount, highCount, mediumCount, lowCount, securityScore);
+
+        // Store SAST results to blob storage if evidence storage is configured
+        if (_evidenceStorage != null)
+        {
+            try
+            {
+                var storageUri = await _evidenceStorage.StoreScanResultsAsync("sast", result, workspacePath, cancellationToken);
+                _logger.LogDebug("SAST scan results stored: {StorageUri}", storageUri);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to store SAST scan results to blob storage");
+            }
+        }
+
         return result;
+    }
+
+    /// <summary>
+    /// Analyzes a single file for security issues
+    /// </summary>
+    private async Task<List<SastFinding>> AnalyzeFileForSecurityIssuesAsync(
+        string filePath,
+        string language,
+        bool includeOwaspTop10,
+        CancellationToken cancellationToken)
+    {
+        var findings = new List<SastFinding>();
+
+        try
+        {
+            var content = await File.ReadAllTextAsync(filePath, cancellationToken);
+            var lines = content.Split('\n');
+            var relativePath = filePath;
+
+            // Analyze based on language-specific patterns
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                var lineNumber = i + 1;
+
+                // Check for SQL Injection vulnerabilities
+                CheckSqlInjection(line, lineNumber, filePath, language, findings);
+
+                // Check for hardcoded credentials
+                CheckHardcodedCredentials(line, lineNumber, filePath, language, findings);
+
+                // Check for weak cryptography
+                CheckWeakCryptography(line, lineNumber, filePath, language, findings);
+
+                // Check for insecure deserialization
+                CheckInsecureDeserialization(line, lineNumber, filePath, language, findings);
+
+                // Check for XSS vulnerabilities
+                CheckXssVulnerabilities(line, lineNumber, filePath, language, findings);
+
+                // Check for path traversal
+                CheckPathTraversal(line, lineNumber, filePath, language, findings);
+
+                // Check for insecure random number generation
+                CheckInsecureRandom(line, lineNumber, filePath, language, findings);
+
+                // Check for weak TLS/SSL configurations
+                CheckWeakTlsConfig(line, lineNumber, filePath, language, findings);
+
+                // Check for command injection
+                CheckCommandInjection(line, lineNumber, filePath, language, findings);
+
+                // Check for XML external entity (XXE) vulnerabilities
+                CheckXxeVulnerabilities(line, lineNumber, filePath, language, findings);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error analyzing file: {FilePath}", filePath);
+        }
+
+        return findings;
+    }
+
+    /// <summary>
+    /// Checks if a path should be excluded from scanning
+    /// </summary>
+    private bool IsExcludedPath(string path)
+    {
+        var excludedPatterns = new[]
+        {
+            "node_modules", "bin", "obj", ".git", ".vs", "packages",
+            "dist", "build", "target", ".vscode", ".idea", "venv",
+            "__pycache__", ".pytest_cache", "coverage", "test-results"
+        };
+
+        return excludedPatterns.Any(pattern => path.Contains($"{Path.DirectorySeparatorChar}{pattern}{Path.DirectorySeparatorChar}") ||
+                                               path.Contains($"{Path.DirectorySeparatorChar}{pattern}"));
+    }
+
+    // Security check methods
+    private void CheckSqlInjection(string line, int lineNumber, string filePath, string language, List<SastFinding> findings)
+    {
+        var sqlInjectionPatterns = new[]
+        {
+            @"SqlCommand\s*\(.*\+.*\)",
+            @"ExecuteQuery\s*\(.*\+.*\)",
+            @"\.Query\s*\(.*\+.*\)",
+            @"\.Execute\s*\([""'].*\+.*\)",
+            "string.Format.*SELECT.*FROM",
+            @"\$\{.*\}.*SELECT.*FROM"
+        };
+
+        foreach (var pattern in sqlInjectionPatterns)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                findings.Add(new SastFinding
+                {
+                    FindingId = $"SAST-SQL-{Guid.NewGuid().ToString().Substring(0, 8)}",
+                    RuleName = "SQL Injection",
+                    Category = "Injection",
+                    FilePath = filePath,
+                    LineNumber = lineNumber,
+                    Severity = SecurityFindingSeverity.High,
+                    Description = "Potential SQL injection vulnerability detected. User input may be concatenated directly into SQL query.",
+                    CodeSnippet = line.Trim(),
+                    OwaspCategories = new List<string> { "A03:2021 – Injection" },
+                    CweIds = new List<string> { "CWE-89" },
+                    RemediationAdvice = "Use parameterized queries or prepared statements instead of string concatenation.",
+                    IsAutoRemediable = false
+                });
+                break;
+            }
+        }
+    }
+
+    private void CheckHardcodedCredentials(string line, int lineNumber, string filePath, string language, List<SastFinding> findings)
+    {
+        var credentialPatterns = new Dictionary<string, string>
+        {
+            { @"password\s*=\s*[""'][^""']{3,}[""']", "Hardcoded Password" },
+            { @"apikey\s*=\s*[""'][^""']{10,}[""']", "Hardcoded API Key" },
+            { @"secret\s*=\s*[""'][^""']{10,}[""']", "Hardcoded Secret" },
+            { @"token\s*=\s*[""'][^""']{10,}[""']", "Hardcoded Token" },
+            { @"connectionstring\s*=\s*[""'].*password.*[""']", "Connection String with Password" }
+        };
+
+        foreach (var pattern in credentialPatterns)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, pattern.Key, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                findings.Add(new SastFinding
+                {
+                    FindingId = $"SAST-CRED-{Guid.NewGuid().ToString().Substring(0, 8)}",
+                    RuleName = pattern.Value,
+                    Category = "Sensitive Data Exposure",
+                    FilePath = filePath,
+                    LineNumber = lineNumber,
+                    Severity = SecurityFindingSeverity.Critical,
+                    Description = $"{pattern.Value} detected in source code.",
+                    CodeSnippet = line.Trim(),
+                    OwaspCategories = new List<string> { "A02:2021 – Cryptographic Failures" },
+                    CweIds = new List<string> { "CWE-798" },
+                    RemediationAdvice = "Remove hardcoded credentials. Use environment variables, Azure Key Vault, or secure configuration management.",
+                    IsAutoRemediable = false
+                });
+                break;
+            }
+        }
+    }
+
+    private void CheckWeakCryptography(string line, int lineNumber, string filePath, string language, List<SastFinding> findings)
+    {
+        var weakCryptoPatterns = new[]
+        {
+            @"new\s+MD5CryptoServiceProvider",
+            @"MD5\.Create\(\)",
+            @"new\s+SHA1CryptoServiceProvider",
+            @"SHA1\.Create\(\)",
+            @"DES\.",
+            @"TripleDES\.",
+            "hashlib.md5",
+            "hashlib.sha1"
+        };
+
+        foreach (var pattern in weakCryptoPatterns)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                findings.Add(new SastFinding
+                {
+                    FindingId = $"SAST-CRYPTO-{Guid.NewGuid().ToString().Substring(0, 8)}",
+                    RuleName = "Weak Cryptographic Algorithm",
+                    Category = "Cryptography",
+                    FilePath = filePath,
+                    LineNumber = lineNumber,
+                    Severity = SecurityFindingSeverity.High,
+                    Description = "Use of weak or deprecated cryptographic algorithm detected (MD5, SHA1, DES).",
+                    CodeSnippet = line.Trim(),
+                    OwaspCategories = new List<string> { "A02:2021 – Cryptographic Failures" },
+                    CweIds = new List<string> { "CWE-327" },
+                    RemediationAdvice = "Use modern cryptographic algorithms like SHA-256, SHA-384, or SHA-512, and AES for encryption.",
+                    IsAutoRemediable = false
+                });
+                break;
+            }
+        }
+    }
+
+    private void CheckInsecureDeserialization(string line, int lineNumber, string filePath, string language, List<SastFinding> findings)
+    {
+        var deserializationPatterns = new[]
+        {
+            @"BinaryFormatter\.Deserialize",
+            @"JavaScriptSerializer\.Deserialize",
+            @"pickle\.loads",
+            @"yaml\.load\(",
+            @"unserialize\("
+        };
+
+        foreach (var pattern in deserializationPatterns)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                findings.Add(new SastFinding
+                {
+                    FindingId = $"SAST-DESER-{Guid.NewGuid().ToString().Substring(0, 8)}",
+                    RuleName = "Insecure Deserialization",
+                    Category = "Deserialization",
+                    FilePath = filePath,
+                    LineNumber = lineNumber,
+                    Severity = SecurityFindingSeverity.Critical,
+                    Description = "Insecure deserialization detected, which can lead to remote code execution.",
+                    CodeSnippet = line.Trim(),
+                    OwaspCategories = new List<string> { "A08:2021 – Software and Data Integrity Failures" },
+                    CweIds = new List<string> { "CWE-502" },
+                    RemediationAdvice = "Use safe serialization formats like JSON with type restrictions, or validate deserialized data thoroughly.",
+                    IsAutoRemediable = false
+                });
+                break;
+            }
+        }
+    }
+
+    private void CheckXssVulnerabilities(string line, int lineNumber, string filePath, string language, List<SastFinding> findings)
+    {
+        var xssPatterns = new[]
+        {
+            @"innerHTML\s*=",
+            @"\.html\(.*\+",
+            @"document\.write\(",
+            @"eval\(",
+            @"Response\.Write\(.*\+",
+            @"@Html\.Raw\("
+        };
+
+        foreach (var pattern in xssPatterns)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                findings.Add(new SastFinding
+                {
+                    FindingId = $"SAST-XSS-{Guid.NewGuid().ToString().Substring(0, 8)}",
+                    RuleName = "Cross-Site Scripting (XSS)",
+                    Category = "XSS",
+                    FilePath = filePath,
+                    LineNumber = lineNumber,
+                    Severity = SecurityFindingSeverity.High,
+                    Description = "Potential Cross-Site Scripting vulnerability. User input may be rendered without proper encoding.",
+                    CodeSnippet = line.Trim(),
+                    OwaspCategories = new List<string> { "A03:2021 – Injection" },
+                    CweIds = new List<string> { "CWE-79" },
+                    RemediationAdvice = "Always encode/escape user input before rendering. Use framework-provided encoding functions.",
+                    IsAutoRemediable = false
+                });
+                break;
+            }
+        }
+    }
+
+    private void CheckPathTraversal(string line, int lineNumber, string filePath, string language, List<SastFinding> findings)
+    {
+        var pathTraversalPatterns = new[]
+        {
+            @"File\.ReadAllText\(.*\+",
+            @"File\.Open\(.*\+",
+            @"FileStream\(.*\+",
+            @"open\(.*\+",
+            @"readFile\(.*\+"
+        };
+
+        foreach (var pattern in pathTraversalPatterns)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                findings.Add(new SastFinding
+                {
+                    FindingId = $"SAST-PATH-{Guid.NewGuid().ToString().Substring(0, 8)}",
+                    RuleName = "Path Traversal",
+                    Category = "Path Traversal",
+                    FilePath = filePath,
+                    LineNumber = lineNumber,
+                    Severity = SecurityFindingSeverity.High,
+                    Description = "Potential path traversal vulnerability. User input may be used to construct file paths.",
+                    CodeSnippet = line.Trim(),
+                    OwaspCategories = new List<string> { "A01:2021 – Broken Access Control" },
+                    CweIds = new List<string> { "CWE-22" },
+                    RemediationAdvice = "Validate and sanitize file paths. Use Path.GetFullPath() and ensure paths are within allowed directories.",
+                    IsAutoRemediable = false
+                });
+                break;
+            }
+        }
+    }
+
+    private void CheckInsecureRandom(string line, int lineNumber, string filePath, string language, List<SastFinding> findings)
+    {
+        var insecureRandomPatterns = new[]
+        {
+            @"new\s+Random\(\)",
+            @"Math\.random\(\)",
+            @"random\.random\(\)"
+        };
+
+        foreach (var pattern in insecureRandomPatterns)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                // Only flag if it looks like it's used for security purposes
+                var securityKeywords = new[] { "token", "key", "password", "salt", "nonce", "secret" };
+                if (securityKeywords.Any(keyword => line.ToLower().Contains(keyword)))
+                {
+                    findings.Add(new SastFinding
+                    {
+                        FindingId = $"SAST-RAND-{Guid.NewGuid().ToString().Substring(0, 8)}",
+                        RuleName = "Insecure Random Number Generation",
+                        Category = "Cryptography",
+                        FilePath = filePath,
+                        LineNumber = lineNumber,
+                        Severity = SecurityFindingSeverity.Medium,
+                        Description = "Insecure random number generator used for security-sensitive operations.",
+                        CodeSnippet = line.Trim(),
+                        OwaspCategories = new List<string> { "A02:2021 – Cryptographic Failures" },
+                        CweIds = new List<string> { "CWE-338" },
+                        RemediationAdvice = "Use cryptographically secure random number generators (e.g., RNGCryptoServiceProvider, crypto.randomBytes).",
+                        IsAutoRemediable = false
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
+    private void CheckWeakTlsConfig(string line, int lineNumber, string filePath, string language, List<SastFinding> findings)
+    {
+        var weakTlsPatterns = new[]
+        {
+            @"SecurityProtocolType\.Ssl3",
+            @"SecurityProtocolType\.Tls\b",
+            @"SecurityProtocolType\.Tls11",
+            @"ssl_version\s*=\s*[""']TLSv1[""']",
+            @"tls_version.*1\.0",
+            @"tls_version.*1\.1"
+        };
+
+        foreach (var pattern in weakTlsPatterns)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                findings.Add(new SastFinding
+                {
+                    FindingId = $"SAST-TLS-{Guid.NewGuid().ToString().Substring(0, 8)}",
+                    RuleName = "Weak TLS/SSL Configuration",
+                    Category = "Configuration",
+                    FilePath = filePath,
+                    LineNumber = lineNumber,
+                    Severity = SecurityFindingSeverity.High,
+                    Description = "Weak TLS/SSL protocol version detected. SSL3, TLS 1.0, and TLS 1.1 are deprecated.",
+                    CodeSnippet = line.Trim(),
+                    OwaspCategories = new List<string> { "A02:2021 – Cryptographic Failures" },
+                    CweIds = new List<string> { "CWE-326" },
+                    RemediationAdvice = "Use TLS 1.2 or TLS 1.3 as the minimum protocol version.",
+                    IsAutoRemediable = false
+                });
+                break;
+            }
+        }
+    }
+
+    private void CheckCommandInjection(string line, int lineNumber, string filePath, string language, List<SastFinding> findings)
+    {
+        var commandInjectionPatterns = new[]
+        {
+            @"Process\.Start\(.*\+",
+            @"Runtime\.exec\(.*\+",
+            @"os\.system\(.*\+",
+            @"subprocess\.(run|call|Popen)\(.*\+",
+            @"exec\(.*\+",
+            @"shell_exec\(.*\+"
+        };
+
+        foreach (var pattern in commandInjectionPatterns)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                findings.Add(new SastFinding
+                {
+                    FindingId = $"SAST-CMD-{Guid.NewGuid().ToString().Substring(0, 8)}",
+                    RuleName = "Command Injection",
+                    Category = "Injection",
+                    FilePath = filePath,
+                    LineNumber = lineNumber,
+                    Severity = SecurityFindingSeverity.Critical,
+                    Description = "Potential command injection vulnerability. User input may be used to construct system commands.",
+                    CodeSnippet = line.Trim(),
+                    OwaspCategories = new List<string> { "A03:2021 – Injection" },
+                    CweIds = new List<string> { "CWE-78" },
+                    RemediationAdvice = "Avoid executing system commands with user input. If necessary, use parameterized APIs and strict input validation.",
+                    IsAutoRemediable = false
+                });
+                break;
+            }
+        }
+    }
+
+    private void CheckXxeVulnerabilities(string line, int lineNumber, string filePath, string language, List<SastFinding> findings)
+    {
+        var xxePatterns = new[]
+        {
+            @"XmlDocument\(\)",
+            @"XmlReader\.Create",
+            @"XmlTextReader\(",
+            @"DocumentBuilderFactory",
+            @"SAXParserFactory"
+        };
+
+        foreach (var pattern in xxePatterns)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                // Check if secure settings are present nearby
+                var hasSecureSettings = System.Text.RegularExpressions.Regex.IsMatch(line, @"DtdProcessing\.Prohibit|ProhibitDtd\s*=\s*true", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                
+                if (!hasSecureSettings)
+                {
+                    findings.Add(new SastFinding
+                    {
+                        FindingId = $"SAST-XXE-{Guid.NewGuid().ToString().Substring(0, 8)}",
+                        RuleName = "XML External Entity (XXE)",
+                        Category = "XML",
+                        FilePath = filePath,
+                        LineNumber = lineNumber,
+                        Severity = SecurityFindingSeverity.High,
+                        Description = "Potential XXE vulnerability. XML parser may process external entities.",
+                        CodeSnippet = line.Trim(),
+                        OwaspCategories = new List<string> { "A05:2021 – Security Misconfiguration" },
+                        CweIds = new List<string> { "CWE-611" },
+                        RemediationAdvice = "Disable DTD processing and external entity resolution in XML parsers.",
+                        IsAutoRemediable = false
+                    });
+                    break;
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -1163,6 +1756,204 @@ public class CodeScanningEngine : ICodeScanningEngine
                 IsAcknowledged = false
             }
         };
+
+    #endregion
+
+    #region Repository Operations
+
+    /// <summary>
+    /// Repository information from parsed URL
+    /// </summary>
+    private class RepositoryInfo
+    {
+        public string Provider { get; set; } = string.Empty;
+        public string Owner { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Organization { get; set; } = string.Empty;
+        public string Project { get; set; } = string.Empty;
+        public string DefaultBranch { get; set; } = "main";
+        public string CloneUrl { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Parses repository URL to extract provider, owner, and repository information
+    /// </summary>
+    private RepositoryInfo ParseRepositoryUrl(string repositoryUrl)
+    {
+        var info = new RepositoryInfo();
+
+        try
+        {
+            var uri = new Uri(repositoryUrl);
+            var host = uri.Host.ToLowerInvariant();
+
+            // GitHub
+            if (host.Contains("github.com"))
+            {
+                info.Provider = "GitHub";
+                var parts = uri.AbsolutePath.Trim('/').Split('/');
+                if (parts.Length >= 2)
+                {
+                    info.Owner = parts[0];
+                    info.Name = parts[1].Replace(".git", "");
+                }
+                info.CloneUrl = repositoryUrl.EndsWith(".git") ? repositoryUrl : $"{repositoryUrl}.git";
+            }
+            // GitHub Enterprise (custom domain)
+            else if (repositoryUrl.Contains("github") && !host.Contains("dev.azure.com"))
+            {
+                info.Provider = "GitHubEnterprise";
+                var parts = uri.AbsolutePath.Trim('/').Split('/');
+                if (parts.Length >= 2)
+                {
+                    info.Owner = parts[0];
+                    info.Name = parts[1].Replace(".git", "");
+                }
+                info.CloneUrl = repositoryUrl.EndsWith(".git") ? repositoryUrl : $"{repositoryUrl}.git";
+            }
+            // Azure DevOps
+            else if (host.Contains("dev.azure.com") || host.Contains("visualstudio.com"))
+            {
+                info.Provider = "AzureDevOps";
+                
+                // Format: https://dev.azure.com/{organization}/{project}/_git/{repo}
+                var match = Regex.Match(uri.AbsolutePath, @"/([^/]+)/([^/]+)/_git/([^/]+)", RegexOptions.IgnoreCase);
+                if (match.Success)
+                {
+                    info.Organization = match.Groups[1].Value;
+                    info.Project = match.Groups[2].Value;
+                    info.Name = match.Groups[3].Value;
+                    info.Owner = info.Organization;
+                }
+                info.CloneUrl = repositoryUrl;
+            }
+            else
+            {
+                // Generic Git repository
+                info.Provider = "Git";
+                info.CloneUrl = repositoryUrl;
+                
+                var parts = uri.AbsolutePath.Trim('/').Split('/');
+                if (parts.Length >= 2)
+                {
+                    info.Owner = parts[parts.Length - 2];
+                    info.Name = parts[parts.Length - 1].Replace(".git", "");
+                }
+            }
+
+            _logger.LogInformation("Parsed repository URL: Provider={Provider}, Owner={Owner}, Name={Name}", 
+                info.Provider, info.Owner, info.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to parse repository URL: {RepositoryUrl}", repositoryUrl);
+            throw new ArgumentException($"Invalid repository URL: {repositoryUrl}", ex);
+        }
+
+        return info;
+    }
+
+    /// <summary>
+    /// Clones a repository to the specified path
+    /// </summary>
+    private async Task CloneRepositoryAsync(
+        string repositoryUrl,
+        string targetPath,
+        string? branch,
+        RepositoryInfo repoInfo,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Cloning repository {Provider}/{Owner}/{Name} to {TargetPath}", 
+            repoInfo.Provider, repoInfo.Owner, repoInfo.Name, targetPath);
+
+        try
+        {
+            // Use git command for cloning (LibGit2Sharp would be better but requires additional package)
+            var branchArg = !string.IsNullOrEmpty(branch) ? $"--branch {branch}" : "";
+            var cloneCommand = $"git clone {branchArg} --depth 1 --single-branch \"{repoInfo.CloneUrl}\" \"{targetPath}\"";
+
+            var processStartInfo = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = $"clone {branchArg} --depth 1 --single-branch \"{repoInfo.CloneUrl}\" \"{targetPath}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = new Process { StartInfo = processStartInfo };
+            var outputBuilder = new System.Text.StringBuilder();
+            var errorBuilder = new System.Text.StringBuilder();
+
+            process.OutputDataReceived += (sender, e) => { if (e.Data != null) outputBuilder.AppendLine(e.Data); };
+            process.ErrorDataReceived += (sender, e) => { if (e.Data != null) errorBuilder.AppendLine(e.Data); };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            await process.WaitForExitAsync(cancellationToken);
+
+            if (process.ExitCode != 0)
+            {
+                var error = errorBuilder.ToString();
+                _logger.LogError("Git clone failed: {Error}", error);
+                throw new InvalidOperationException($"Failed to clone repository: {error}");
+            }
+
+            _logger.LogInformation("Successfully cloned repository to {TargetPath}", targetPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cloning repository {RepositoryUrl}", repositoryUrl);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Scans a GitHub repository by owner and name
+    /// </summary>
+    public async Task<CodeSecurityAssessment> ScanGitHubRepositoryAsync(
+        string owner,
+        string repository,
+        string? branch = null,
+        string? complianceFrameworks = null,
+        CancellationToken cancellationToken = default)
+    {
+        var repositoryUrl = $"https://github.com/{owner}/{repository}";
+        return await ScanRepositoryAsync(repositoryUrl, branch, null, complianceFrameworks, "deep", null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Scans an Azure DevOps repository
+    /// </summary>
+    public async Task<CodeSecurityAssessment> ScanAzureDevOpsRepositoryAsync(
+        string organization,
+        string project,
+        string repository,
+        string? branch = null,
+        string? complianceFrameworks = null,
+        CancellationToken cancellationToken = default)
+    {
+        var repositoryUrl = $"https://dev.azure.com/{organization}/{project}/_git/{repository}";
+        return await ScanRepositoryAsync(repositoryUrl, branch, null, complianceFrameworks, "deep", null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Scans a GitHub Enterprise repository
+    /// </summary>
+    public async Task<CodeSecurityAssessment> ScanGitHubEnterpriseRepositoryAsync(
+        string enterpriseUrl,
+        string owner,
+        string repository,
+        string? branch = null,
+        string? complianceFrameworks = null,
+        CancellationToken cancellationToken = default)
+    {
+        var repositoryUrl = $"{enterpriseUrl.TrimEnd('/')}/{owner}/{repository}";
+        return await ScanRepositoryAsync(repositoryUrl, branch, null, complianceFrameworks, "deep", null, cancellationToken);
+    }
 
     #endregion
 }

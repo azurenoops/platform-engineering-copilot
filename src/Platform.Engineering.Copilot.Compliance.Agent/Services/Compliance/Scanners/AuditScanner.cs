@@ -1136,7 +1136,7 @@ REFERENCES:
                 ResourceId = "/subscriptions/" + subscriptionId,
                 ResourceType = "Microsoft.Insights/general",
                 ResourceName = "Audit Resource",
-                Title = "Audit Compliance Finding",
+                Title = $"Audit Control Review Required: {control.Title}",
                 FindingType = AtoFindingType.Logging,
                 Severity = AtoFindingSeverity.Low,
                 Description = $"Potential gap in implementing {control.Title}",

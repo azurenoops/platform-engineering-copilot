@@ -1559,7 +1559,7 @@ REFERENCES:
                 ResourceId = "/subscriptions/" + subscriptionId,
                 ResourceType = "Subscription",
                 ResourceName = "SystemCommunication Resource",
-                Title = "SystemCommunication Compliance Finding",
+                Title = $"System Communications Protection Review: {control.Title}",
                 FindingType = AtoFindingType.Compliance,
                 Severity = AtoFindingSeverity.Low,
                 Description = $"Review needed for {control.Title} implementation",

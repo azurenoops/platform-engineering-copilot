@@ -85,10 +85,17 @@ public class RiskAssessmentScanner : IComplianceScanner
             _logger.LogInformation("Scanning risk assessment (RA-3) for {Scope} in subscription {SubscriptionId}", 
                 scope, subscriptionId);
             
-            // ENHANCED: Query Defender for Cloud security assessments for detailed, actionable findings
+            // ENHANCED: Query Defender for Cloud security assessments with Secure Score for risk quantification
             try
             {
-                _logger.LogInformation("Querying Defender for Cloud security assessments for subscription {SubscriptionId}", subscriptionId);
+                _logger.LogInformation("Querying Defender for Cloud security assessments and Secure Score for subscription {SubscriptionId}", subscriptionId);
+                
+                // Get Secure Score for risk level determination
+                var secureScore = await _defenderService.GetSecureScoreAsync(subscriptionId, cancellationToken);
+                _logger.LogInformation("Current Secure Score: {Percentage}% - Risk Level: {RiskLevel}", 
+                    secureScore.Percentage, 
+                    secureScore.Percentage >= 80 ? "Low" : secureScore.Percentage >= 60 ? "Medium" : "High");
+                
                 var defenderFindings = await _defenderService.GetSecurityAssessmentsAsync(subscriptionId, resourceGroupName, cancellationToken);
                 
                 if (defenderFindings != null && defenderFindings.Any())
@@ -103,6 +110,31 @@ public class RiskAssessmentScanner : IComplianceScanner
                     if (raFindings.Any())
                     {
                         _logger.LogInformation("Found {Count} Defender findings mapped to RA controls with detailed remediation steps", raFindings.Count);
+                        
+                        // Enrich findings with risk quantification from Secure Score
+                        foreach (var finding in raFindings)
+                        {
+                            finding.Metadata["SecureScorePercentage"] = secureScore.Percentage;
+                            finding.Metadata["OverallRiskLevel"] = secureScore.Percentage switch
+                            {
+                                >= 90 => "Low",
+                                >= 80 => "Medium",
+                                >= 70 => "Moderate-High",
+                                >= 60 => "High",
+                                _ => "Critical"
+                            };
+                            
+                            // Calculate risk exposure based on severity and Secure Score
+                            finding.Metadata["RiskExposure"] = (finding.Severity, secureScore.Percentage) switch
+                            {
+                                (AtoFindingSeverity.Critical, < 60) => "Severe - Critical vulnerability with low security posture",
+                                (AtoFindingSeverity.Critical, _) => "High - Critical vulnerability requiring immediate action",
+                                (AtoFindingSeverity.High, < 70) => "High - Significant risk with suboptimal security posture",
+                                (AtoFindingSeverity.High, _) => "Moderate-High - Important security gap",
+                                _ => "Moderate - Addressable security improvement"
+                            };
+                        }
+                        
                         findings.AddRange(raFindings);
                     }
                     else

@@ -1,13 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Models.CostOptimization;
-using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 using Platform.Engineering.Copilot.Core.Interfaces.Cost;
-using Platform.Engineering.Copilot.Core.Models.Azure;
 using AzureResource = Platform.Engineering.Copilot.Core.Models.Azure.AzureResource;
 using CostAnomaly = Platform.Engineering.Copilot.Core.Models.CostAnomaly;
 using CostForecast = Platform.Engineering.Copilot.Core.Models.CostForecast;

@@ -655,6 +655,7 @@ public class ComplianceEvidence
     public required string ControlId { get; set; }
     public required string ResourceId { get; set; }
     public DateTimeOffset CollectedAt { get; set; } = DateTimeOffset.UtcNow;
+    public string? CollectedBy { get; set; }
     public Dictionary<string, object> Data { get; set; } = new();
     public string? Screenshot { get; set; }
     public string? LogExcerpt { get; set; }
@@ -686,6 +687,7 @@ public class EvidencePackage
     public DateTimeOffset CollectionStartTime { get; set; }
     public DateTimeOffset CollectionEndTime { get; set; }
     public TimeSpan CollectionDuration { get; set; }
+    public string? CollectedBy { get; set; }
     public List<ComplianceEvidence> Evidence { get; set; } = new();
     public int TotalItems { get; set; }
     public string? Summary { get; set; }

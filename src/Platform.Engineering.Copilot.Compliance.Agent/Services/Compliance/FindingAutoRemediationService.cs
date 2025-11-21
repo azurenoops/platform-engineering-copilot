@@ -54,8 +54,55 @@ public class FindingAutoRemediationService
                 return true; // Can enable encryption
             }
             
-            // Other grouped findings may require manual review
-            return false;
+            // Logging/Monitoring grouped findings (AU family - Audit and Accountability)
+            if ((title.Contains("logging") || title.Contains("log analytics") || title.Contains("monitoring")) && 
+                (title.Contains("disabled") || title.Contains("not enabled") || title.Contains("not configured")))
+            {
+                return true; // Can enable logging/monitoring
+            }
+            
+            // Backup/Recovery grouped findings (CP family - Contingency Planning)
+            if ((title.Contains("backup") || title.Contains("recovery") || title.Contains("disaster")) && 
+                (title.Contains("disabled") || title.Contains("not enabled") || title.Contains("not configured")))
+            {
+                return true; // Can enable backup/recovery
+            }
+            
+            // Authentication/MFA grouped findings (IA family - Identification and Authentication)
+            // Note: MFA enforcement can be automated but needs careful consideration
+            if (title.Contains("multi-factor") || title.Contains("mfa"))
+            {
+                return true; // Can enable MFA policies
+            }
+            
+            // Network security grouped findings (SC-7 - Boundary Protection)
+            if (title.Contains("network security") || title.Contains("firewall") || title.Contains("nsg"))
+            {
+                return true; // Can configure network security
+            }
+            
+            // Configuration management findings (CM family)
+            if (title.Contains("configuration baseline") || title.Contains("security baseline"))
+            {
+                return true; // Can apply security baselines
+            }
+            
+            // EXPAND: Be more optimistic about grouped findings
+            // Most grouped technical/configuration findings can be auto-remediated
+            // Only exclude those that require business decisions (access control, data classification)
+            if (title.Contains("access") && title.Contains("assignment"))
+            {
+                return false; // Access assignments require business logic
+            }
+            
+            if (title.Contains("data classification") || title.Contains("sensitivity label"))
+            {
+                return false; // Data classification requires business decisions
+            }
+            
+            // Default for grouped findings: assume auto-remediable unless proven otherwise
+            // This is optimistic but encourages automation
+            return true;
         }
 
         // ===== INDIVIDUAL FINDINGS (by FindingType) =====
@@ -78,9 +125,20 @@ public class FindingAutoRemediationService
                     return true; // Encryption configuration
                 if (controlIds.Contains("AU-2") || controlIds.Contains("AU-3") || controlIds.Contains("AU-12"))
                     return true; // Audit logging configuration
+                if (controlIds.Contains("CP-9") || controlIds.Contains("CP-10"))
+                    return true; // Backup and recovery configuration
+                if (controlIds.Contains("IA-5"))
+                    return true; // Authenticator management
+                if (controlIds.Contains("SC-7") || controlIds.Contains("SC-8"))
+                    return true; // Network boundary protection
                 if (resourceType.Contains("keyvault"))
                     return true; // Key Vault configuration (soft delete, purge protection)
-                return false;
+                if (resourceType.Contains("storage"))
+                    return true; // Storage account configuration
+                if (resourceType.Contains("sql") || resourceType.Contains("database"))
+                    return true; // Database configuration
+                // Default: most configuration findings can be automated
+                return true;
 
             case AtoFindingType.AccessControl:
                 // Access Control findings generally require human decision-making

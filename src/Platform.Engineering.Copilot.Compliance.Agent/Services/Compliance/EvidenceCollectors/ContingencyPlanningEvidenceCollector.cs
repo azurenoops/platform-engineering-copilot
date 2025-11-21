@@ -29,7 +29,8 @@ public class ContingencyPlanningEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectConfigurationEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -59,7 +60,8 @@ public class ContingencyPlanningEvidenceCollector : IEvidenceCollector
                         resourceGroup = ((GenericResource)v).Id.ResourceGroupName
                     }).ToList()
                 },
-                ConfigSnapshot = JsonSerializer.Serialize(recoveryVaults.Take(5), new JsonSerializerOptions { WriteIndented = true })
+                ConfigSnapshot = JsonSerializer.Serialize(recoveryVaults.Take(5), new JsonSerializerOptions { WriteIndented = true }),
+                CollectedBy = collectedBy
             });
         }
 
@@ -87,7 +89,8 @@ public class ContingencyPlanningEvidenceCollector : IEvidenceCollector
                         resourceGroup = ((GenericResource)v).Id.ResourceGroupName
                     }).ToList()
                 },
-                ConfigSnapshot = JsonSerializer.Serialize(backupVaults, new JsonSerializerOptions { WriteIndented = true })
+                ConfigSnapshot = JsonSerializer.Serialize(backupVaults, new JsonSerializerOptions { WriteIndented = true }),
+                CollectedBy = collectedBy
             });
         }
 
@@ -96,7 +99,8 @@ public class ContingencyPlanningEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectLogEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -115,7 +119,8 @@ public class ContingencyPlanningEvidenceCollector : IEvidenceCollector
                 ["lastBackupCheck"] = DateTimeOffset.UtcNow,
                 ["recoveryTestsPerformed"] = true
             },
-            LogExcerpt = "Backup job monitoring enabled. Recovery testing scheduled quarterly."
+            LogExcerpt = "Backup job monitoring enabled. Recovery testing scheduled quarterly.",
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -123,7 +128,8 @@ public class ContingencyPlanningEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectMetricEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -142,7 +148,8 @@ public class ContingencyPlanningEvidenceCollector : IEvidenceCollector
                 ["averageRTO"] = "4 hours",
                 ["averageRPO"] = "1 hour",
                 ["lastSuccessfulTest"] = DateTimeOffset.UtcNow.AddDays(-30)
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -150,7 +157,8 @@ public class ContingencyPlanningEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectPolicyEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -172,7 +180,8 @@ public class ContingencyPlanningEvidenceCollector : IEvidenceCollector
                 ["totalPolicies"] = backupPolicies.Count,
                 ["policiesConfigured"] = backupPolicies.Count > 0,
                 ["retentionPolicyDefined"] = true
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         return evidence;
@@ -180,7 +189,8 @@ public class ContingencyPlanningEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectAccessControlEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -205,7 +215,8 @@ public class ContingencyPlanningEvidenceCollector : IEvidenceCollector
                     ["replicatedItems"] = siteRecovery.Count,
                     ["failoverTested"] = true
                 },
-                ConfigSnapshot = JsonSerializer.Serialize(siteRecovery.Take(3), new JsonSerializerOptions { WriteIndented = true })
+                ConfigSnapshot = JsonSerializer.Serialize(siteRecovery.Take(3), new JsonSerializerOptions { WriteIndented = true }),
+                CollectedBy = collectedBy
             });
         }
 

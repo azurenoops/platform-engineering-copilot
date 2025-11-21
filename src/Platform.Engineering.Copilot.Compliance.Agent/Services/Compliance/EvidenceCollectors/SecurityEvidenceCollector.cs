@@ -28,7 +28,8 @@ public class SecurityEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectConfigurationEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -71,7 +72,8 @@ public class SecurityEvidenceCollector : IEvidenceCollector
                     ResourceId = $"/subscriptions/{subscriptionId}/providers/Microsoft.Network/networkSecurityGroups",
                     CollectedAt = DateTimeOffset.UtcNow,
                     Data = nsgData,
-                    ConfigSnapshot = JsonSerializer.Serialize(nsgData, new JsonSerializerOptions { WriteIndented = true })
+                    ConfigSnapshot = JsonSerializer.Serialize(nsgData, new JsonSerializerOptions { WriteIndented = true }),
+                    CollectedBy = collectedBy
                 });
             }
 
@@ -100,7 +102,8 @@ public class SecurityEvidenceCollector : IEvidenceCollector
                     ResourceId = $"/subscriptions/{subscriptionId}/providers/Microsoft.Storage/storageAccounts",
                     CollectedAt = DateTimeOffset.UtcNow,
                     Data = storageData,
-                    ConfigSnapshot = JsonSerializer.Serialize(storageData, new JsonSerializerOptions { WriteIndented = true })
+                    ConfigSnapshot = JsonSerializer.Serialize(storageData, new JsonSerializerOptions { WriteIndented = true }),
+                    CollectedBy = collectedBy
                 });
             }
 
@@ -129,7 +132,8 @@ public class SecurityEvidenceCollector : IEvidenceCollector
                     ResourceId = $"/subscriptions/{subscriptionId}/providers/Microsoft.KeyVault/vaults",
                     CollectedAt = DateTimeOffset.UtcNow,
                     Data = kvData,
-                    ConfigSnapshot = JsonSerializer.Serialize(kvData, new JsonSerializerOptions { WriteIndented = true })
+                    ConfigSnapshot = JsonSerializer.Serialize(kvData, new JsonSerializerOptions { WriteIndented = true }),
+                    CollectedBy = collectedBy
                 });
             }
 
@@ -148,7 +152,8 @@ public class SecurityEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectLogEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         await Task.Delay(50, cancellationToken);
@@ -157,7 +162,8 @@ public class SecurityEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectMetricEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -175,7 +181,8 @@ public class SecurityEvidenceCollector : IEvidenceCollector
                 ["encryptedStoragePercent"] = 100,
                 ["vpnTunnelsActive"] = 3,
                 ["ddosAttacksBlocked"] = 0
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         await Task.Delay(100, cancellationToken);
@@ -184,7 +191,8 @@ public class SecurityEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectPolicyEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         var evidence = new List<ComplianceEvidence>();
@@ -202,7 +210,8 @@ public class SecurityEvidenceCollector : IEvidenceCollector
                 ["encryptionInTransitPolicy"] = "Enforced", 
                 ["minimumTlsVersionPolicy"] = "TLS1.2",
                 ["diskEncryptionPolicy"] = "Required"
-            }
+            },
+            CollectedBy = collectedBy
         });
 
         await Task.Delay(100, cancellationToken);
@@ -211,7 +220,8 @@ public class SecurityEvidenceCollector : IEvidenceCollector
 
     public async Task<List<ComplianceEvidence>> CollectAccessControlEvidenceAsync(
         string subscriptionId, 
-        string controlFamily, 
+        string controlFamily,
+        string collectedBy,
         CancellationToken cancellationToken = default)
     {
         await Task.Delay(50, cancellationToken);

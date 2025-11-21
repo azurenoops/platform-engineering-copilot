@@ -1,6 +1,6 @@
 {
   "name": "platform-copilot-m365",
-  "version": "1.0.0",
+  "version": "0.7.1",
   "description": "Microsoft 365 Copilot extension for Platform Engineering Copilot - AI-powered Azure infrastructure management",
   "main": "dist/index.js",
   "scripts": {

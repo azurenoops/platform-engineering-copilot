@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Platform.Engineering.Copilot.Compliance.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Models.CodeScanning;
+using Platform.Engineering.Copilot.Core.Models.Compliance;
 using System.Text;
 using System.Text.Json;
 
@@ -100,6 +101,62 @@ public class EvidenceStorageService
 
         _logger.LogInformation("Stored evidence package: {BlobName} (Versioning: {Versioning}, Immutability: {Immutability})", 
             blobName, _options.EnableVersioning, _options.EnableImmutability);
+
+        return blobClient.Uri.ToString();
+    }
+
+    /// <summary>
+    /// Stores compliance evidence package to blob storage
+    /// </summary>
+    public async Task<string> StoreComplianceEvidencePackageAsync(
+        EvidencePackage evidencePackage,
+        CancellationToken cancellationToken = default)
+    {
+        var containerClient = await GetContainerClientAsync();
+        
+        var blobName = $"compliance-evidence/{evidencePackage.PackageId}/{DateTime.UtcNow:yyyy/MM/dd}/package.json";
+        var blobClient = containerClient.GetBlobClient(blobName);
+
+        var jsonContent = JsonSerializer.Serialize(evidencePackage, new JsonSerializerOptions 
+        { 
+            WriteIndented = true 
+        });
+        
+        var content = new BinaryData(jsonContent);
+        
+        var uploadOptions = new BlobUploadOptions
+        {
+            HttpHeaders = new BlobHttpHeaders
+            {
+                ContentType = "application/json"
+            },
+            Metadata = new Dictionary<string, string>
+            {
+                { "PackageId", evidencePackage.PackageId },
+                { "SubscriptionId", evidencePackage.SubscriptionId },
+                { "ControlFamily", evidencePackage.ControlFamily },
+                { "CollectionStartTime", evidencePackage.CollectionStartTime.ToString("O") },
+                { "EvidenceCount", evidencePackage.Evidence.Count.ToString() },
+                { "CollectedBy", evidencePackage.CollectedBy }
+            }
+        };
+
+        // Enable versioning if configured
+        if (_options.EnableVersioning)
+        {
+            _logger.LogInformation("Blob versioning enabled for compliance evidence storage");
+        }
+
+        await blobClient.UploadAsync(content, uploadOptions, cancellationToken);
+
+        // Set immutability policy if enabled
+        if (_options.EnableImmutability)
+        {
+            await SetImmutabilityPolicyAsync(blobClient);
+        }
+
+        _logger.LogInformation("Stored compliance evidence package: {BlobName} (Evidence Count: {Count})", 
+            blobName, evidencePackage.Evidence.Count);
 
         return blobClient.Uri.ToString();
     }

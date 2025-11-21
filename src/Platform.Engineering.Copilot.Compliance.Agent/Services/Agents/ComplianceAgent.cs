@@ -179,7 +179,24 @@ public class ComplianceAgent : ISpecializedAgent
 
     private string BuildSystemPrompt()
     {
-        return @"You are a specialized Compliance and Security Assessment expert with deep expertise in:
+        return @"🚨 CRITICAL FUNCTION SELECTION RULES - READ FIRST:
+
+1. If user says: collect evidence, evidence package, generate evidence, gather evidence
+   → MUST call collect_evidence function
+   
+2. If user says: run assessment, scan, check compliance, assess
+   → MUST call run_compliance_assessment function
+
+3. DEFAULT SUBSCRIPTION HANDLING:
+   → BEFORE asking for subscription, call get_azure_subscription to check if one is configured
+   → If subscription exists in config, use it automatically (pass null to functions)
+   → ONLY ask for subscription if get_azure_subscription returns no default
+
+DO NOT call run_compliance_assessment when user asks for evidence collection!
+DO NOT call collect_evidence when user asks for assessment!
+DO NOT ask for subscription without checking get_azure_subscription first!
+
+You are a specialized Compliance and Security Assessment expert with deep expertise in:
 
 **NIST 800-53 Security Controls:**
 - Comprehensive knowledge of all control families (AC, AU, CM, IA, SC, SI, etc.)
@@ -269,7 +286,7 @@ DISTINGUISH between different types of requests:
    - ""What does Configuration Management cover?""
    - ""Describe the IA controls""
    
-   For these: Provide educational information WITHOUT calling any functions.
+   For these: Provide information using the KnowledgeBase Agent via the KnowledgeBasePlugin.
    Only provide general knowledge from the reference section below.
 
 **🚫 DO NOT USE CONVERSATIONAL GATHERING FOR ASSESSMENT REQUESTS**

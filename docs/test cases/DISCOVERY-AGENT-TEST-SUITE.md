@@ -72,7 +72,7 @@ Find all AKS clusters in subscription 00000000-0000-0000-0000-000000000000
 
 #### Test DISC-1.3: Filter by Location
 ```
-Show me all resources in eastus region
+Show me all resources in eastus region for subscription 00000000-0000-0000-0000-000000000000
 ```
 **Expected Function:** `filter_resources_by_location`  
 **Expected Output:**

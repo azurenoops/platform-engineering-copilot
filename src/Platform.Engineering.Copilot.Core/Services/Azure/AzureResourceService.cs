@@ -30,6 +30,7 @@ public class AzureResourceService : IAzureResourceService
     private readonly ILogger<AzureResourceService> _logger;
     private readonly AzureGatewayOptions _options;
     private readonly ArmClient? _armClient;
+    private readonly TokenCredential? _credential;
 
     /// <summary>
     /// Initializes a new instance of the AzureResourceService with Azure Resource Manager client setup.
@@ -53,7 +54,7 @@ public class AzureResourceService : IAzureResourceService
                     AuthorityHost = AzureAuthorityHosts.AzureGovernment
                 };
 
-                TokenCredential credential = _options.UseManagedIdentity 
+                _credential = _options.UseManagedIdentity 
                     ? new DefaultAzureCredential(credentialOptions)
                     : new ChainedTokenCredential(
                         new AzureCliCredential(new AzureCliCredentialOptions { AuthorityHost = AzureAuthorityHosts.AzureGovernment }),
@@ -64,7 +65,7 @@ public class AzureResourceService : IAzureResourceService
                 var armClientOptions = new ArmClientOptions();
                 armClientOptions.Environment = ArmEnvironment.AzureGovernment;
                 
-                _armClient = new ArmClient(credential, defaultSubscriptionId: null, armClientOptions);
+                _armClient = new ArmClient(_credential, defaultSubscriptionId: null, armClientOptions);
                 _logger.LogInformation("Azure ARM client initialized successfully for {Environment}", armClientOptions.Environment.ToString());
             }
             catch (Exception ex)
@@ -97,6 +98,73 @@ public class AzureResourceService : IAzureResourceService
             throw new InvalidOperationException("No subscription ID provided");
         }
         return subId;
+    }
+    
+    /// <summary>
+    /// Gets the currently authenticated Azure user's identity (email/UPN)
+    /// </summary>
+    /// <returns>User principal name (email) or account identifier</returns>
+    public async Task<string> GetCurrentAzureUserAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (_credential == null)
+            {
+                _logger.LogWarning("Credential not available, falling back to environment username");
+                return Environment.UserName ?? "unknown";
+            }
+
+            // Get a token to extract user identity claims
+            var tokenRequestContext = new TokenRequestContext(new[] { "https://management.usgovcloudapi.net/.default" });
+            var token = await _credential.GetTokenAsync(tokenRequestContext, cancellationToken);
+            
+            // Decode the JWT token to extract user identity
+            var tokenParts = token.Token.Split('.');
+            if (tokenParts.Length >= 2)
+            {
+                var payload = tokenParts[1];
+                // Add padding if needed for Base64 decoding
+                var paddedPayload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
+                var decodedBytes = Convert.FromBase64String(paddedPayload);
+                var decodedPayload = System.Text.Encoding.UTF8.GetString(decodedBytes);
+                
+                // Parse JSON to extract user claims
+                var claims = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(decodedPayload);
+                
+                if (claims != null)
+                {
+                    // Try to get user principal name (email) or unique name
+                    if (claims.TryGetValue("upn", out var upn) && upn.ValueKind == JsonValueKind.String)
+                    {
+                        return upn.GetString() ?? "unknown";
+                    }
+                    if (claims.TryGetValue("unique_name", out var uniqueName) && uniqueName.ValueKind == JsonValueKind.String)
+                    {
+                        return uniqueName.GetString() ?? "unknown";
+                    }
+                    if (claims.TryGetValue("email", out var email) && email.ValueKind == JsonValueKind.String)
+                    {
+                        return email.GetString() ?? "unknown";
+                    }
+                    if (claims.TryGetValue("preferred_username", out var preferredUsername) && preferredUsername.ValueKind == JsonValueKind.String)
+                    {
+                        return preferredUsername.GetString() ?? "unknown";
+                    }
+                    if (claims.TryGetValue("name", out var name) && name.ValueKind == JsonValueKind.String)
+                    {
+                        return name.GetString() ?? "unknown";
+                    }
+                }
+            }
+            
+            _logger.LogWarning("Could not extract user identity from token, using environment username");
+            return Environment.UserName ?? "unknown";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get current Azure user, falling back to environment username");
+            return Environment.UserName ?? "unknown";
+        }
     }
 
     /// <summary>
