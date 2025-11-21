@@ -99,7 +99,7 @@ services:
       - NistControls__EnableOfflineFallback=${NIST_CONTROLS_OFFLINE_FALLBACK:-true}
       - NistControls__EnableDetailedLogging=${NIST_CONTROLS_DETAILED_LOGGING:-false}
       # Evidence Storage Configuration
-      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-DefaultEndpointsProtocol=https;AccountName=;AccountKey=;EndpointSuffix=core.usgovcloudapi.net}
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
     ports:
       - "5100:5100"
     volumes:
