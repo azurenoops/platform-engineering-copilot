@@ -50,8 +50,8 @@ services:
       - ASPNETCORE_URLS=http://0.0.0.0:5100
       - ASPNETCORE_HTTP_PORTS=5100
       # Database Configuration
-      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=plaform-engineering-copilotDb;User=sa;Password=<add_password_here>;TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
-      - ConnectionStrings__SqlServerConnection=Server=sqlserver,1433;Database=plaform-engineering-copilotDb;User=sa;Password=<add_password_here>;TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=plaform-engineering-copilotDb;User=sa;Password=plaform-engineering-copilotDB123!;TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
+      - ConnectionStrings__SqlServerConnection=Server=sqlserver,1433;Database=plaform-engineering-copilotDb;User=sa;Password=plaform-engineering-copilotDB123!;TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
       - DatabaseProvider=SqlServer
       # Azure SDK Environment Variables (required for DefaultAzureCredential)
       - AZURE_TENANT_ID=${AZURE_TENANT_ID:-5310815f-d7b8-4c10-9879-9eccf368d822}
@@ -99,7 +99,7 @@ services:
       - NistControls__EnableOfflineFallback=${NIST_CONTROLS_OFFLINE_FALLBACK:-true}
       - NistControls__EnableDetailedLogging=${NIST_CONTROLS_DETAILED_LOGGING:-false}
       # Evidence Storage Configuration
-      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-DefaultEndpointsProtocol=https;AccountName=mcpsa;AccountKey=Z4paJbETBOfhsR+u6y61KlKbwAo0DQzGKh7KBzu29elVGK2zG9jP5IKvQLqGykpYa34SjXCHcZ9X+AStiPhCyw==;EndpointSuffix=core.usgovcloudapi.net}
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-DefaultEndpointsProtocol=https;AccountName=;AccountKey=;EndpointSuffix=core.usgovcloudapi.net}
     ports:
       - "5100:5100"
     volumes:
