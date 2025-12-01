@@ -1,11 +1,13 @@
-# Release Notes - v0.7.3
+# Release Notes - v0.8.0
 
 **Release Date:** December 1, 2025  
-**Type:** Major Feature Release
+**Type:** Major Release (Breaking Changes)
 
 ## 🎯 Overview
 
-Version 0.7.3 is a significant release that includes major architectural refactoring, new SimpleChat integration capabilities, enhanced compliance agent features, cost management improvements, and comprehensive security enhancements. This release includes 97 files changed with 27,983 insertions and 5,588 deletions, representing a substantial advancement in platform capabilities.
+Version 0.8.0 is a major release that includes breaking changes, architectural refactoring, new SimpleChat integration capabilities, enhanced compliance agent features, cost management improvements, and comprehensive security enhancements. This release includes 97 files changed with 27,983 insertions and 5,588 deletions, representing a substantial advancement in platform capabilities.
+
+**⚠️ BREAKING CHANGES:** This release includes breaking changes to namespaces, interfaces, and database schema. See Migration Notes section for upgrade instructions.
 
 ## ✨ New Features
 
@@ -353,11 +355,16 @@ dotnet ef migrations list
 - **Scripts**: 3 new automation scripts (664 lines)
 - **Integration**: Complete SimpleChat integration framework
 
-## 🔮 What's Next (v0.7.4)
+## 🔮 What's Next (v0.8.1 / v0.9.0)
 
-### Planned Features
+### Planned Features (v0.8.1 - Patch)
+- JSON response sanitization for AI-generated content
+- Enhanced AI prompt engineering to reduce parsing errors
+- Bug fixes and performance improvements
+
+### Planned Features (v0.9.0 - Next Minor)
 - **SimpleChat MCP Production Deployment**: Complete production-ready SimpleChat integration
-- **Enhanced Cost Optimization**: v0.8.0 cost management features from implementation plan
+- **Enhanced Cost Optimization**: Additional cost management features from implementation plan
 - **Direct Configuration Handling**: Orchestrator-level config (eliminate agent routing)
 - **JSON Response Sanitization**: AI-generated content validation
 - **Enhanced AI Prompt Engineering**: Reduce parsing errors and improve reliability
@@ -416,5 +423,6 @@ Special thanks to the Platform Engineering Copilot team for testing and feedback
 ---
 
 **Commit:** `0804bdf1`  
-**Docker Tag:** `plaform-engineering-copilot-mcp:v0.7.3`  
-**Release Branch:** `main`
+**Docker Tag:** `plaform-engineering-copilot-mcp:v0.8.0`  
+**Release Branch:** `main`  
+**Semantic Version:** MAJOR.MINOR.PATCH = 0.8.0 (Breaking Changes)
