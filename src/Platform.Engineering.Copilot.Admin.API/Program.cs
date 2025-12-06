@@ -142,7 +142,7 @@ builder.Services.AddSingleton<ITeamsNotificationService,
 builder.Services.AddMemoryCache();
 
 // Register Platform.Engineering.Copilot.Core services (includes OrchestratorAgent, SemanticKernelService, etc.)
-builder.Services.AddPlatformEngineeringCopilotCore();
+builder.Services.AddPlatformEngineeringCopilotCore(builder.Configuration);
 
 // Add ComplianceMetricsService (needed by NistControlsService)
 builder.Services.AddScoped<ComplianceMetricsService>();

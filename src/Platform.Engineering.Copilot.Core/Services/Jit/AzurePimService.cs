@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
+using Platform.Engineering.Copilot.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Extensions;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 using Platform.Engineering.Copilot.Core.Interfaces.Jit;
@@ -17,55 +18,27 @@ using AzureResourceIdentifier = Azure.Core.ResourceIdentifier;
 namespace Platform.Engineering.Copilot.Core.Services.Jit;
 
 /// <summary>
-/// Configuration options for Azure PIM service.
-/// </summary>
-public class AzurePimServiceOptions
-{
-    /// <summary>
-    /// The Azure AD tenant ID.
-    /// </summary>
-    public string TenantId { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Default maximum activation duration.
-    /// </summary>
-    public TimeSpan DefaultMaxDuration { get; set; } = TimeSpan.FromHours(8);
-
-    /// <summary>
-    /// Whether to use managed identity for authentication.
-    /// </summary>
-    public bool UseManagedIdentity { get; set; } = true;
-
-    /// <summary>
-    /// Client ID for service principal authentication (if not using managed identity).
-    /// </summary>
-    public string? ClientId { get; set; }
-
-    /// <summary>
-    /// Client secret for service principal authentication (if not using managed identity).
-    /// </summary>
-    public string? ClientSecret { get; set; }
-}
-
-/// <summary>
 /// Implementation of Azure PIM service using Microsoft Graph API.
 /// Provides Just-In-Time (JIT) privilege elevation through Azure Privileged Identity Management.
 /// </summary>
 public class AzurePimService : IAzurePimService
 {
     private readonly ILogger<AzurePimService> _logger;
-    private readonly AzurePimServiceOptions _options;
+    private readonly AzurePimServiceOptions _pimOptions;
+    private readonly AzureGatewayOptions _azureOptions;
     private readonly IAzureClientFactory _clientFactory;
     private readonly GraphServiceClient? _graphClient;
     private readonly ArmClient? _armClient;
 
     public AzurePimService(
         ILogger<AzurePimService> logger,
-        IOptions<AzurePimServiceOptions> options,
+        IOptions<AzurePimServiceOptions> pimOptions,
+        IOptions<GatewayOptions> gatewayOptions,
         IAzureClientFactory clientFactory)
     {
         _logger = logger;
-        _options = options.Value;
+        _pimOptions = pimOptions.Value;
+        _azureOptions = gatewayOptions.Value.Azure;
         _clientFactory = clientFactory;
 
         try
@@ -74,7 +47,7 @@ public class AzurePimService : IAzurePimService
             _graphClient = _clientFactory.GetGraphClient();
             _armClient = _clientFactory.GetArmClient();
 
-            _logger.LogInformation("Azure PIM Service initialized successfully using {CloudEnvironment}", 
+            _logger.LogInformation("Azure PIM Service initialized successfully using {CloudEnvironment}",
                 _clientFactory.CloudEnvironment);
         }
         catch (Exception ex)
@@ -133,7 +106,7 @@ public class AzurePimService : IAzurePimService
                         EligibilityId = eligibility.Id,
                         EligibilityStartTime = eligibility.StartDateTime,
                         EligibilityEndTime = eligibility.EndDateTime,
-                        MaxDuration = _options.DefaultMaxDuration,
+                        MaxDuration = _pimOptions.DefaultMaxDuration,
                         RequiresJustification = true // Default, should be read from policy
                     };
 
@@ -278,11 +251,64 @@ public class AzurePimService : IAzurePimService
                 request.RoleDefinitionId, request.UserId, request.Scope);
 
             // Validate duration
-            if (request.Duration > _options.DefaultMaxDuration)
+            if (request.Duration > _pimOptions.DefaultMaxDuration)
             {
                 result.Status = PimRequestStatus.Failed;
-                result.ErrorMessage = $"Requested duration exceeds maximum allowed ({_options.DefaultMaxDuration.TotalHours} hours)";
+                result.ErrorMessage = $"Requested duration exceeds maximum allowed ({_pimOptions.DefaultMaxDuration.TotalHours} hours)";
                 return result;
+            }
+
+            // Validate ticket requirements
+            if (_pimOptions.RequireTicketNumber && string.IsNullOrEmpty(request.TicketNumber))
+            {
+                result.Status = PimRequestStatus.Failed;
+                result.ErrorMessage = "Ticket number is required for PIM activation";
+                return result;
+            }
+
+            if (!string.IsNullOrEmpty(request.TicketSystem) &&
+                !_pimOptions.ApprovedTicketSystems.Contains(request.TicketSystem))
+            {
+                result.Status = PimRequestStatus.Failed;
+                result.ErrorMessage = $"Ticket system '{request.TicketSystem}' is not approved. Approved systems: {string.Join(", ", _pimOptions.ApprovedTicketSystems)}";
+                return result;
+            }
+
+            // Validate justification length
+            if (string.IsNullOrEmpty(request.Justification) ||
+                request.Justification.Length < _pimOptions.MinJustificationLength)
+            {
+                result.Status = PimRequestStatus.Failed;
+                result.ErrorMessage = $"Justification must be at least {_pimOptions.MinJustificationLength} characters long";
+                return result;
+            }
+
+            // Get role name for high-privilege role validation
+            var (roleName, _) = await GetRoleDefinitionAsync(request.RoleDefinitionId, cancellationToken);
+
+            // Check if this is a high-privilege role
+            if (_pimOptions.HighPrivilegeRoles.Contains(roleName))
+            {
+                _logger.LogWarning("High-privilege role '{RoleName}' activation requested by user {UserId}",
+                    roleName, request.UserId);
+
+                // Could add additional scrutiny, notifications, or approval requirements
+                // For now, just log the elevated access
+            }
+
+            // Enhanced audit logging if enabled
+            if (_pimOptions.EnableAuditLogging)
+            {
+                _logger.LogInformation(
+                    "AUDIT: PIM role activation requested - UserId: {UserId}, RoleId: {RoleId}, RoleName: {RoleName}, Duration: {DurationHours} hours, TicketNumber: {TicketNumber}, TicketSystem: {TicketSystem}, JustificationLength: {JustificationLength}, Scope: {Scope}",
+                    request.UserId,
+                    request.RoleDefinitionId,
+                    roleName,
+                    request.Duration.TotalHours,
+                    request.TicketNumber ?? "none",
+                    request.TicketSystem ?? "none",
+                    request.Justification?.Length ?? 0,
+                    request.Scope);
             }
 
             // Create the activation request
@@ -327,8 +353,8 @@ public class AzurePimService : IAzurePimService
                 result.ExpiresAt = response.ScheduleInfo?.Expiration?.EndDateTime;
 
                 // Get role name for display
-                var (roleName, _) = await GetRoleDefinitionAsync(request.RoleDefinitionId, cancellationToken);
-                result.RoleName = roleName;
+                var (resultRoleName, _) = await GetRoleDefinitionAsync(request.RoleDefinitionId, cancellationToken);
+                result.RoleName = resultRoleName;
 
                 _logger.LogInformation(
                     "PIM activation request {RequestId} submitted with status {Status}",
@@ -492,6 +518,20 @@ public class AzurePimService : IAzurePimService
             var vmName = resourceId.Name;
             result.VmName = vmName;
 
+            // Validate and set default durations for VM access
+            var effectiveDuration = request.Duration;
+            if (effectiveDuration == default)
+            {
+                effectiveDuration = TimeSpan.FromHours(_pimOptions.DefaultVmAccessDurationHours);
+            }
+
+            if (effectiveDuration > TimeSpan.FromHours(_pimOptions.MaxVmAccessDurationHours))
+            {
+                result.Status = JitVmAccessStatus.Failed;
+                result.ErrorMessage = $"Requested VM access duration exceeds maximum allowed ({_pimOptions.MaxVmAccessDurationHours} hours)";
+                return result;
+            }
+
             // Build the JIT request payload
             var jitRequest = new
             {
@@ -547,6 +587,20 @@ public class AzurePimService : IAzurePimService
             if (request.Ports.Any(p => p.Port == 3389))
             {
                 result.ConnectionDetails.RdpConnection = $"mstsc /v:{result.ConnectionDetails.Host}";
+            }
+
+            // Enhanced audit logging for VM access if enabled
+            if (_pimOptions.EnableAuditLogging)
+            {
+                var portsInfo = string.Join(", ", request.Ports.Select(p => $"{p.Port}/{p.Protocol}"));
+                _logger.LogInformation(
+                    "AUDIT: JIT VM access granted - VmResourceId: {VmResourceId}, VmName: {VmName}, Duration: {DurationHours} hours, Ports: [{Ports}], AllowedSourceIp: {AllowedSourceIp}, JustificationLength: {JustificationLength}",
+                    request.VmResourceId,
+                    vmName,
+                    effectiveDuration.TotalHours,
+                    portsInfo,
+                    request.AllowedSourceIp ?? "default",
+                    request.Justification?.Length ?? 0);
             }
 
             _logger.LogInformation("JIT VM access granted for {VmResourceId}, expires at {ExpiresAt}",
@@ -791,7 +845,7 @@ public class AzurePimService : IAzurePimService
         role.RequiresApproval = true; // Conservative default
         role.RequiresMfa = true;
         role.RequiresJustification = true;
-        role.MaxDuration = _options.DefaultMaxDuration;
+        role.MaxDuration = _pimOptions.DefaultMaxDuration;
     }
 
     private static PimRequestStatus MapPimStatus(string? status)

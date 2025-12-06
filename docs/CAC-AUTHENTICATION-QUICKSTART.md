@@ -66,10 +66,7 @@ az ad app permission admin-consent --id $MCP_APP_ID
 ```json
 {
   "AzureAd": {
-    "Instance": "https://login.microsoftonline.us/",
-    "TenantId": "<your-tenant-id>",
-    "ClientId": "<mcp-app-id>",
-    "ClientSecret": "<mcp-client-secret>",
+    "Instance": "https://login.microsoftonline.us/",    
     "Audience": "api://platform-engineering-copilot",
     "RequireMfa": true,
     "RequireCac": true,

@@ -60,10 +60,7 @@ Edit `appsettings.json`:
 ```json
 {
   "AzureAD": {
-    "Instance": "https://login.microsoftonline.com/",
-    "Domain": "yourcompany.onmicrosoft.com",
-    "TenantId": "your-tenant-id",
-    "ClientId": "your-app-client-id",
+    "Instance": "https://login.microsoftonline.com/",    
     "Audience": "api://your-app-client-id",
     "RequireMfa": true,
     "RequireCac": false

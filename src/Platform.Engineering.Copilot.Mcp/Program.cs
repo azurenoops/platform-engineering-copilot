@@ -117,7 +117,7 @@ class Program
         builder.Services.AddHttpClient();
 
         // Add Core services (Multi-Agent Orchestrator, Plugins, etc.)
-        builder.Services.AddPlatformEngineeringCopilotCore();
+        builder.Services.AddPlatformEngineeringCopilotCore(builder.Configuration);
 
         // Register MCP Chat Tool - Scoped to match IIntelligentChatService
         builder.Services.AddScoped<PlatformEngineeringCopilotTools>();
@@ -192,10 +192,11 @@ class Program
 
         // Add JWT Bearer authentication for CAC token validation
         var azureAdConfig = builder.Configuration.GetSection(AzureAdOptions.SectionName);
+        var azureConfig = builder.Configuration.GetSection(GatewayOptions.SectionName);
         var azureAdOptions = new AzureAdOptions();
         azureAdConfig.Bind(azureAdOptions);
 
-        if (!string.IsNullOrEmpty(azureAdOptions.TenantId) && !string.IsNullOrEmpty(azureAdOptions.Audience))
+        if (!string.IsNullOrEmpty(azureConfig.GetValue<string>("TenantId")) && !string.IsNullOrEmpty(azureAdOptions.Audience))
         {
             builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(options =>
@@ -278,7 +279,7 @@ class Program
                 });
 
             Log.Information("✅ JWT Bearer authentication configured for Azure AD tenant: {TenantId}", 
-                azureAdOptions.TenantId);
+                azureConfig.GetValue<string>("TenantId"));
         }
         else
         {
@@ -351,7 +352,7 @@ class Program
             Platform.Engineering.Copilot.Core.Services.UserContextService>();
 
         // Add Core services (Multi-Agent Orchestrator, Plugins, etc.)
-        builder.Services.AddPlatformEngineeringCopilotCore();
+        builder.Services.AddPlatformEngineeringCopilotCore(builder.Configuration);
         
         // Configure which agents are enabled
         builder.Services.Configure<Platform.Engineering.Copilot.Core.Configuration.AgentConfiguration>(
@@ -460,10 +461,11 @@ class Program
 
         // Add authentication middleware only if Azure AD is configured
         var appAzureAdConfig = app.Configuration.GetSection(AzureAdOptions.SectionName);
+        var appAzureConfig = app.Configuration.GetSection(GatewayOptions.SectionName);
         var appAzureAdOptions = new AzureAdOptions();
         appAzureAdConfig.Bind(appAzureAdOptions);
         
-        if (!string.IsNullOrEmpty(appAzureAdOptions.TenantId) && !string.IsNullOrEmpty(appAzureAdOptions.Audience))
+        if (!string.IsNullOrEmpty(appAzureConfig.GetValue<string>("TenantId")) && !string.IsNullOrEmpty(appAzureAdOptions.Audience))
         {
             // Add authentication middleware (must be before authorization)
             app.UseAuthentication();

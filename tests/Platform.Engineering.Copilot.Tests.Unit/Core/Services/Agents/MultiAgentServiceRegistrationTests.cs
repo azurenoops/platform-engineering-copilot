@@ -36,7 +36,7 @@ public class MultiAgentServiceRegistrationTests
         services.AddLogging();
 
         // Register Supervisor Core services (includes multi-agent system)
-        services.AddPlatformEngineeringCopilotCore();
+        services.AddPlatformEngineeringCopilotCore(new ConfigurationBuilder().Build());
 
         _serviceProvider = services.BuildServiceProvider();
     }
