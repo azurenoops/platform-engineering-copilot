@@ -56,8 +56,8 @@ public static class ComplianceDataServiceExtensions
         // Add DbContext
         // services.AddDbContext<ComplianceContext>(configureContext);
 
-        // Add data services
-        services.AddScoped<AssessmentService>();
+        // Add data services - Register both interface and implementation
+        services.AddScoped<IAssessmentService, AssessmentService>();
 
         return services;
     }

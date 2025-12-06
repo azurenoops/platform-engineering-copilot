@@ -753,3 +753,74 @@ public class AzureResourceCostResponse
 }
 
 #endregion
+
+#region Agent Configuration Models
+
+/// <summary>
+/// DTO for agent configuration display and updates
+/// </summary>
+public class AgentConfigurationDto
+{
+    public int AgentConfigurationId { get; set; }
+    public string AgentName { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public bool IsEnabled { get; set; }
+    public string Category { get; set; } = string.Empty;
+    public string? IconName { get; set; }
+    public string? ConfigurationJson { get; set; }
+    public int DisplayOrder { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public string? ModifiedBy { get; set; }
+    public string? Dependencies { get; set; }
+    public DateTime? LastExecutedAt { get; set; }
+    public string? HealthStatus { get; set; }
+}
+
+/// <summary>
+/// Request to update agent enabled status
+/// </summary>
+public class UpdateAgentStatusRequest
+{
+    public bool IsEnabled { get; set; }
+    public string? ModifiedBy { get; set; }
+}
+
+/// <summary>
+/// Request to update agent configuration
+/// </summary>
+public class UpdateAgentConfigurationRequest
+{
+    public string? DisplayName { get; set; }
+    public string? Description { get; set; }
+    public bool? IsEnabled { get; set; }
+    public string? ConfigurationJson { get; set; }
+    public string? IconName { get; set; }
+    public int? DisplayOrder { get; set; }
+    public string? Dependencies { get; set; }
+    public string? ModifiedBy { get; set; }
+}
+
+/// <summary>
+/// Grouped agents by category
+/// </summary>
+public class AgentCategoryGroup
+{
+    public string Category { get; set; } = string.Empty;
+    public List<AgentConfigurationDto> Agents { get; set; } = new();
+    public int EnabledCount { get; set; }
+    public int TotalCount { get; set; }
+}
+
+/// <summary>
+/// Response for agent list grouped by category
+/// </summary>
+public class AgentConfigurationListResponse
+{
+    public List<AgentCategoryGroup> Categories { get; set; } = new();
+    public int TotalAgents { get; set; }
+    public int EnabledAgents { get; set; }
+}
+
+#endregion

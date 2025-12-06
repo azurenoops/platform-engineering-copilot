@@ -28,7 +28,8 @@ public class TerraformNetworkModuleGenerator
         var sb = new StringBuilder();
 
         // Provider configuration
-        sb.AppendLine("# Network Infrastructure Module");
+        sb.AppendLine("# Network Infrastructure Module - FedRAMP Compliant");
+        sb.AppendLine("# Implements: SC-7 (Boundary Protection), AC-4 (Information Flow), SC-8 (Transmission Confidentiality)");
         sb.AppendLine();
 
         // Virtual Network

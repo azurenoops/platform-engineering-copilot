@@ -1,0 +1,353 @@
+name: Infrastructure Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      deploymentTarget:
+        description: 'Container deployment target'
+        required: true
+        default: 'aci'
+        type: choice
+        options:
+          - appservice
+          - aks
+          - aci
+          - none
+      deployAdminApi:
+        description: 'Deploy Admin API service'
+        required: false
+        default: true
+        type: boolean
+      deployChat:
+        description: 'Deploy Chat service'
+        required: false
+        default: true
+        type: boolean
+      useExistingNetwork:
+        description: 'Use existing Virtual Network'
+        required: false
+        default: false
+        type: boolean
+      existingVnetName:
+        description: 'Existing VNet name (if useExistingNetwork is true)'
+        required: false
+        type: string
+      existingVnetResourceGroup:
+        description: 'Existing VNet resource group'
+        required: false
+        type: string
+      useExistingLogAnalytics:
+        description: 'Use existing Log Analytics Workspace'
+        required: false
+        default: false
+        type: boolean
+      existingLogAnalyticsWorkspaceName:
+        description: 'Existing Log Analytics Workspace name'
+        required: false
+        type: string
+      useExistingKeyVault:
+        description: 'Use existing Key Vault'
+        required: false
+        default: false
+        type: boolean
+      existingKeyVaultName:
+        description: 'Existing Key Vault name'
+        required: false
+        type: string
+      destroyInfrastructure:
+        description: 'Destroy infrastructure instead of deploying'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  RESOURCE_GROUP_PREFIX: 'rg-platform-engineering'
+
+jobs:
+  validate:
+    name: Validate Bicep Templates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Validate Bicep template
+        run: |
+          PARAMS="--parameters environment=${{ inputs.environment }}"
+          PARAMS="$PARAMS --parameters containerDeploymentTarget=${{ inputs.deploymentTarget }}"
+          PARAMS="$PARAMS --parameters deployAdminApi=${{ inputs.deployAdminApi }}"
+          PARAMS="$PARAMS --parameters deployChat=${{ inputs.deployChat }}"
+          PARAMS="$PARAMS --parameters useExistingNetwork=${{ inputs.useExistingNetwork }}"
+          PARAMS="$PARAMS --parameters useExistingLogAnalytics=${{ inputs.useExistingLogAnalytics }}"
+          PARAMS="$PARAMS --parameters useExistingKeyVault=${{ inputs.useExistingKeyVault }}"
+          
+          if [ "${{ inputs.useExistingNetwork }}" == "true" ]; then
+            PARAMS="$PARAMS --parameters existingVnetName=${{ inputs.existingVnetName }}"
+            [ -n "${{ inputs.existingVnetResourceGroup }}" ] && PARAMS="$PARAMS --parameters existingVnetResourceGroup=${{ inputs.existingVnetResourceGroup }}"
+          fi
+          
+          if [ "${{ inputs.useExistingLogAnalytics }}" == "true" ]; then
+            PARAMS="$PARAMS --parameters existingLogAnalyticsWorkspaceName=${{ inputs.existingLogAnalyticsWorkspaceName }}"
+          fi
+          
+          if [ "${{ inputs.useExistingKeyVault }}" == "true" ]; then
+            PARAMS="$PARAMS --parameters existingKeyVaultName=${{ inputs.existingKeyVaultName }}"
+          fi
+          
+          az deployment sub validate \
+            --location eastus \
+            --template-file infra/bicep/main.bicep \
+            $PARAMS
+      
+      - name: What-If Analysis
+        run: |
+          PARAMS="--parameters environment=${{ inputs.environment }}"
+          PARAMS="$PARAMS --parameters containerDeploymentTarget=${{ inputs.deploymentTarget }}"
+          PARAMS="$PARAMS --parameters deployAdminApi=${{ inputs.deployAdminApi }}"
+          PARAMS="$PARAMS --parameters deployChat=${{ inputs.deployChat }}"
+          PARAMS="$PARAMS --parameters useExistingNetwork=${{ inputs.useExistingNetwork }}"
+          PARAMS="$PARAMS --parameters useExistingLogAnalytics=${{ inputs.useExistingLogAnalytics }}"
+          PARAMS="$PARAMS --parameters useExistingKeyVault=${{ inputs.useExistingKeyVault }}"
+          
+          if [ "${{ inputs.useExistingNetwork }}" == "true" ]; then
+            PARAMS="$PARAMS --parameters existingVnetName=${{ inputs.existingVnetName }}"
+            [ -n "${{ inputs.existingVnetResourceGroup }}" ] && PARAMS="$PARAMS --parameters existingVnetResourceGroup=${{ inputs.existingVnetResourceGroup }}"
+          fi
+          
+          if [ "${{ inputs.useExistingLogAnalytics }}" == "true" ]; then
+            PARAMS="$PARAMS --parameters existingLogAnalyticsWorkspaceName=${{ inputs.existingLogAnalyticsWorkspaceName }}"
+          fi
+          
+          if [ "${{ inputs.useExistingKeyVault }}" == "true" ]; then
+            PARAMS="$PARAMS --parameters existingKeyVaultName=${{ inputs.existingKeyVaultName }}"
+          fi
+          
+          az deployment sub what-if \
+            --location eastus \
+            --template-file infra/bicep/main.bicep \
+            $PARAMS
+
+  deploy-infrastructure:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    needs: validate
+    if: ${{ !inputs.destroyInfrastructure }}
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: ${{ inputs.environment }}
+    
+    outputs:
+      resourceGroupName: ${{ steps.deploy.outputs.resourceGroupName }}
+      acrLoginServer: ${{ steps.deploy.outputs.acrLoginServer }}
+      aksClusterName: ${{ steps.deploy.outputs.aksClusterName }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Deploy Bicep template
+        id: deploy
+        run: |
+          DEPLOYMENT_NAME="platform-engineering-${{ inputs.environment }}-$(date +%Y%m%d-%H%M%S)"
+          
+          PARAMS="--parameters environment=${{ inputs.environment }}"
+          PARAMS="$PARAMS --parameters containerDeploymentTarget=${{ inputs.deploymentTarget }}"
+          PARAMS="$PARAMS --parameters deployAdminApi=${{ inputs.deployAdminApi }}"
+          PARAMS="$PARAMS --parameters deployChat=${{ inputs.deployChat }}"
+          PARAMS="$PARAMS --parameters useExistingNetwork=${{ inputs.useExistingNetwork }}"
+          PARAMS="$PARAMS --parameters useExistingLogAnalytics=${{ inputs.useExistingLogAnalytics }}"
+          PARAMS="$PARAMS --parameters useExistingKeyVault=${{ inputs.useExistingKeyVault }}"
+          PARAMS="$PARAMS --parameters sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}"
+          
+          if [ "${{ inputs.useExistingNetwork }}" == "true" ]; then
+            PARAMS="$PARAMS --parameters existingVnetName=${{ inputs.existingVnetName }}"
+            [ -n "${{ inputs.existingVnetResourceGroup }}" ] && PARAMS="$PARAMS --parameters existingVnetResourceGroup=${{ inputs.existingVnetResourceGroup }}"
+          fi
+          
+          if [ "${{ inputs.useExistingLogAnalytics }}" == "true" ]; then
+            PARAMS="$PARAMS --parameters existingLogAnalyticsWorkspaceName=${{ inputs.existingLogAnalyticsWorkspaceName }}"
+          fi
+          
+          if [ "${{ inputs.useExistingKeyVault }}" == "true" ]; then
+            PARAMS="$PARAMS --parameters existingKeyVaultName=${{ inputs.existingKeyVaultName }}"
+          fi
+          
+          az deployment sub create \
+            --name "$DEPLOYMENT_NAME" \
+            --location eastus \
+            --template-file infra/bicep/main.bicep \
+            $PARAMS \
+            --output json > deployment-output.json
+          
+          # Extract outputs
+          echo "resourceGroupName=$(jq -r '.properties.outputs.resourceGroupName.value' deployment-output.json)" >> $GITHUB_OUTPUT
+          echo "acrLoginServer=$(jq -r '.properties.outputs.acrLoginServer.value' deployment-output.json)" >> $GITHUB_OUTPUT
+          echo "aksClusterName=$(jq -r '.properties.outputs.aksClusterName.value' deployment-output.json)" >> $GITHUB_OUTPUT
+      
+      - name: Upload deployment output
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-output-${{ inputs.environment }}
+          path: deployment-output.json
+          retention-days: 30
+      
+      - name: Generate deployment summary
+        run: |
+          echo "## Infrastructure Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Target:** ${{ inputs.deploymentTarget }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deploy Admin API:** ${{ inputs.deployAdminApi }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deploy Chat:** ${{ inputs.deployChat }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Use Existing Network:** ${{ inputs.useExistingNetwork }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Use Existing Log Analytics:** ${{ inputs.useExistingLogAnalytics }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Use Existing Key Vault:** ${{ inputs.useExistingKeyVault }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Resource Group:** $(jq -r '.properties.outputs.resourceGroupName.value' deployment-output.json)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ inputs.deploymentTarget }}" == "aci" ]; then
+            echo "### Container Instances" >> $GITHUB_STEP_SUMMARY
+            echo "- MCP: $(jq -r '.properties.outputs.aciMcpIpAddress.value' deployment-output.json)" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ inputs.deployChat }}" == "true" ]; then
+              echo "- Chat: $(jq -r '.properties.outputs.aciChatIpAddress.value' deployment-output.json)" >> $GITHUB_STEP_SUMMARY
+            fi
+            if [ "${{ inputs.deployAdminApi }}" == "true" ]; then
+              echo "- Admin API: $(jq -r '.properties.outputs.aciAdminApiIpAddress.value' deployment-output.json)" >> $GITHUB_STEP_SUMMARY
+              echo "- Admin Client: $(jq -r '.properties.outputs.aciAdminClientIpAddress.value' deployment-output.json)" >> $GITHUB_STEP_SUMMARY
+            fi
+          elif [ "${{ inputs.deploymentTarget }}" == "aks" ]; then
+            echo "### AKS Cluster" >> $GITHUB_STEP_SUMMARY
+            echo "- Name: $(jq -r '.properties.outputs.aksClusterName.value' deployment-output.json)" >> $GITHUB_STEP_SUMMARY
+            echo "- FQDN: $(jq -r '.properties.outputs.aksClusterFqdn.value' deployment-output.json)" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ inputs.deploymentTarget }}" == "appservice" ]; then
+            echo "### App Services" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ inputs.deployAdminApi }}" == "true" ]; then
+              echo "- Admin API: $(jq -r '.properties.outputs.adminApiUrl.value' deployment-output.json)" >> $GITHUB_STEP_SUMMARY
+            fi
+            if [ "${{ inputs.deployChat }}" == "true" ]; then
+              echo "- Chat: $(jq -r '.properties.outputs.chatUrl.value' deployment-output.json)" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "- MCP: $(jq -r '.properties.outputs.mcpUrl.value' deployment-output.json)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  configure-aks:
+    name: Configure AKS Cluster
+    runs-on: ubuntu-latest
+    needs: deploy-infrastructure
+    if: ${{ inputs.deploymentTarget == 'aks' && !inputs.destroyInfrastructure }}
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ needs.deploy-infrastructure.outputs.resourceGroupName }} \
+            --name ${{ needs.deploy-infrastructure.outputs.aksClusterName }} \
+            --overwrite-existing
+      
+      - name: Create namespaces
+        run: |
+          kubectl create namespace platform-engineering --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create namespace platform-engineering-system --dry-run=client -o yaml | kubectl apply -f -
+      
+      - name: Label namespaces
+        run: |
+          kubectl label namespace platform-engineering environment=${{ inputs.environment }} --overwrite
+          kubectl label namespace platform-engineering-system environment=${{ inputs.environment }} --overwrite
+      
+      - name: Create image pull secret
+        run: |
+          ACR_LOGIN_SERVER=${{ needs.deploy-infrastructure.outputs.acrLoginServer }}
+          ACR_NAME=$(echo $ACR_LOGIN_SERVER | cut -d'.' -f1)
+          
+          # Get ACR credentials using managed identity
+          kubectl create secret docker-registry acr-secret \
+            --docker-server=$ACR_LOGIN_SERVER \
+            --docker-username=00000000-0000-0000-0000-000000000000 \
+            --docker-password=$(az acr login --name $ACR_NAME --expose-token --output tsv --query accessToken) \
+            --namespace platform-engineering \
+            --dry-run=client -o yaml | kubectl apply -f -
+      
+      - name: Verify cluster setup
+        run: |
+          echo "## AKS Cluster Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Namespaces" >> $GITHUB_STEP_SUMMARY
+          kubectl get namespaces -l environment=${{ inputs.environment }} >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Nodes" >> $GITHUB_STEP_SUMMARY
+          kubectl get nodes >> $GITHUB_STEP_SUMMARY
+
+  destroy-infrastructure:
+    name: Destroy Infrastructure
+    runs-on: ubuntu-latest
+    if: ${{ inputs.destroyInfrastructure }}
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: ${{ inputs.environment }}-destroy
+    
+    steps:
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Delete resource group
+        run: |
+          RESOURCE_GROUP="${{ env.RESOURCE_GROUP_PREFIX }}-${{ inputs.environment }}"
+          
+          echo "::warning::Deleting resource group: $RESOURCE_GROUP"
+          
+          az group delete \
+            --name "$RESOURCE_GROUP" \
+            --yes \
+            --no-wait
+          
+          echo "## Infrastructure Destruction" >> $GITHUB_STEP_SUMMARY
+          echo "Resource group **$RESOURCE_GROUP** deletion initiated." >> $GITHUB_STEP_SUMMARY

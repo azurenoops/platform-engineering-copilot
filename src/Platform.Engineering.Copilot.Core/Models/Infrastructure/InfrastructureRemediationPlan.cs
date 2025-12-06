@@ -77,7 +77,7 @@ public class InfrastructureRemediationPlan
     /// <summary>
     /// Who/what created this plan
     /// </summary>
-    public string CreatedBy { get; set; } = "InfrastructureRemediationService";
+    public string CreatedBy { get; set; } = "ComplianceRemediationService";
 }
 
 /// <summary>

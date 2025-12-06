@@ -21,7 +21,10 @@
 
 ### Architecture & Design
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** - 🏗️ System architecture overview + diagram generation guide
-- **[AGENT-ORCHESTRATION.md](./AGENT-ORCHESTRATION.md)** - 🤖 Agent configuration and discovery mechanisms
+- **[AGENTS.md](./AGENTS.md)** - 🤖 Complete guide to all 10+ specialized agents
+- **[AGENT-COORDINATION-WORKFLOWS.md](./AGENT-COORDINATION-WORKFLOWS.md)** - 📊 Visual workflow diagrams showing agent orchestration
+- **[AGENT-REMEDIATION-BOUNDARIES.md](./AGENT-REMEDIATION-BOUNDARIES.md)** - 🔧 Decision guide for Compliance vs. Infrastructure remediation
+- **[AGENT-ORCHESTRATION.md](./AGENT-ORCHESTRATION.md)** - ⚙️ Agent configuration and discovery mechanisms
 
 ### Compliance & Security
 - **[PHASE1.md](./PHASE1.md)** - ✅ Phase 1 compliance status (98% complete)

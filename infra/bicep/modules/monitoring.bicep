@@ -173,4 +173,6 @@ output applicationInsightsName string = applicationInsights.name
 output instrumentationKey string = applicationInsights.properties.InstrumentationKey
 output connectionString string = applicationInsights.properties.ConnectionString
 output logAnalyticsWorkspaceId string = logAnalyticsWorkspace.id
+@secure()
+output logAnalyticsWorkspaceKey string = logAnalyticsWorkspace.listKeys().primarySharedKey
 output logAnalyticsWorkspaceName string = logAnalyticsWorkspace.name

@@ -1,0 +1,29 @@
+# Pod Security Standards - Baseline enforcement for the namespace
+# IL5/IL6 compliance requires restricted pod security
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-engineering
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+# Azure Policy Pod Security Policy (applied via Azure Policy)
+# This is enforced at the cluster level through AKS Azure Policy add-on
+# 
+# Required policies:
+# - Kubernetes cluster containers should only use allowed images (ACR only)
+# - Kubernetes cluster containers should run with a read only root file system
+# - Kubernetes cluster should not allow privileged containers
+# - Kubernetes clusters should use internal load balancers
+# - Kubernetes cluster containers should not use forbidden sysctl interfaces
+# - Kubernetes cluster pods should only use approved host network and port range
+# - Kubernetes cluster containers CPU and memory resource limits should not exceed the specified limits
+# - Kubernetes cluster pods and containers should only run with approved user and group IDs
+# - Kubernetes cluster pods should use specified labels
+# - Kubernetes cluster services should listen only on allowed ports

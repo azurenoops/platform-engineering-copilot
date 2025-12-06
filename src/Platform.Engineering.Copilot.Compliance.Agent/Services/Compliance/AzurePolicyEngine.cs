@@ -4,6 +4,7 @@ using Azure.Core;
 using Azure.Identity;
 using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
+using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 using Platform.Engineering.Copilot.Core.Models.Compliance;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -14,35 +15,29 @@ namespace Platform.Engineering.Copilot.Compliance.Agent.Services.Compliance;
 public class AzurePolicyEngine : IAzurePolicyService
 {
     private readonly ILogger<AzurePolicyEngine> _logger;
+    private readonly IAzureClientFactory _clientFactory;
     private readonly ArmClient _armClient;
-    private readonly TokenCredential _credential;
     private readonly Dictionary<string, List<AzurePolicyEvaluation>> _policyEvaluationCache;
     private readonly TimeSpan _cacheExpiration = TimeSpan.FromMinutes(5);
     private readonly Dictionary<string, DateTime> _cacheTimestamps;
     private readonly Dictionary<string, ApprovalWorkflow> _approvalWorkflows;
 
     public AzurePolicyEngine(
-        ILogger<AzurePolicyEngine> logger)
+        ILogger<AzurePolicyEngine> logger,
+        IAzureClientFactory clientFactory)
     {
         _logger = logger;
+        _clientFactory = clientFactory;
         
-        // Initialize Azure clients with default credential for Azure Government
-        var credentialOptions = new DefaultAzureCredentialOptions
-        {
-            AuthorityHost = AzureAuthorityHosts.AzureGovernment
-        };
-        var armClientOptions = new ArmClientOptions
-        {
-            Environment = ArmEnvironment.AzureGovernment
-        };
-        _credential = new DefaultAzureCredential(credentialOptions);
-        _armClient = new ArmClient(_credential, defaultSubscriptionId: null, armClientOptions);
+        // Get ARM client from factory (centralized credential management)
+        _armClient = _clientFactory.GetArmClient();
         
         _policyEvaluationCache = new Dictionary<string, List<AzurePolicyEvaluation>>();
         _cacheTimestamps = new Dictionary<string, DateTime>();
         _approvalWorkflows = new Dictionary<string, ApprovalWorkflow>();
         
-        _logger.LogInformation("AzurePolicyEngine initialized with Azure Policy Insights integration and database persistence");
+        _logger.LogInformation("AzurePolicyEngine initialized with Azure Policy Insights integration using {CloudEnvironment}", 
+            _clientFactory.CloudEnvironment);
     }
 
     public async Task<PreFlightGovernanceResult> EvaluatePreFlightPoliciesAsync(McpToolCall toolCall, CancellationToken cancellationToken = default)
@@ -216,8 +211,9 @@ public class AzurePolicyEngine : IAzurePolicyService
                 
                 // Use HttpClient to query the REST API
                 using var httpClient = new HttpClient();
-                var token = await _credential.GetTokenAsync(
-                    new global::Azure.Core.TokenRequestContext(new[] { "https://management.azure.com/.default" }),
+                var credential = _clientFactory.GetCredential();
+                var token = await credential.GetTokenAsync(
+                    new global::Azure.Core.TokenRequestContext(new[] { _clientFactory.GetManagementScope().Replace("/.default", "") + "/.default" }),
                     cancellationToken);
                 
                 httpClient.DefaultRequestHeaders.Authorization = 

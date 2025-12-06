@@ -244,6 +244,11 @@ public class DiscoveredResource
     public string ResourceGroup { get; set; } = string.Empty;
     public Dictionary<string, string>? Tags { get; set; }
     public Dictionary<string, object>? Properties { get; set; }
+    
+    // Extended properties from Resource Graph
+    public string? Sku { get; set; }
+    public string? Kind { get; set; }
+    public string? ProvisioningState { get; set; }
 }
 
 /// <summary>
@@ -256,6 +261,7 @@ public class ResourceDetailsResult
     public Dictionary<string, object>? Configuration { get; set; }
     public List<string>? Dependencies { get; set; }
     public string? HealthStatus { get; set; }
+    public string? DataSource { get; set; } // NEW: "ResourceGraph" or "API"
     public string? Message { get; set; }
     public string? ErrorDetails { get; set; }
 }

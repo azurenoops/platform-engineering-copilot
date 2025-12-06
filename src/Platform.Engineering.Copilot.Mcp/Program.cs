@@ -146,21 +146,34 @@ class Program
             logging.AddSerilog();
         });
 
-        // Register database context (SQLite) - use SQL Server connection from config
+        // Register database context - use SQL Server connection from config or env variable
         var configuration = builder.Configuration;
         var connectionString = configuration.GetConnectionString("DefaultConnection") 
             ?? configuration.GetConnectionString("SqlServerConnection");
         
+        Log.Information("🔧 Database connection string lookup:");
+        Log.Information("   - DefaultConnection: {Exists}", configuration.GetConnectionString("DefaultConnection") != null ? "Found" : "Not found");
+        Log.Information("   - SqlServerConnection: {Exists}", configuration.GetConnectionString("SqlServerConnection") != null ? "Found" : "Not found");
+        
         if (!string.IsNullOrEmpty(connectionString))
         {
+            Log.Information("✅ Using SQL Server database");
+            // Mask the password in the connection string for logging
+            var maskedConnectionString = System.Text.RegularExpressions.Regex.Replace(
+                connectionString, @"(Password|Pwd)=[^;]+", "$1=***", 
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            Log.Information("   Connection: {ConnectionString}", maskedConnectionString);
+            
             builder.Services.AddDbContext<PlatformEngineeringCopilotContext>(options =>
                 options.UseSqlServer(connectionString));
         }
         else
         {
             // Fallback to SQLite
+            Log.Warning("⚠️ No SQL Server connection string found, falling back to SQLite");
             var dbPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../..", "platform_engineering_copilot_management.db"));
             var sqliteConnectionString = $"Data Source={dbPath}";
+            Log.Information("   SQLite Path: {DbPath}", dbPath);
             builder.Services.AddDbContext<PlatformEngineeringCopilotContext>(options =>
                 options.UseSqlite(sqliteConnectionString));
         }
@@ -330,8 +343,8 @@ class Program
             Log.Information("✅ Compliance authorization policies configured");
         });
 
-        // Add Azure credential provider for user token passthrough
-        builder.Services.AddAzureCredentialProvider();
+        // Add Azure client factory for centralized credential management and user token passthrough
+        builder.Services.AddAzureClientFactory();
 
         // Register user context service for accessing current user information
         builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.IUserContextService, 
@@ -431,13 +444,14 @@ class Program
             try
             {
                 var context = scope.ServiceProvider.GetRequiredService<PlatformEngineeringCopilotContext>();
-                logger.LogInformation("🔄 Ensuring database is created...");
+                Log.Information("🔄 Ensuring database is created...");
+                Log.Information("🔍 Database provider: {Provider}", context.Database.ProviderName);
                 context.Database.EnsureCreated();
-                logger.LogInformation("✅ Database created/verified successfully");
+                Log.Information("✅ Database created/verified successfully");
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "❌ Failed to create/verify database");
+                Log.Error(ex, "❌ Failed to create/verify database");
             }
         }
 

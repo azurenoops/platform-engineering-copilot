@@ -54,6 +54,11 @@ public class DiscoveryAgent : ISpecializedAgent
         // Register resource discovery plugin
         _kernel.Plugins.Add(KernelPluginFactory.CreateFromObject(AzureResourceDiscoveryPlugin, "AzureResourceDiscoveryPlugin"));
 
+        // Log plugin registration
+        _logger.LogInformation("🔧 Registered plugins: {PluginNames}", string.Join(", ", _kernel.Plugins.Select(p => p.Name)));
+        _logger.LogInformation("🔧 Discovery plugin functions: {FunctionNames}", 
+            string.Join(", ", _kernel.Plugins.FirstOrDefault(p => p.Name == "AzureResourceDiscoveryPlugin")?.Select(f => f.Name) ?? Array.Empty<string>()));
+
         _logger.LogInformation("✅ Discovery Agent initialized (Temperature: {Temperature}, MaxTokens: {MaxTokens}, HealthMonitoring: {HealthMonitoring}, DependencyMapping: {DependencyMapping})",
             _options.Temperature, _options.MaxTokens, _options.EnableHealthMonitoring, _options.EnableDependencyMapping);
     }
@@ -87,6 +92,12 @@ public class DiscoveryAgent : ISpecializedAgent
             chatHistory.AddSystemMessage(systemPrompt);
             chatHistory.AddUserMessage(userMessage);
 
+            // Determine if this is a specific resource query (FORCE function call via prompt)
+            var isSpecificResourceQuery = task.Description.Contains("/subscriptions/") || 
+                                         task.Description.Contains("resource ID", StringComparison.OrdinalIgnoreCase) ||
+                                         (task.Description.Contains("details", StringComparison.OrdinalIgnoreCase) && 
+                                          task.Description.Contains("resource", StringComparison.OrdinalIgnoreCase));
+
             // Execute with configured temperature for discovery operations
             var executionSettings = new OpenAIPromptExecutionSettings
             {
@@ -95,10 +106,21 @@ public class DiscoveryAgent : ISpecializedAgent
                 ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions
             };
 
+            _logger.LogInformation("🤖 Calling LLM with {PluginCount} plugins, ToolCallBehavior: AutoInvokeKernelFunctions", _kernel.Plugins.Count);
+
             var result = await _chatCompletion.GetChatMessageContentAsync(
                 chatHistory,
                 executionSettings,
                 _kernel);
+
+            _logger.LogInformation("🤖 LLM returned. Metadata items: {MetadataCount}", result.Metadata?.Count ?? 0);
+            if (result.Metadata != null)
+            {
+                foreach (var meta in result.Metadata)
+                {
+                    _logger.LogInformation("🤖 Metadata: {Key} = {Value}", meta.Key, meta.Value);
+                }
+            }
 
             response.Content = result.Content ?? "";
             response.Success = true;
@@ -234,7 +256,13 @@ When a user asks about resources, inventory, or discovery, use a conversational 
 
 **Example Conversation Flow:**
 
-User: ""What resources do I have running?"" or ""List all Azure resources""
+User: ""What Azure subscriptions do I have access to?"" or ""List all subscriptions"" or ""Show subscriptions""
+You: **[CRITICAL: ONLY call list_subscriptions function - STOP AFTER THIS]**
+**[DO NOT call discover_azure_resources, discover_resources_with_guidance, or any other discovery function]**
+**[Return ONLY the subscription list with: subscription IDs, names, states, tenant IDs]**
+**[The user is asking about SUBSCRIPTIONS, not RESOURCES - these are different things]**
+
+User: ""What resources do I have running?"" or ""List all Azure resources"" or ""Discover resources""
 You: **[IMMEDIATELY call discover_azure_resources with the default subscription ID - DO NOT ask for subscription if default is configured]**
 
 User: ""Discover resources in subscription 453c...""
@@ -246,6 +274,61 @@ You: **[IMMEDIATELY call discover_azure_resources with the specified subscriptio
 - Only ask for clarification on ambiguous requests (e.g., ""which resource type?"")
 - DO NOT ask ""Should I proceed?"" or ""Let me know your preferences!"" when you have subscription ID
 - DO NOT repeat questions - use smart defaults for minor missing details
+- **DO NOT call multiple functions unless explicitly needed - one function call should answer most questions**
+- **When listing subscriptions, STOP after list_subscriptions - do not discover resources**
+
+**🎯 CRITICAL: Tool Selection for Resource Queries**
+
+When getting details about a specific Azure resource:
+
+**ALWAYS use get_resource_details for:**
+- Normal resource detail queries (""show me details for resource..."", ""get details about..."")
+- Resource inventory and discovery operations
+- Resource metadata and configuration inspection
+- Standard resource information requests
+- This function uses Azure Resource Graph for fast, comprehensive data retrieval
+
+**ONLY use get_resource_with_diagnostics when:**
+- User EXPLICITLY asks for troubleshooting (""troubleshoot"", ""diagnose"", ""what's wrong with"")
+- User EXPLICITLY asks for diagnostics or AppLens data
+- User asks about resource health issues or problems
+- User needs deep analysis for a malfunctioning resource
+
+**Default behavior:** Use get_resource_details unless user explicitly requests diagnostics/troubleshooting.
+
+**🎯 CRITICAL: Presenting Best Practices and Guidance**
+
+When you call discover_resources_with_guidance:
+- The function returns a JSON object with a ""bestPractices"" field
+- You MUST extract and present the actual best practices content to the user
+- DO NOT just say ""Best practices are available"" - show them!
+- Format the best practices in a clear, readable way with bullet points or numbered lists
+- Include specific recommendations, not generic statements
+
+**Example of GOOD response:**
+""Here are the best practices for your resources:
+
+**Key Vault Best Practices:**
+- Enable soft delete and purge protection
+- Use managed identities instead of connection strings
+- Implement network restrictions with private endpoints
+  
+**Storage Account Best Practices:**
+- Enable blob versioning for data protection
+- Configure lifecycle management policies
+- Use private endpoints for secure access""
+
+**Example of BAD response (DO NOT DO THIS):**
+""The best practices guidance is available for the resources discovered.""
+
+**🎯 IMPORTANT: Azure Documentation and Best Practices Queries**
+
+For Azure documentation, how-to guides, best practices, or general troubleshooting questions:
+- These queries should be routed to the KnowledgeBase Agent
+- Discovery Agent focuses on resource inventory, health, dependencies, diagnostics, and operations
+- KnowledgeBase Agent handles: Azure docs search, resource type best practices, compliance guidance
+- If user asks ""What are the best practices for X?"" → KnowledgeBase Agent
+- If user asks ""Show me my X resources with best practices"" → Discovery Agent (discover_resources_with_guidance)
 
 **Best Practices:**
 - Automated discovery scheduling
@@ -287,7 +370,26 @@ Always provide structured data with resource counts, types, and key findings.";
             message += "\n";
         }
 
-        message += "Please perform comprehensive resource discovery with detailed findings and recommendations.";
+        // Add appropriate instruction based on task description
+        if (task.Description.Contains("/subscriptions/") || 
+            task.Description.Contains("resource ID", StringComparison.OrdinalIgnoreCase) ||
+            (task.Description.Contains("details", StringComparison.OrdinalIgnoreCase) && 
+             task.Description.Contains("resource", StringComparison.OrdinalIgnoreCase)))
+        {
+            message += @"
+**MANDATORY ACTION REQUIRED:**
+You MUST call the 'get_resource_details' function with the exact resource ID provided above.
+DO NOT respond without calling this function first.
+DO NOT generate a response from your training data.
+DO NOT call any other functions.
+DO NOT ask clarifying questions.
+
+The resource ID is in the task description. Extract it and call get_resource_details immediately.";
+        }
+        else
+        {
+            message += "Please perform comprehensive resource discovery with detailed findings and recommendations.";
+        }
 
         return message;
     }

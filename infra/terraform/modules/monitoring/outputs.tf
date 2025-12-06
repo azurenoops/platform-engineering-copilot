@@ -8,6 +8,12 @@ output "log_analytics_workspace_name" {
   value       = azurerm_log_analytics_workspace.main.name
 }
 
+output "log_analytics_workspace_key" {
+  description = "The primary shared key of the Log Analytics workspace"
+  value       = azurerm_log_analytics_workspace.main.primary_shared_key
+  sensitive   = true
+}
+
 output "application_insights_id" {
   description = "The ID of Application Insights"
   value       = azurerm_application_insights.main.id

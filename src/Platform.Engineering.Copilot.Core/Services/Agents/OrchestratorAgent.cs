@@ -8,6 +8,7 @@ using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Platform.Engineering.Copilot.Core.Interfaces.Agents;
 using Platform.Engineering.Copilot.Core.Models.Agents;
 using Platform.Engineering.Copilot.Core.Models.IntelligentChat;
+using Platform.Engineering.Copilot.Core.Services;
 using System.Text.Json;
 
 namespace Platform.Engineering.Copilot.Core.Services.Agents;
@@ -24,6 +25,7 @@ public class OrchestratorAgent
     private readonly SharedMemory _sharedMemory;
     private readonly ExecutionPlanValidator _planValidator;
     private readonly ExecutionPlanCache _planCache;
+    private readonly ISemanticIntentService? _intentService;
     private readonly ILogger<OrchestratorAgent> _logger;
 
     public OrchestratorAgent(
@@ -33,12 +35,14 @@ public class OrchestratorAgent
         ExecutionPlanValidator planValidator,
         ExecutionPlanCache planCache,
         ILogger<OrchestratorAgent> logger,
-        Platform.Engineering.Copilot.Core.Plugins.ConfigurationPlugin configurationPlugin)
+        Platform.Engineering.Copilot.Core.Plugins.ConfigurationPlugin configurationPlugin,
+        ISemanticIntentService? intentService = null)
     {
         _logger = logger;
         _sharedMemory = sharedMemory;
         _planValidator = planValidator;
         _planCache = planCache;
+        _intentService = intentService;
 
         // Create orchestrator's own kernel
         _kernel = semanticKernelService.CreateSpecializedKernel(AgentType.Orchestrator);
@@ -121,6 +125,16 @@ public class OrchestratorAgent
                 _logger.LogInformation("⚡ Fast-path detected: Unambiguous {AgentType} request - skipping orchestrator planning", 
                     fastPathAgent.Value);
                 
+                // Record intent for tracking
+                var fastPathIntentId = await RecordIntentAsync(
+                    userMessage,
+                    intentCategory: fastPathAgent.Value.ToString().ToLowerInvariant(),
+                    intentAction: "fast_path",
+                    confidence: 0.95m,
+                    userId: context.UserId,
+                    sessionId: conversationId,
+                    cancellationToken);
+                
                 var agent = _agents[fastPathAgent.Value];
                 var task = new AgentTask
                 {
@@ -133,6 +147,13 @@ public class OrchestratorAgent
                 };
                 
                 var response = await agent.ProcessAsync(task, _sharedMemory);
+                
+                // Update intent outcome
+                await UpdateIntentOutcomeAsync(
+                    fastPathIntentId, 
+                    response.Success, 
+                    response.Success ? null : string.Join("; ", response.Errors),
+                    cancellationToken);
                 
                 var fastPathExecutionTime = (DateTime.UtcNow - startTime).TotalMilliseconds;
                 
@@ -160,6 +181,16 @@ public class OrchestratorAgent
 
             _logger.LogInformation("📋 Execution plan created: {Pattern} with {TaskCount} tasks",
                 plan.ExecutionPattern, plan.Tasks.Count);
+
+            // Record intent for tracking (after plan creation so we have the intent category)
+            var planIntentId = await RecordIntentAsync(
+                userMessage,
+                intentCategory: plan.PrimaryIntent ?? "unknown",
+                intentAction: plan.ExecutionPattern.ToString().ToLowerInvariant(),
+                confidence: 0.8m, // Lower confidence since we used LLM planning
+                userId: context.UserId,
+                sessionId: conversationId,
+                cancellationToken);
 
             // Step 2: Execute plan based on pattern
             List<AgentResponse> responses;
@@ -212,6 +243,13 @@ public class OrchestratorAgent
                 Metadata = CombineMetadata(responses),
                 Errors = responses.SelectMany(r => r.Errors).ToList()
             };
+
+            // Update intent outcome
+            await UpdateIntentOutcomeAsync(
+                planIntentId,
+                orchestratedResponse.Success,
+                orchestratedResponse.Success ? null : string.Join("; ", orchestratedResponse.Errors),
+                cancellationToken);
 
             _logger.LogInformation("✅ Orchestration complete in {ExecutionTime}ms: {AgentCount} agents invoked",
                 executionTime, orchestratedResponse.AgentsInvoked.Count);
@@ -290,19 +328,36 @@ CRITICAL Rules (apply in order):
 2. **Azure context configuration** (""use subscription""/""set tenant""/""set authentication""/""what subscription""/""azure context"") → Infrastructure agent with task description EXACTLY matching user message (prefix with ""Azure config: ""), primaryIntent: ""infrastructure""
    - CRITICAL: For context config, DO NOT add ""create"", ""deploy"", or ""template"" - just pass the user message
    - Example: User says ""Use subscription 123"" → task description: ""Azure config: Use subscription 123"" (NOT ""Create infrastructure using subscription 123"")
-3. **Informational questions about compliance/NIST/STIGs** (""what is""/""explain""/""show me""/""what controls""/""what nist""/""map nist to stig"") → KnowledgeBase agent ONLY, primaryIntent: ""knowledge""
+3. **Resource queries** (""details for""/""get resource""/""show resource"" + resource ID/name OR contains ""/subscriptions/"") → Discovery agent ONLY, primaryIntent: ""discovery""
+   - CRITICAL: Discovery agent has Resource Graph integration for fast queries with extended properties (SKU, Kind, ProvisioningState)
+   - DO NOT route to MCP or other tools for Azure resource details
+   - Examples: ""get details for /subscriptions/xxx/resourceGroups/yyy/providers/Microsoft.Web/sites/zzz""
+   - Examples: ""show me details about app service web-app-123"", ""resource health for X""
+4. **Informational questions about compliance/NIST/STIGs** (""what is""/""explain""/""define""/""describe""/""what controls""/""what nist""/""map nist to stig"") → KnowledgeBase agent ONLY, primaryIntent: ""knowledge""
    - Examples: ""what is CM family"", ""explain RMF"", ""what nist controls map to stigs"", ""show me IL5 requirements""
    - DO NOT route to Compliance agent unless explicitly requesting assessment/scan
-4. **Compliance scanning/assessment/recommendations** (""check""/""scan""/""assess""/""compliance recommendations""/""security recommendations"" + subscription/resource) → Compliance agent ONLY, primaryIntent: ""compliance""
+5. **MULTI-AGENT: Security + Cost Analysis** (""security issues"" + ""cost to fix""/""cost to remediate"") → Compliance agent THEN CostManagement agent Sequential, primaryIntent: ""mixed""
+   - CRITICAL: This is a TWO-STEP workflow: First find issues, then estimate costs
+   - Task 1: Compliance agent - ""Run security assessment to find issues""
+   - Task 2: CostManagement agent - ""Estimate remediation costs for findings""
+   - Example: ""What security issues exist and how much would it cost to fix them?""
+6. **MULTI-AGENT: Full status report** (""complete status""/""full picture""/""inventory, compliance, cost"") → Discovery, Compliance, CostManagement Sequential, primaryIntent: ""mixed""
+   - Task 1: Discovery - ""Get resource inventory""
+   - Task 2: Compliance - ""Run compliance assessment""
+   - Task 3: CostManagement - ""Get cost analysis""
+7. **Compliance scanning/assessment/recommendations** (""check""/""scan""/""assess""/""security issues""/""compliance recommendations""/""security recommendations"" + subscription/resource) → Compliance agent ONLY, primaryIntent: ""compliance""
    - CRITICAL: If query contains ""compliance recommendations"" or ""security posture"" or ""compliance advice"" → route ONLY to Compliance agent
    - DO NOT route to multiple agents for compliance-related recommendations
    - Examples: ""compliance recommendations"", ""improve security posture"", ""what should I fix for compliance""
-5. **Template generation** (""create""/""deploy""/""I need"" infra) → Infrastructure agent, primaryIntent: ""infrastructure""
-6. **Cost analysis** (""cost""/""price""/""estimate"") → Cost Management agent, primaryIntent: ""cost""
-7. **Discovery and inventory** (""list""/""find""/""discover""/""inventory"") → Discovery agent, primaryIntent: ""discovery""
-8. **Actual provisioning** (""actually provision""/""make it live"") → All agents Sequential
+8. **Template generation** (""create template""/""generate template""/""I need a new"" + resource type) → Infrastructure agent, primaryIntent: ""infrastructure""
+   - ONLY for generating IaC templates (Bicep/Terraform/ARM)
+   - NOT for security assessments or cost analysis
+9. **Cost analysis** (""cost breakdown""/""how much spending""/""cost optimization"") → Cost Management agent, primaryIntent: ""cost""
+10. **Discovery and inventory** (""list""/""find""/""discover""/""inventory"" resources) → Discovery agent, primaryIntent: ""discovery""
+11. **Actual provisioning** (""actually provision""/""make it live""/""deploy to Azure"") → All agents Sequential
 
-Default: Template generation (Infrastructure only) - safe, no real Azure resources.
+IMPORTANT: ""fix"" in context of ""cost to fix security issues"" means ESTIMATE COST, not generate templates.
+Default: Single agent based on primary keyword. DO NOT default to Infrastructure for security/compliance queries.
 
 Respond ONLY with JSON.";
 
@@ -865,10 +920,23 @@ Synthesized response:";
             lowerMessage.Contains("actually provision") ||  // Provision = all 5 agents
             lowerMessage.Contains("make it live") ||
             lowerMessage.Contains("with compliance") ||     // "X with compliance" = 2 agents
-            lowerMessage.Contains("and cost");              // "X and cost" = 2 agents
+            lowerMessage.Contains("and cost") ||            // "X and cost" = 2 agents
+            // SECURITY + COST patterns - need Compliance + CostManagement agents
+            (lowerMessage.Contains("security") && lowerMessage.Contains("cost")) ||
+            (lowerMessage.Contains("issues") && lowerMessage.Contains("cost")) ||
+            (lowerMessage.Contains("findings") && lowerMessage.Contains("cost")) ||
+            (lowerMessage.Contains("fix") && lowerMessage.Contains("cost")) ||
+            // COMPLETE STATUS patterns - need Discovery + Compliance + Cost agents
+            lowerMessage.Contains("complete status") ||
+            lowerMessage.Contains("full picture") ||
+            lowerMessage.Contains("full report") ||
+            (lowerMessage.Contains("inventory") && lowerMessage.Contains("compliance") && lowerMessage.Contains("cost"));
         
         if (requiresMultipleAgents)
+        {
+            _logger.LogInformation("🎯 Multi-agent query detected → Orchestrator planning required");
             return null;
+        }
         
         // AZURE CONTEXT CONFIGURATION - Unambiguous Infrastructure agent requests
         // Check this EARLY before other patterns (to avoid false matches)
@@ -877,7 +945,8 @@ Synthesized response:";
             lowerMessage.Contains("set my subscription") || lowerMessage.Contains("use my subscription") ||
             lowerMessage.Contains("my subscription is") || lowerMessage.Contains("configure subscription") ||
             lowerMessage.Contains("use tenant") || lowerMessage.Contains("set tenant") ||
-            lowerMessage.Contains("set authentication") || lowerMessage.Contains("what subscription") ||
+            lowerMessage.Contains("set authentication") || 
+            (lowerMessage.Contains("what subscription") && (lowerMessage.Contains("using") || lowerMessage.Contains("am i") || lowerMessage.Contains("current"))) ||
             lowerMessage.Contains("get azure context") || lowerMessage.Contains("azure context") ||
             lowerMessage.Contains("current subscription") || lowerMessage.Contains("switch subscription") ||
             lowerMessage.Contains("change subscription");
@@ -921,36 +990,95 @@ Synthesized response:";
             return AgentType.Compliance;
         }
         
-        // DISCOVERY AGENT - Resource details requests with resource IDs
-        // "show me details for resource /subscriptions/.../resourceGroups/..."
-        // "get details for /subscriptions/..."
-        // Check BEFORE compliance informational routing to prioritize resource detail queries
-        if ((lowerMessage.Contains("details for") || lowerMessage.Contains("details about") || 
-             lowerMessage.Contains("show me details") || lowerMessage.Contains("get details")) && 
-            (lowerMessage.Contains("/subscriptions/") || lowerMessage.Contains("resourceid") ||
-             lowerMessage.Contains("resource id") || lowerMessage.Contains("/resourcegroups/")))
+        // ============================================================================
+        // DISCOVERY AGENT - PRIORITY ROUTING (Check before other agents)
+        // Routes queries about specific Azure resources to Discovery Agent which has
+        // Resource Graph integration for fast queries with extended properties
+        // ============================================================================
+        
+        // DISCOVERY AGENT - Subscription listing (list all subscriptions)
+        // "what subscriptions do I have", "list all subscriptions", "show subscriptions"
+        var isSubscriptionListQuery = 
+            (lowerMessage.Contains("what") || lowerMessage.Contains("list") || 
+             lowerMessage.Contains("show") || lowerMessage.Contains("get")) &&
+            (lowerMessage.Contains("subscriptions") || lowerMessage.Contains("subscription")) &&
+            (lowerMessage.Contains("access to") || lowerMessage.Contains("have") || 
+             lowerMessage.Contains("all") || lowerMessage.Contains("available")) &&
+            !lowerMessage.Contains("set") && !lowerMessage.Contains("use") && 
+            !lowerMessage.Contains("switch") && !lowerMessage.Contains("change");
+        
+        if (isSubscriptionListQuery)
         {
+            _logger.LogInformation("🎯 Fast-path: Subscription listing query → Discovery Agent");
+            return AgentType.Discovery;
+        }
+        
+        // DISCOVERY AGENT - Specific resource by ID (HIGHEST PRIORITY)
+        // Patterns: "details for /subscriptions/...", "get resource /sub.../rg.../providers/..."
+        // "show /subscriptions/.../Microsoft.Web/sites/myapp"
+        var hasResourceId = lowerMessage.Contains("/subscriptions/") || 
+                           lowerMessage.Contains("/resourcegroups/") ||
+                           lowerMessage.Contains("resourceid:") ||
+                           lowerMessage.Contains("resource id:");
+        
+        if (hasResourceId)
+        {
+            _logger.LogInformation("🎯 Fast-path: Resource ID detected → Discovery Agent (Resource Graph)");
+            return AgentType.Discovery;
+        }
+        
+        // DISCOVERY AGENT - Resource details requests
+        // "get details for resource X", "show me details about app service Y"
+        // "resource details for web-app-123"
+        var isResourceDetailsQuery = 
+            (lowerMessage.Contains("details") || lowerMessage.Contains("detail") || 
+             lowerMessage.Contains("information") || lowerMessage.Contains("info")) &&
+            (lowerMessage.Contains("resource") || lowerMessage.Contains("app service") || 
+             lowerMessage.Contains("web app") || lowerMessage.Contains("storage account") ||
+             lowerMessage.Contains("vm") || lowerMessage.Contains("virtual machine") ||
+             lowerMessage.Contains("aks") || lowerMessage.Contains("kubernetes") ||
+             lowerMessage.Contains("sql") || lowerMessage.Contains("database")) &&
+            !lowerMessage.Contains("create") && !lowerMessage.Contains("deploy");
+        
+        if (isResourceDetailsQuery)
+        {
+            _logger.LogInformation("🎯 Fast-path: Resource details query → Discovery Agent");
             return AgentType.Discovery;
         }
         
         // DISCOVERY AGENT - Tag-based resource search
-        // "find resources with tag", "search by tag", "resources tagged with"
+        // "find resources with tag environment=prod", "search by tag"
         if ((lowerMessage.Contains("tag") || lowerMessage.Contains("tagged")) &&
             (lowerMessage.Contains("find") || lowerMessage.Contains("search") || 
              lowerMessage.Contains("list") || lowerMessage.Contains("show") ||
              lowerMessage.Contains("discover") || lowerMessage.Contains("resources with")))
         {
+            _logger.LogInformation("🎯 Fast-path: Tag search → Discovery Agent");
             return AgentType.Discovery;
         }
         
         // DISCOVERY AGENT - General resource discovery
         // "list all resources", "find resources", "discover resources", "show me resources"
+        // "inventory of subscription X"
         if ((lowerMessage.Contains("list") || lowerMessage.Contains("find") || 
-             lowerMessage.Contains("discover") || lowerMessage.Contains("show")) &&
-            (lowerMessage.Contains("resource") || lowerMessage.Contains("inventory")) &&
+             lowerMessage.Contains("discover") || lowerMessage.Contains("show") ||
+             lowerMessage.Contains("inventory")) &&
+            (lowerMessage.Contains("resource") || lowerMessage.Contains("resources")) &&
             !lowerMessage.Contains("create") && !lowerMessage.Contains("deploy") &&
-            !lowerMessage.Contains("provision"))
+            !lowerMessage.Contains("provision") && !lowerMessage.Contains("compliance"))
         {
+            _logger.LogInformation("🎯 Fast-path: Resource discovery → Discovery Agent");
+            return AgentType.Discovery;
+        }
+        
+        // DISCOVERY AGENT - Resource health queries
+        // "health of resource X", "is resource Y healthy", "resource health status"
+        if ((lowerMessage.Contains("health") || lowerMessage.Contains("status") || 
+             lowerMessage.Contains("availability")) &&
+            lowerMessage.Contains("resource") &&
+            !lowerMessage.Contains("create"))
+        {
+            _logger.LogInformation("🎯 Fast-path: Resource health → Discovery Agent");
             return AgentType.Discovery;
         }
         
@@ -960,20 +1088,48 @@ Synthesized response:";
             var isInformational = 
                 (lowerMessage.Contains("what is") || lowerMessage.Contains("what are") || 
                  lowerMessage.Contains("tell me about") || lowerMessage.Contains("explain") ||
-                 lowerMessage.Contains("describe") || lowerMessage.Contains("details about") ||
-                 lowerMessage.Contains("information about") || lowerMessage.Contains("details for")) &&
-                !lowerMessage.Contains("subscription") && !lowerMessage.Contains("resource group");
+                 lowerMessage.Contains("describe") || lowerMessage.Contains("define") ||
+                 lowerMessage.Contains("what does") || lowerMessage.Contains("how do i implement") ||
+                 lowerMessage.Contains("what evidence") || lowerMessage.Contains("requirements for")) &&
+                !lowerMessage.Contains("subscription") && !lowerMessage.Contains("resource group") &&
+                !lowerMessage.Contains("in my") && !lowerMessage.Contains("for my");
+            
+            // COMBINED KNOWLEDGE + ANALYSIS - Requires multi-agent orchestration
+            // "What is control X and what services implement it?"
+            // "Explain control Y and show compliance status"
+            var isKnowledgePlusAnalysis = 
+                isInformational && 
+                (lowerMessage.Contains("implement") || lowerMessage.Contains("services") ||
+                 lowerMessage.Contains("resources") || lowerMessage.Contains("compliance") ||
+                 lowerMessage.Contains("status") || lowerMessage.Contains("in my"));
+            
+            if (isKnowledgePlusAnalysis)
+            {
+                // Let orchestrator handle multi-agent coordination
+                _logger.LogInformation("🎯 Multi-agent query detected: Knowledge + Analysis → Orchestrator planning");
+                return null;
+            }
+            
+            // PURE INFORMATIONAL → KnowledgeBase Agent (no scanning)
+            // "What is AC-2?", "Explain IA-2", "What does SC-28 require?"
+            if (isInformational)
+            {
+                _logger.LogInformation("🎯 Fast-path: Pure informational query → KnowledgeBase Agent (no scan)");
+                return AgentType.KnowledgeBase;
+            }
             
             // ASSESSMENT/SCAN REQUESTS - Actually wants to scan/assess resources
             var isAssessment = 
                 lowerMessage.Contains("check") || lowerMessage.Contains("scan") || 
                 lowerMessage.Contains("assess") || lowerMessage.Contains("audit") || 
-                lowerMessage.Contains("validate") || lowerMessage.Contains("run");
+                lowerMessage.Contains("validate") || lowerMessage.Contains("run") ||
+                lowerMessage.Contains("compliance status") || lowerMessage.Contains("findings");
             
-            // If it's informational OR an assessment request, route to Compliance agent
-            // The agent's system prompt will handle determining if it needs subscription info
-            if (isInformational || isAssessment)
+            // ASSESSMENT → Compliance Agent (performs scanning)
+            // "Run a compliance scan", "Check my compliance", "Assess security"
+            if (isAssessment)
             {
+                _logger.LogInformation("🎯 Fast-path: Assessment request → Compliance Agent");
                 return AgentType.Compliance;
             }
         }
@@ -1045,5 +1201,72 @@ Synthesized response:";
         public string? Description { get; set; }
         public int? Priority { get; set; }
         public bool? IsCritical { get; set; }
+    }
+
+    // ==================== Semantic Intent Tracking ====================
+
+    /// <summary>
+    /// Record a semantic intent for analytics and improvement
+    /// </summary>
+    private async Task<Guid?> RecordIntentAsync(
+        string userMessage,
+        string intentCategory,
+        string intentAction,
+        decimal confidence,
+        string? userId = null,
+        string? sessionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_intentService == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var intent = await _intentService.RecordIntentAsync(
+                userId: userId ?? "anonymous",
+                userInput: userMessage,
+                intentCategory: intentCategory,
+                intentAction: intentAction,
+                confidence: confidence,
+                sessionId: sessionId,
+                cancellationToken: cancellationToken);
+
+            return intent.Id;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to record semantic intent - continuing without tracking");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Update the outcome of a tracked intent
+    /// </summary>
+    private async Task UpdateIntentOutcomeAsync(
+        Guid? intentId,
+        bool wasSuccessful,
+        string? errorMessage = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_intentService == null || !intentId.HasValue)
+        {
+            return;
+        }
+
+        try
+        {
+            await _intentService.UpdateIntentOutcomeAsync(
+                intentId.Value,
+                wasSuccessful,
+                errorMessage,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to update intent outcome - continuing without tracking");
+        }
     }
 }

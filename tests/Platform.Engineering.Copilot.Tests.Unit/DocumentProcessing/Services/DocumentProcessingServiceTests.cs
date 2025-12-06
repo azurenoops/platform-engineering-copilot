@@ -19,7 +19,7 @@ public class DocumentProcessingServiceTests : IDisposable
     private readonly Mock<IConfiguration> _mockConfiguration;
     private readonly Mock<IArchitectureDiagramAnalyzer> _mockDiagramAnalyzer;
     private readonly Mock<IAtoComplianceEngine> _mockAtoComplianceEngine;
-    private readonly Mock<IAtoRemediationEngine> _mockAtoRemediationEngine;
+    private readonly Mock<IRemediationEngine> _mockAtoRemediationEngine;
     private readonly DocumentProcessingService _service;
     private readonly string _testUploadsPath;
 
@@ -29,7 +29,7 @@ public class DocumentProcessingServiceTests : IDisposable
         _mockConfiguration = new Mock<IConfiguration>();
         _mockDiagramAnalyzer = new Mock<IArchitectureDiagramAnalyzer>();
         _mockAtoComplianceEngine = new Mock<IAtoComplianceEngine>();
-        _mockAtoRemediationEngine = new Mock<IAtoRemediationEngine>();
+        _mockAtoRemediationEngine = new Mock<IRemediationEngine>();
 
         _testUploadsPath = Path.Combine(Path.GetTempPath(), $"test_uploads_{Guid.NewGuid()}");
         _mockConfiguration.Setup(c => c["DocumentProcessing:UploadsPath"]).Returns(_testUploadsPath);

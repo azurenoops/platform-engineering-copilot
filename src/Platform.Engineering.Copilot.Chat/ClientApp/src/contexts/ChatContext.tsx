@@ -88,10 +88,12 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     const initializeSignalR = async () => {
       try {
-        console.log('🔄 Creating SignalR connection...');
+        // Use current window location to build SignalR URL (works in both dev and production)
+        const hubUrl = `${window.location.protocol}//${window.location.host}/chathub`;
+        console.log('🔄 Creating SignalR connection to:', hubUrl);
         
         connection = new HubConnectionBuilder()
-          .withUrl('http://localhost:5001/chathub')  // Explicit URL to avoid proxy issues
+          .withUrl(hubUrl)
           .withAutomaticReconnect()
           .configureLogging(LogLevel.Warning)  // Only show warnings and errors
           .build();

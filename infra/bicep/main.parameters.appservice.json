@@ -1,0 +1,95 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "projectName": {
+      "value": "platform-engineering"
+    },
+    "environment": {
+      "value": "staging"
+    },
+    "location": {
+      "value": "eastus"
+    },
+    "containerDeploymentTarget": {
+      "value": "appservice"
+    },
+    "deployACR": {
+      "value": false
+    },
+    "deployAKS": {
+      "value": false
+    },
+    "deployACI": {
+      "value": false
+    },
+    "deployAdminApi": {
+      "value": true
+    },
+    "deployChat": {
+      "value": true
+    },
+    "useExistingNetwork": {
+      "value": false
+    },
+    "existingVNetName": {
+      "value": ""
+    },
+    "existingVNetResourceGroup": {
+      "value": ""
+    },
+    "existingAppServiceSubnetName": {
+      "value": ""
+    },
+    "existingPrivateEndpointSubnetName": {
+      "value": ""
+    },
+    "useExistingLogAnalytics": {
+      "value": false
+    },
+    "existingLogAnalyticsWorkspaceName": {
+      "value": ""
+    },
+    "existingLogAnalyticsResourceGroup": {
+      "value": ""
+    },
+    "useExistingKeyVault": {
+      "value": false
+    },
+    "existingKeyVaultName": {
+      "value": ""
+    },
+    "existingKeyVaultResourceGroup": {
+      "value": ""
+    },
+    "sqlAdminUsername": {
+      "value": "sqladmin"
+    },
+    "sqlAdminPassword": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/{subscription-id}/resourceGroups/{rg-name}/providers/Microsoft.KeyVault/vaults/{kv-name}"
+        },
+        "secretName": "SqlAdminPassword"
+      }
+    },
+    "allowedIpAddresses": {
+      "value": [
+        "0.0.0.0/0"
+      ]
+    },
+    "enablePublicAccess": {
+      "value": true
+    },
+    "enablePrivateEndpoints": {
+      "value": false
+    },
+    "tags": {
+      "value": {
+        "Project": "Platform Engineering Copilot",
+        "ManagedBy": "Bicep",
+        "DeploymentType": "AppService"
+      }
+    }
+  }
+}

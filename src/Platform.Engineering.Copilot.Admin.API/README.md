@@ -4,7 +4,7 @@ Admin API for platform engineers to manage service templates, infrastructure, an
 
 ## 🚀 Overview
 
-The Platform Admin API provides full CRUD operations for service templates and infrastructure management. This API powers the **Platform Engineering Admin Console** (web UI on port 5003) and can be used directly for automation and scripting.
+The Platform Admin API provides full CRUD operations for service templates and infrastructure management. This API powers the **Platform Engineering Copilot Admin Console** (web UI on port 5003) and can be used directly for automation and scripting.
 
 ### Access Methods
 
@@ -15,7 +15,7 @@ The Platform Admin API provides full CRUD operations for service templates and i
 ## 🏗️ Architecture
 
 ```
-Platform Engineering Admin Console (Port 5003) - Web UI
+Platform Engineering Copilot Admin Console (Port 5003) - Web UI
     ↓ HTTP
 Platform Admin API (Port 5002) - REST API
     ↓

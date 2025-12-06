@@ -249,8 +249,15 @@ public class BicepSQLDatabaseModuleGenerator : IInfrastructureModuleGenerator
     private string GenerateSQLDatabaseBicep(TemplateGenerationRequest request)
     {
         var sb = new StringBuilder();
+        var security = request.Security ?? new SecuritySpec();
+        var isFedRAMPCompliant = security.ComplianceStandards?.Any(s => 
+            s.Contains("FedRAMP", StringComparison.OrdinalIgnoreCase) ||
+            s.Contains("DoD", StringComparison.OrdinalIgnoreCase) ||
+            s.Contains("NIST", StringComparison.OrdinalIgnoreCase) ||
+            s.Contains("IL5", StringComparison.OrdinalIgnoreCase)) ?? false;
 
         sb.AppendLine("// SQL Database Resource");
+        sb.AppendLine("// FedRAMP/NIST Compliance: SC-28 (Encryption at Rest), AU-2 (Auditing), SC-7 (Network Protection)");
         sb.AppendLine();
         sb.AppendLine("param sqlServerName string");
         sb.AppendLine("param sqlDatabaseName string");
@@ -258,6 +265,15 @@ public class BicepSQLDatabaseModuleGenerator : IInfrastructureModuleGenerator
         sb.AppendLine("param skuName string");
         sb.AppendLine("param skuTier string");
         sb.AppendLine("param tags object");
+        if (isFedRAMPCompliant)
+        {
+            sb.AppendLine();
+            sb.AppendLine("@description('Enable zone redundancy for high availability (FedRAMP requirement)')");
+            sb.AppendLine("param zoneRedundant bool = true");
+            sb.AppendLine();
+            sb.AppendLine("@description('Log Analytics Workspace ID for auditing (AU-2)')");
+            sb.AppendLine("param logAnalyticsWorkspaceId string = ''");
+        }
         sb.AppendLine();
 
         sb.AppendLine("resource sqlServer 'Microsoft.Sql/servers@2023-02-01-preview' existing = {");
@@ -278,10 +294,96 @@ public class BicepSQLDatabaseModuleGenerator : IInfrastructureModuleGenerator
         sb.AppendLine("    collation: 'SQL_Latin1_General_CP1_CI_AS'");
         sb.AppendLine("    maxSizeBytes: 2147483648"); // 2GB
         sb.AppendLine("    catalogCollation: 'SQL_Latin1_General_CP1_CI_AS'");
-        sb.AppendLine("    zoneRedundant: false");
+        sb.AppendLine($"    zoneRedundant: {(isFedRAMPCompliant ? "zoneRedundant" : "false")}");
+        if (isFedRAMPCompliant)
+        {
+            sb.AppendLine("    // SC-28: Encryption at rest is enabled by default (TDE)");
+            sb.AppendLine("    // Transparent Data Encryption (TDE) is automatically enabled for Azure SQL");
+            sb.AppendLine("    requestedBackupStorageRedundancy: 'Geo' // GRS for disaster recovery");
+        }
         sb.AppendLine("  }");
         sb.AppendLine("}");
         sb.AppendLine();
+
+        // Add TDE configuration for FedRAMP compliance
+        if (isFedRAMPCompliant)
+        {
+            sb.AppendLine("// SC-28: Transparent Data Encryption (enabled by default, but explicit for compliance)");
+            sb.AppendLine("resource tde 'Microsoft.Sql/servers/databases/transparentDataEncryption@2023-02-01-preview' = {");
+            sb.AppendLine("  parent: sqlDatabase");
+            sb.AppendLine("  name: 'current'");
+            sb.AppendLine("  properties: {");
+            sb.AppendLine("    state: 'Enabled'");
+            sb.AppendLine("  }");
+            sb.AppendLine("}");
+            sb.AppendLine();
+
+            // Add auditing for AU-2/AU-3 compliance
+            sb.AppendLine("// AU-2, AU-3: Database Auditing");
+            sb.AppendLine("resource sqlAudit 'Microsoft.Sql/servers/auditingSettings@2023-02-01-preview' = {");
+            sb.AppendLine("  parent: sqlServer");
+            sb.AppendLine("  name: 'default'");
+            sb.AppendLine("  properties: {");
+            sb.AppendLine("    state: 'Enabled'");
+            sb.AppendLine("    isAzureMonitorTargetEnabled: true");
+            sb.AppendLine("    retentionDays: 90 // FedRAMP requires minimum 90 days retention");
+            sb.AppendLine("    auditActionsAndGroups: [");
+            sb.AppendLine("      'SUCCESSFUL_DATABASE_AUTHENTICATION_GROUP'");
+            sb.AppendLine("      'FAILED_DATABASE_AUTHENTICATION_GROUP'");
+            sb.AppendLine("      'BATCH_COMPLETED_GROUP'");
+            sb.AppendLine("      'DATABASE_PERMISSION_CHANGE_GROUP'");
+            sb.AppendLine("      'DATABASE_PRINCIPAL_CHANGE_GROUP'");
+            sb.AppendLine("      'DATABASE_ROLE_MEMBER_CHANGE_GROUP'");
+            sb.AppendLine("      'SCHEMA_OBJECT_ACCESS_GROUP'");
+            sb.AppendLine("      'SCHEMA_OBJECT_CHANGE_GROUP'");
+            sb.AppendLine("      'SCHEMA_OBJECT_PERMISSION_CHANGE_GROUP'");
+            sb.AppendLine("    ]");
+            sb.AppendLine("  }");
+            sb.AppendLine("}");
+            sb.AppendLine();
+
+            // Add threat detection for SI-4 compliance
+            sb.AppendLine("// SI-4: Advanced Threat Protection");
+            sb.AppendLine("resource threatDetection 'Microsoft.Sql/servers/securityAlertPolicies@2023-02-01-preview' = {");
+            sb.AppendLine("  parent: sqlServer");
+            sb.AppendLine("  name: 'Default'");
+            sb.AppendLine("  properties: {");
+            sb.AppendLine("    state: 'Enabled'");
+            sb.AppendLine("    emailAccountAdmins: true");
+            sb.AppendLine("    retentionDays: 90");
+            sb.AppendLine("  }");
+            sb.AppendLine("}");
+            sb.AppendLine();
+
+            // Add vulnerability assessment for RA-5 compliance
+            sb.AppendLine("// RA-5: Vulnerability Assessment");
+            sb.AppendLine("resource vulnerabilityAssessment 'Microsoft.Sql/servers/vulnerabilityAssessments@2023-02-01-preview' = {");
+            sb.AppendLine("  parent: sqlServer");
+            sb.AppendLine("  name: 'default'");
+            sb.AppendLine("  properties: {");
+            sb.AppendLine("    recurringScans: {");
+            sb.AppendLine("      isEnabled: true");
+            sb.AppendLine("      emailSubscriptionAdmins: true");
+            sb.AppendLine("    }");
+            sb.AppendLine("  }");
+            sb.AppendLine("  dependsOn: [");
+            sb.AppendLine("    threatDetection");
+            sb.AppendLine("  ]");
+            sb.AppendLine("}");
+            sb.AppendLine();
+
+            // Add Azure AD-only authentication for IA-2 compliance
+            sb.AppendLine("// IA-2: Azure AD-only Authentication (recommended for FedRAMP)");
+            sb.AppendLine("// Note: Uncomment below to enforce Azure AD-only auth (disables SQL auth)");
+            sb.AppendLine("// resource azureAdOnlyAuth 'Microsoft.Sql/servers/azureADOnlyAuthentications@2023-02-01-preview' = {");
+            sb.AppendLine("//   parent: sqlServer");
+            sb.AppendLine("//   name: 'Default'");
+            sb.AppendLine("//   properties: {");
+            sb.AppendLine("//     azureADOnlyAuthentication: true");
+            sb.AppendLine("//   }");
+            sb.AppendLine("// }");
+            sb.AppendLine();
+        }
 
         sb.AppendLine("output sqlDatabaseId string = sqlDatabase.id");
         sb.AppendLine("output sqlDatabaseName string = sqlDatabase.name");

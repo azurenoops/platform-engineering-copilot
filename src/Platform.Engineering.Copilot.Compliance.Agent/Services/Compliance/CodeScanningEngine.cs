@@ -3,6 +3,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using Platform.Engineering.Copilot.Core.Constants;
 using Platform.Engineering.Copilot.Core.Models.CodeScanning;
 
 using Platform.Engineering.Copilot.Compliance.Core.Configuration;
@@ -20,12 +21,12 @@ public class CodeScanningEngine : ICodeScanningEngine
     private readonly ILogger<CodeScanningEngine> _logger;
     private readonly IGitHubServices _gitHubService;
     private readonly IAtoComplianceEngine _complianceEngine;
-    private readonly IAtoRemediationEngine _remediationEngine;
+    private readonly IRemediationEngine _remediationEngine;
     private readonly INistControlsService _nistControlsService;
     private readonly IMemoryCache _cache;
     private readonly ComplianceAgentOptions _options;
     private readonly CodeScanningOptions _codeScanningOptions;
-    private readonly EvidenceStorageService? _evidenceStorage;
+    private readonly IEvidenceStorageService? _evidenceStorage;
 
     // Security tool configurations
     private readonly Dictionary<string, string> _securityTools = new()
@@ -53,11 +54,11 @@ public class CodeScanningEngine : ICodeScanningEngine
         ILogger<CodeScanningEngine> logger,
         IGitHubServices gitHubService,
         IAtoComplianceEngine complianceEngine,
-        IAtoRemediationEngine remediationEngine,
+        IRemediationEngine remediationEngine,
         INistControlsService nistControlsService,
         IMemoryCache cache,
         IOptions<ComplianceAgentOptions> options,
-        EvidenceStorageService? evidenceStorage = null)
+        IEvidenceStorageService? evidenceStorage = null)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _gitHubService = gitHubService ?? throw new ArgumentNullException(nameof(gitHubService));
@@ -1578,7 +1579,7 @@ public class CodeScanningEngine : ICodeScanningEngine
                 FindingId = "STIG-V-001",
                 RuleName = "STIG V-230221: Storage encryption at rest",
                 TemplateFile = "storage.bicep",
-                ResourceType = "Microsoft.Storage/storageAccounts",
+                ResourceType = ComplianceConstants.AzureResourceTypes.StorageAccounts,
                 Severity = SecurityFindingSeverity.High,
                 Description = "Storage account must use encryption at rest (STIG requirement)",
                 Category = "STIG Compliance",
@@ -1591,7 +1592,7 @@ public class CodeScanningEngine : ICodeScanningEngine
                 FindingId = "STIG-V-002",
                 RuleName = "STIG V-230225: Network security groups required",
                 TemplateFile = "network.bicep",
-                ResourceType = "Microsoft.Network/virtualNetworks",
+                ResourceType = ComplianceConstants.AzureResourceTypes.VirtualNetworks,
                 Severity = SecurityFindingSeverity.Medium,
                 Description = "Virtual network must have associated network security group (STIG requirement)",
                 Category = "STIG Compliance",
@@ -1622,7 +1623,7 @@ public class CodeScanningEngine : ICodeScanningEngine
                 FindingId = "IAC-001",
                 RuleName = "Storage account allows public access",
                 TemplateFile = "main.bicep",
-                ResourceType = "Microsoft.Storage/storageAccounts",
+                ResourceType = ComplianceConstants.AzureResourceTypes.StorageAccounts,
                 Severity = SecurityFindingSeverity.High,
                 Description = "Storage account configured with public access",
                 RemediationAdvice = "Disable public access for storage account",

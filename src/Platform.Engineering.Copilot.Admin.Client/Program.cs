@@ -4,7 +4,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews();
 builder.Services.AddSpaStaticFiles(configuration =>
 {
-    configuration.RootPath = "ClientApp/build";
+    configuration.RootPath = "wwwroot";
 });
 
 // Configure Kestrel to listen on port 5003

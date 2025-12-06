@@ -46,6 +46,16 @@ public class AzureGatewayOptions
     public string? TenantId { get; set; }
 
     /// <summary>
+    /// Azure client ID (Service Principal Application ID)
+    /// </summary>
+    public string? ClientId { get; set; }
+
+    /// <summary>
+    /// Azure client secret (Service Principal secret)
+    /// </summary>
+    public string? ClientSecret { get; set; }
+
+    /// <summary>
     /// Azure cloud environment (AzureCloud, AzureGovernment, etc.)
     /// </summary>
     public string CloudEnvironment { get; set; } = "AzureCloud";

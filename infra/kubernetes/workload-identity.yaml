@@ -1,0 +1,22 @@
+# Azure Workload Identity Configuration
+# This enables pods to authenticate to Azure services using managed identities
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: platform-workload-identity-sa
+  namespace: platform-engineering
+  annotations:
+    azure.workload.identity/client-id: "${MANAGED_IDENTITY_CLIENT_ID}"
+    azure.workload.identity/tenant-id: "${AZURE_TENANT_ID}"
+  labels:
+    azure.workload.identity/use: "true"
+---
+# Federated Identity Credential (created via Azure CLI or Bicep)
+# az identity federated-credential create \
+#   --name platform-engineering-federated-credential \
+#   --identity-name ${MANAGED_IDENTITY_NAME} \
+#   --resource-group ${RESOURCE_GROUP} \
+#   --issuer ${AKS_OIDC_ISSUER_URL} \
+#   --subject system:serviceaccount:platform-engineering:platform-workload-identity-sa \
+#   --audience api://AzureADTokenExchange

@@ -1,13 +1,10 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Platform.Engineering.Copilot.Core.Interfaces.Discovery;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
+using Platform.Engineering.Copilot.Core.Interfaces.ResourceTypeHandlers;
 using Platform.Engineering.Copilot.Core.Services.Azure;
+using Platform.Engineering.Copilot.Core.Services.Azure.Graph;
 using Platform.Engineering.Copilot.Core.Models.Azure;
 
 namespace Platform.Engineering.Copilot.Discovery.Agent.Services;
@@ -15,24 +12,31 @@ namespace Platform.Engineering.Copilot.Discovery.Agent.Services;
 /// <summary>
 /// AI-powered resource discovery service implementation
 /// Uses Semantic Kernel to parse natural language queries and discover Azure resources
+/// Enhanced with Azure Resource Graph for performant bulk queries with extended properties
 /// </summary>
 public class AzureResourceDiscoveryService : IAzureResourceDiscoveryService
 {
     private readonly ILogger<AzureResourceDiscoveryService> _logger;
     private readonly Kernel _kernel;
-    private readonly IAzureResourceService _azureResourceService;
+    private readonly IAzureResourceService _azureResourceService; // Fallback to API
+    private readonly AzureResourceGraphService _resourceGraphService; // Primary: Resource Graph
     private readonly AzureMcpClient _azureMcpClient;
+    private readonly IEnumerable<IResourceTypeHandler> _resourceTypeHandlers;
 
     public AzureResourceDiscoveryService(
         ILogger<AzureResourceDiscoveryService> logger,
         Kernel kernel,
         IAzureResourceService azureResourceService,
-        AzureMcpClient azureMcpClient)
+        AzureResourceGraphService resourceGraphService,
+        AzureMcpClient azureMcpClient,
+        IEnumerable<IResourceTypeHandler> resourceTypeHandlers)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _kernel = kernel ?? throw new ArgumentNullException(nameof(kernel));
         _azureResourceService = azureResourceService ?? throw new ArgumentNullException(nameof(azureResourceService));
+        _resourceGraphService = resourceGraphService ?? throw new ArgumentNullException(nameof(resourceGraphService));
         _azureMcpClient = azureMcpClient ?? throw new ArgumentNullException(nameof(azureMcpClient));
+        _resourceTypeHandlers = resourceTypeHandlers ?? throw new ArgumentNullException(nameof(resourceTypeHandlers));
     }
 
     public async Task<ResourceDiscoveryResult> DiscoverResourcesAsync(
@@ -110,6 +114,8 @@ public class AzureResourceDiscoveryService : IAzureResourceDiscoveryService
     {
         try
         {
+            _logger.LogInformation("🔍 DIAGNOSTIC [AzureResourceDiscoveryService]: GetResourceDetailsAsync CALLED");
+            _logger.LogInformation("🔍 DIAGNOSTIC [AzureResourceDiscoveryService]: Query: {Query}, Subscription: {SubscriptionId}", query, subscriptionId);
             _logger.LogInformation("Getting resource details from query: {Query}", query);
 
             // Use AI to extract resource identifier
@@ -124,32 +130,102 @@ public class AzureResourceDiscoveryService : IAzureResourceDiscoveryService
                 };
             }
 
-            // Get resource details
-            // Note: GetResourceAsync requires more parameters - this is a simplified version
-            // In production, you'd need to parse the full resource ID or use a different approach
-            var allResources = await _azureResourceService.ListAllResourcesAsync(subscriptionId, cancellationToken);
-            var resource = allResources.FirstOrDefault(r =>
-                r.Id?.Contains(resourceInfo.ResourceId ?? resourceInfo.ResourceName ?? string.Empty, StringComparison.OrdinalIgnoreCase) == true ||
-                r.Name?.Equals(resourceInfo.ResourceName, StringComparison.OrdinalIgnoreCase) == true);
+            // **Try Resource Graph first with extended properties**
+            AzureResource? resource = null;
+            string dataSource = "API"; // Track which method was used
 
-            if (resource == null)
+            if (!string.IsNullOrEmpty(resourceInfo.ResourceId))
             {
-                return new ResourceDetailsResult
+                _logger.LogInformation("🔍 DIAGNOSTIC [AzureResourceDiscoveryService]: About to call Resource Graph for resource ID: {ResourceId}", resourceInfo.ResourceId);
+                
+                // Use Resource Graph for direct resource ID lookups
+                resource = await _resourceGraphService.GetResourceDetailsAsync(
+                    resourceInfo.ResourceId,
+                    cancellationToken);
+
+                if (resource != null)
                 {
-                    Success = false,
-                    ErrorDetails = "Resource not found"
-                };
+                    dataSource = "ResourceGraph";
+                    _logger.LogInformation("Retrieved resource from Resource Graph: {ResourceId}", resourceInfo.ResourceId);
+                }
+                else
+                {
+                    _logger.LogWarning("Resource Graph did not return results, falling back to API");
+                }
             }
 
-            // Get health status if available (simplified)
+            // **Fallback to API if Resource Graph didn't return results**
+            if (resource == null)
+            {
+                var allResources = await _azureResourceService.ListAllResourcesAsync(subscriptionId, cancellationToken);
+                var apiResource = allResources.FirstOrDefault(r =>
+                    r.Id?.Contains(resourceInfo.ResourceId ?? resourceInfo.ResourceName ?? string.Empty, StringComparison.OrdinalIgnoreCase) == true ||
+                    r.Name?.Equals(resourceInfo.ResourceName, StringComparison.OrdinalIgnoreCase) == true);
+
+                if (apiResource == null)
+                {
+                    return new ResourceDetailsResult
+                    {
+                        Success = false,
+                        ErrorDetails = "Resource not found"
+                    };
+                }
+
+                // Map to AzureResource model
+                resource = new AzureResource
+                {
+                    Id = apiResource.Id ?? string.Empty,
+                    Name = apiResource.Name ?? string.Empty,
+                    Type = apiResource.Type ?? string.Empty,
+                    Location = apiResource.Location ?? string.Empty,
+                    ResourceGroup = apiResource.ResourceGroup ?? string.Empty,
+                    Tags = apiResource.Tags,
+                    Sku = apiResource.Sku,
+                    Kind = apiResource.Kind,
+                    ProvisioningState = apiResource.ProvisioningState,
+                    Properties = apiResource.Properties?.ToDictionary(
+                        kvp => kvp.Key, 
+                        kvp => (object)(kvp.Value?.ToString() ?? string.Empty))
+                };
+                dataSource = "API";
+            }
+
+            // **Apply resource type handler to enrich properties**
+            if (resource != null && !string.IsNullOrEmpty(resource.Type))
+            {
+                var handler = _resourceTypeHandlers.FirstOrDefault(h => 
+                    h.ResourceType.Equals(resource.Type, StringComparison.OrdinalIgnoreCase));
+                
+                if (handler != null)
+                {
+                    _logger.LogInformation("📋 Applying {HandlerType} handler to resource {ResourceId}", 
+                        handler.GetType().Name, resource.Id);
+                    
+                    var extendedProps = handler.ParseExtendedProperties(resource);
+                    if (extendedProps.Any())
+                    {
+                        resource.Properties ??= new Dictionary<string, object>();
+                        foreach (var prop in extendedProps)
+                        {
+                            resource.Properties[$"parsed_{prop.Key}"] = prop.Value;
+                        }
+                        _logger.LogInformation("✅ Enriched resource with {Count} parsed properties", extendedProps.Count);
+                    }
+                }
+                else
+                {
+                    _logger.LogDebug("No resource type handler found for {ResourceType}", resource.Type);
+                }
+            }
+
+            // Get health status if available
             string? healthStatus = null;
             try
             {
                 var health = await _azureResourceService.GetResourceHealthAsync(
-                    resource.Id ?? string.Empty,
+                    resource.Id,
                     cancellationToken);
                 
-                // Handle dynamic health status object
                 if (health != null)
                 {
                     dynamic healthObj = health;
@@ -166,16 +242,21 @@ public class AzureResourceDiscoveryService : IAzureResourceDiscoveryService
                 Success = true,
                 Resource = new DiscoveredResource
                 {
-                    ResourceId = resource.Id ?? string.Empty,
-                    Name = resource.Name ?? string.Empty,
-                    Type = resource.Type ?? string.Empty,
-                    Location = resource.Location ?? string.Empty,
-                    ResourceGroup = resource.ResourceGroup ?? string.Empty,
+                    ResourceId = resource.Id,
+                    Name = resource.Name,
+                    Type = resource.Type,
+                    Location = resource.Location,
+                    ResourceGroup = resource.ResourceGroup,
                     Tags = resource.Tags,
-                    Properties = resource.Properties as Dictionary<string, object>
+                    Properties = resource.Properties as Dictionary<string, object>,
+                    // **NEW: Include extended properties from Resource Graph**
+                    Sku = resource.Sku,
+                    Kind = resource.Kind,
+                    ProvisioningState = resource.ProvisioningState
                 },
                 HealthStatus = healthStatus,
-                Message = "Resource details retrieved successfully"
+                DataSource = dataSource, // NEW: Indicate which method was used
+                Message = $"Resource details retrieved successfully from {dataSource}"
             };
         }
         catch (Exception ex)

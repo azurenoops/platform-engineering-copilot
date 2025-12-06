@@ -23,7 +23,7 @@ public class DocumentProcessingService : IDocumentProcessingService
     private readonly IConfiguration _configuration;
     private readonly IArchitectureDiagramAnalyzer _diagramAnalyzer;
     private readonly IAtoComplianceEngine _atoComplianceEngine;
-    private readonly IAtoRemediationEngine _atoRemediationEngine;
+    private readonly IRemediationEngine _atoRemediationEngine;
     private readonly string _uploadsPath;
     private readonly Dictionary<string, DocumentProcessingStatus> _processingStatuses;
 
@@ -41,7 +41,7 @@ public class DocumentProcessingService : IDocumentProcessingService
         IConfiguration configuration,
         IArchitectureDiagramAnalyzer diagramAnalyzer,
         IAtoComplianceEngine atoComplianceEngine,
-        IAtoRemediationEngine atoRemediationEngine)
+        IRemediationEngine atoRemediationEngine)
     {
         _logger = logger;
         _configuration = configuration;

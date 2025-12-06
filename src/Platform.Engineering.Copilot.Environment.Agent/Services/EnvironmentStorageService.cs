@@ -4,31 +4,30 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Platform.Engineering.Copilot.Core.Data.Context;
 using Platform.Engineering.Copilot.Core.Data.Entities;
+using Platform.Engineering.Copilot.Core.Data.Repositories;
 using CoreModels = Platform.Engineering.Copilot.Core.Models;
 using DataDeploymentStatus = Platform.Engineering.Copilot.Core.Data.Entities.DeploymentStatus;
 
 namespace Platform.Engineering.Copilot.Infrastructure.Core.Services
 {
     /// <summary>
-    /// Storage service for environment deployment records.
+    /// Storage service for environment deployment records using Repository pattern.
     /// Persists EnvironmentDeployment, DeploymentHistory, and EnvironmentMetrics to database.
     /// Maps between Core models (EnvironmentCreationResult) and Data entities (EnvironmentDeployment).
     /// </summary>
     public class EnvironmentStorageService
     {
         private readonly ILogger<EnvironmentStorageService> _logger;
-        private readonly PlatformEngineeringCopilotContext _context;
+        private readonly IEnvironmentDeploymentRepository _deploymentRepository;
 
         public EnvironmentStorageService(
             ILogger<EnvironmentStorageService> logger,
-            PlatformEngineeringCopilotContext context)
+            IEnvironmentDeploymentRepository deploymentRepository)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _deploymentRepository = deploymentRepository ?? throw new ArgumentNullException(nameof(deploymentRepository));
         }
 
         #region Environment Deployment CRUD
@@ -78,12 +77,11 @@ namespace Platform.Engineering.Copilot.Infrastructure.Core.Services
                 IsDeleted = !creationResult.Success
             };
 
-            _context.EnvironmentDeployments.Add(deployment);
-            await _context.SaveChangesAsync(cancellationToken);
+            var result = await _deploymentRepository.AddAsync(deployment, cancellationToken);
 
-            _logger.LogInformation("Environment deployment stored with ID: {Id}", deployment.Id);
+            _logger.LogInformation("Environment deployment stored with ID: {Id}", result.Id);
 
-            return deployment;
+            return result;
         }
 
         /// <summary>
@@ -93,11 +91,7 @@ namespace Platform.Engineering.Copilot.Infrastructure.Core.Services
             Guid id,
             CancellationToken cancellationToken = default)
         {
-            return await _context.EnvironmentDeployments
-                .Include(e => e.Template)
-                .Include(e => e.History)
-                .Include(e => e.Metrics)
-                .FirstOrDefaultAsync(e => e.Id == id && !e.IsDeleted, cancellationToken);
+            return await _deploymentRepository.GetByIdWithRelatedAsync(id, cancellationToken);
         }
 
         /// <summary>
@@ -108,10 +102,7 @@ namespace Platform.Engineering.Copilot.Infrastructure.Core.Services
             string resourceGroup,
             CancellationToken cancellationToken = default)
         {
-            return await _context.EnvironmentDeployments
-                .FirstOrDefaultAsync(
-                    e => e.Name == name && e.ResourceGroupName == resourceGroup && !e.IsDeleted,
-                    cancellationToken);
+            return await _deploymentRepository.GetByNameAndResourceGroupAsync(name, resourceGroup, cancellationToken);
         }
 
         /// <summary>
@@ -123,28 +114,13 @@ namespace Platform.Engineering.Copilot.Infrastructure.Core.Services
             DataDeploymentStatus? status = null,
             CancellationToken cancellationToken = default)
         {
-            var query = _context.EnvironmentDeployments
-                .Include(e => e.Template)
-                .Where(e => !e.IsDeleted);
+            var results = await _deploymentRepository.SearchAsync(
+                environmentType: environmentType,
+                resourceGroup: resourceGroup,
+                status: status,
+                cancellationToken: cancellationToken);
 
-            if (!string.IsNullOrEmpty(environmentType))
-            {
-                query = query.Where(e => e.EnvironmentType == environmentType);
-            }
-
-            if (!string.IsNullOrEmpty(resourceGroup))
-            {
-                query = query.Where(e => e.ResourceGroupName == resourceGroup);
-            }
-
-            if (status.HasValue)
-            {
-                query = query.Where(e => e.Status == status.Value);
-            }
-
-            return await query
-                .OrderByDescending(e => e.CreatedAt)
-                .ToListAsync(cancellationToken);
+            return results.ToList();
         }
 
         /// <summary>
@@ -156,22 +132,18 @@ namespace Platform.Engineering.Copilot.Infrastructure.Core.Services
             string? errorMessage = null,
             CancellationToken cancellationToken = default)
         {
-            var environment = await _context.EnvironmentDeployments
-                .FirstOrDefaultAsync(e => e.Id == environmentId, cancellationToken);
+            var result = await _deploymentRepository.UpdateStatusAsync(environmentId, status, cancellationToken);
 
-            if (environment == null)
+            if (result)
+            {
+                _logger.LogInformation("Environment {Id} status updated to {Status}", environmentId, status);
+            }
+            else
             {
                 _logger.LogWarning("Environment {Id} not found for status update", environmentId);
-                return false;
             }
 
-            environment.Status = status;
-            environment.UpdatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync(cancellationToken);
-
-            _logger.LogInformation("Environment {Id} status updated to {Status}", environmentId, status);
-            return true;
+            return result;
         }
 
         /// <summary>
@@ -181,23 +153,18 @@ namespace Platform.Engineering.Copilot.Infrastructure.Core.Services
             Guid environmentId,
             CancellationToken cancellationToken = default)
         {
-            var environment = await _context.EnvironmentDeployments
-                .FirstOrDefaultAsync(e => e.Id == environmentId, cancellationToken);
+            var result = await _deploymentRepository.SoftDeleteAsync(environmentId, cancellationToken);
 
-            if (environment == null)
+            if (result)
+            {
+                _logger.LogInformation("Environment {Id} soft deleted", environmentId);
+            }
+            else
             {
                 _logger.LogWarning("Environment {Id} not found for deletion", environmentId);
-                return false;
             }
 
-            environment.IsDeleted = true;
-            environment.DeletedAt = DateTime.UtcNow;
-            environment.UpdatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync(cancellationToken);
-
-            _logger.LogInformation("Environment {Id} soft deleted", environmentId);
-            return true;
+            return result;
         }
 
         #endregion
@@ -218,24 +185,14 @@ namespace Platform.Engineering.Copilot.Infrastructure.Core.Services
         {
             _logger.LogInformation("Recording deployment history for {DeploymentId}: {Action}", deploymentId, action);
 
-            var history = new DeploymentHistory
-            {
-                Id = Guid.NewGuid(),
-                DeploymentId = deploymentId,
-                Action = action,
-                Status = success ? "succeeded" : "failed",
-                InitiatedBy = initiatedBy,
-                Details = details,
-                ErrorMessage = errorMessage,
-                StartedAt = DateTime.UtcNow,
-                CompletedAt = DateTime.UtcNow,
-                Duration = TimeSpan.Zero
-            };
-
-            _context.DeploymentHistory.Add(history);
-            await _context.SaveChangesAsync(cancellationToken);
-
-            return history;
+            return await _deploymentRepository.RecordActionAsync(
+                deploymentId,
+                action,
+                initiatedBy,
+                success,
+                details,
+                errorMessage,
+                cancellationToken);
         }
 
         /// <summary>
@@ -246,11 +203,8 @@ namespace Platform.Engineering.Copilot.Infrastructure.Core.Services
             int limit = 50,
             CancellationToken cancellationToken = default)
         {
-            return await _context.DeploymentHistory
-                .Where(h => h.DeploymentId == deploymentId)
-                .OrderByDescending(h => h.StartedAt)
-                .Take(limit)
-                .ToListAsync(cancellationToken);
+            var results = await _deploymentRepository.GetHistoryAsync(deploymentId, limit, cancellationToken);
+            return results.ToList();
         }
 
         #endregion
@@ -283,10 +237,7 @@ namespace Platform.Engineering.Copilot.Infrastructure.Core.Services
                 Timestamp = DateTime.UtcNow
             };
 
-            _context.EnvironmentMetrics.Add(metric);
-            await _context.SaveChangesAsync(cancellationToken);
-
-            return metric;
+            return await _deploymentRepository.AddMetricAsync(metric, cancellationToken);
         }
 
         /// <summary>
@@ -299,27 +250,14 @@ namespace Platform.Engineering.Copilot.Infrastructure.Core.Services
             string? metricType = null,
             CancellationToken cancellationToken = default)
         {
-            var query = _context.EnvironmentMetrics
-                .Where(m => m.DeploymentId == deploymentId);
+            var results = await _deploymentRepository.GetMetricsAsync(
+                deploymentId,
+                startTime,
+                endTime,
+                metricType,
+                cancellationToken);
 
-            if (startTime.HasValue)
-            {
-                query = query.Where(m => m.Timestamp >= startTime.Value);
-            }
-
-            if (endTime.HasValue)
-            {
-                query = query.Where(m => m.Timestamp <= endTime.Value);
-            }
-
-            if (!string.IsNullOrEmpty(metricType))
-            {
-                query = query.Where(m => m.MetricType == metricType);
-            }
-
-            return await query
-                .OrderByDescending(m => m.Timestamp)
-                .ToListAsync(cancellationToken);
+            return results.ToList();
         }
 
         /// <summary>
@@ -329,34 +267,23 @@ namespace Platform.Engineering.Copilot.Infrastructure.Core.Services
             Guid deploymentId,
             CancellationToken cancellationToken = default)
         {
-            var metrics = await _context.EnvironmentMetrics
-                .Where(m => m.DeploymentId == deploymentId)
-                .GroupBy(m => m.MetricType)
-                .Select(g => new
-                {
-                    MetricType = g.Key,
-                    Count = g.Count(),
-                    AvgValue = g.Average(m => m.Value),
-                    MinValue = g.Min(m => m.Value),
-                    MaxValue = g.Max(m => m.Value),
-                    LastTimestamp = g.Max(m => m.Timestamp)
-                })
-                .ToListAsync(cancellationToken);
+            var summary = await _deploymentRepository.GetMetricsSummaryAsync(deploymentId, cancellationToken);
 
-            var summary = new Dictionary<string, object>();
-            foreach (var metric in metrics)
+            // Convert to the expected return type for backward compatibility
+            var result = new Dictionary<string, object>();
+            foreach (var kvp in summary)
             {
-                summary[metric.MetricType] = new
+                result[kvp.Key] = new
                 {
-                    metric.Count,
-                    metric.AvgValue,
-                    metric.MinValue,
-                    metric.MaxValue,
-                    metric.LastTimestamp
+                    kvp.Value.Count,
+                    AvgValue = kvp.Value.AvgValue,
+                    MinValue = kvp.Value.MinValue,
+                    MaxValue = kvp.Value.MaxValue,
+                    LastTimestamp = kvp.Value.LastTimestamp
                 };
             }
 
-            return summary;
+            return result;
         }
 
         #endregion

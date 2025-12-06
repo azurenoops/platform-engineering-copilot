@@ -9,7 +9,7 @@ namespace Platform.Engineering.Copilot.Core.Interfaces.Compliance;
 /// <summary>
 /// Comprehensive ATO Remediation Engine interface for orchestrating compliance remediation workflows
 /// </summary>
-public interface IAtoRemediationEngine
+public interface IRemediationEngine
 {
     /// <summary>
     /// Generate remediation plan for a single finding (used by AI for natural language guidance)

@@ -6,6 +6,12 @@
 
 The Platform Engineering Copilot uses a **multi-agent orchestration architecture** where specialized AI agents coordinate to handle complex infrastructure, compliance, cost management, and operational tasks. Each agent is an expert in its domain with dedicated plugins, system prompts, and capabilities.
 
+### Related Documentation
+
+📖 **[Agent Coordination Workflows](AGENT-COORDINATION-WORKFLOWS.md)** - Visual diagrams showing how agents coordinate via OrchestratorAgent  
+🔧 **[Agent Remediation Boundaries](AGENT-REMEDIATION-BOUNDARIES.md)** - When Compliance Agent self-remediates vs. delegating to Infrastructure Agent  
+⚙️ **[Agent Orchestration & Configuration](AGENT-ORCHESTRATION.md)** - Configuration guide and agent discovery
+
 ### Architecture
 
 ```
@@ -24,6 +30,7 @@ User Query → Orchestrator Agent → Specialized Agents → Response
 - **Shared Memory**: Agents share context, files, and results across the conversation
 - **Plugin Architecture**: Each agent has specialized plugins for domain-specific operations
 - **Azure Integration**: Direct integration with Azure services via MCP Server and Azure SDK
+- **No Direct Agent-to-Agent Calls**: All coordination flows through OrchestratorAgent (prevents circular dependencies)
 
 ---
 
@@ -94,12 +101,16 @@ User Query → Orchestrator Agent → Specialized Agents → Response
 
 ### Key Services
 
-- `InfrastructureProvisioningService`: Azure resource API interactions
-- `TemplateGenerationService`: IaC template creation (Bicep/Terraform)
+- `InfrastructureProvisioningService`: Azure resource API interactions (rarely used - only for explicit "deploy NOW" requests)
+- `TemplateGenerationService`: **Primary function** - IaC template creation (Bicep/Terraform)
 - `NetworkTopologyDesignService`: Network design and visualization
 - `PredictiveScalingEngine`: AI-powered scaling forecasts
-- `ComplianceAwareTemplateEnhancer`: Inject compliance controls
-- `PolicyEnforcementService`: Azure Policy integration
+- `ComplianceAwareTemplateEnhancer`: Inject compliance controls into generated templates
+- `PolicyEnforcementService`: Azure Policy integration (shared with Compliance Agent)
+- `DeploymentOrchestrationService`: Multi-phase deployment planning
+
+**What Infrastructure Agent Actually Does:**  
+Infrastructure Agent **generates Infrastructure-as-Code templates** (Bicep/Terraform) that users review and deploy manually. It does NOT automatically provision resources unless the user explicitly says "deploy NOW" or "create IMMEDIATELY". See [remediation boundaries documentation](AGENT-REMEDIATION-BOUNDARIES.md) for the division between template generation (Infrastructure) vs. direct ARM API changes (Compliance).
 
 ### Configuration
 
@@ -175,9 +186,13 @@ User Query → Orchestrator Agent → Specialized Agents → Response
 - `ComplianceEngine`: Core compliance scanning logic
 - `CodeScanningEngine`: Repository and code analysis
 - `GovernanceEngine`: Azure Policy evaluation
-- `InfrastructureRemediationService`: Automated remediation
+- `ComplianceRemediationService`: Automated remediation for **configuration-level changes** (tags, encryption settings, firewall rules)
+  - See [Agent Remediation Boundaries](AGENT-REMEDIATION-BOUNDARIES.md) for what Compliance Agent fixes vs. Infrastructure Agent
 - `DefenderForCloudService`: Microsoft Defender integration
 - `EvidenceCollectors`: Control-specific evidence gathering
+
+**Remediation Scope:**  
+Compliance Agent handles **low-to-medium risk configuration changes** (property updates via Azure ARM API). For **high-risk changes** (resource creation/deletion, topology changes), Compliance Agent delegates to Infrastructure Agent via OrchestratorAgent. See [remediation boundaries documentation](AGENT-REMEDIATION-BOUNDARIES.md) for details.
 
 ### Plugins
 
@@ -862,6 +877,12 @@ az account show
 ---
 
 ## References
+
+- **[Agent Coordination Workflows](AGENT-COORDINATION-WORKFLOWS.md)** - Mermaid diagrams showing agent orchestration patterns
+- **[Agent Remediation Boundaries](AGENT-REMEDIATION-BOUNDARIES.md)** - Decision matrix for Compliance vs. Infrastructure remediation
+- **[Agent Orchestration & Configuration](AGENT-ORCHESTRATION.md)** - Configuration guide and enabling/disabling agents
+- **[Architecture Documentation](ARCHITECTURE.md)** - Overall system architecture
+- **[Development Guide](DEVELOPMENT.md)** - Local development setup
 
 - [Architecture Documentation](./ARCHITECTURE.md)
 - [Agent Orchestration](./AGENT-ORCHESTRATION.md)

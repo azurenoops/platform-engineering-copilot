@@ -1,8 +1,8 @@
 # Discovery Agent Test Suite
 
-**Last Updated:** November 13, 2025  
+**Last Updated:** December 2, 2025  
 **Agent:** Discovery  
-**Plugin Functions:** 17 total  
+**Plugin Functions:** 15 total  
 **Purpose:** Comprehensive testing of all Discovery Agent capabilities
 
 ## 📋 Overview
@@ -294,7 +294,7 @@ Give me a complete inventory summary for subscription 00000000-0000-0000-0000-00
 
 ---
 
-### 8️⃣ Azure MCP Integration Functions (3 functions)
+### 8️⃣ Azure MCP Integration Functions (2 functions)
 
 #### Test DISC-8.1: Discover with Guidance
 ```
@@ -330,43 +330,9 @@ Get resource details with diagnostics for my AKS cluster
 
 ---
 
-#### Test DISC-8.3: Get Resource Best Practices
-```
-What are the best practices for my storage account?
-```
-**Expected Function:** `get_resource_best_practices`  
-**Expected Output:**
-- ✅ Resource-specific best practices
-- ✅ Azure MCP recommendations
-- ✅ Security hardening steps
-- ✅ Cost optimization tips
+### 9️⃣ Bicep Generation (1 function)
 
-**Validation:**
-- ✅ Relevant best practices
-- ✅ Actionable recommendations
-
----
-
-### 9️⃣ Documentation Search (2 functions)
-
-#### Test DISC-9.1: Search Azure Documentation
-```
-Search Azure docs for AKS private cluster networking
-```
-**Expected Function:** `search_azure_documentation`  
-**Expected Output:**
-- ✅ Relevant documentation excerpts
-- ✅ Configuration examples
-- ✅ Links to official docs
-- ✅ Step-by-step guides
-
-**Validation:**
-- ✅ Accurate search results
-- ✅ Azure-specific content
-
----
-
-#### Test DISC-9.2: Generate Bicep for Resource
+#### Test DISC-9.1: Generate Bicep for Resource
 ```
 Generate Bicep code for my existing storage account
 ```
@@ -451,6 +417,6 @@ Deploy an AKS cluster
 
 ---
 
-**Last Updated:** November 13, 2025  
-**Test Coverage:** 17 functions, 25+ test cases  
+**Last Updated:** December 2, 2025  
+**Test Coverage:** 15 functions, 23+ test cases  
 **Status:** Ready for comprehensive testing

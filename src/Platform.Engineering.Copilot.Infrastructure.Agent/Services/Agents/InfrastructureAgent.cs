@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
+using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Interfaces.Agents;
 using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
 using Platform.Engineering.Copilot.Core.Models.Agents;
@@ -35,6 +36,7 @@ public class InfrastructureAgent : ISpecializedAgent
     private readonly INetworkTopologyDesignService? _networkDesignService;
     private readonly IPredictiveScalingEngine? _scalingEngine;
     private readonly IComplianceAwareTemplateEnhancer? _complianceEnhancer;
+    private readonly ITemplateStorageService _templateStorageService;
 
     public InfrastructureAgent(
         ISemanticKernelService semanticKernelService,
@@ -46,6 +48,7 @@ public class InfrastructureAgent : ISpecializedAgent
         IPolicyEnforcementService policyEnforcementService,
         SharedMemory sharedMemory,
         AzureMcpClient azureMcpClient,
+        ITemplateStorageService templateStorageService,
         IOptions<AzureGatewayOptions> azureOptions,
         IOptions<InfrastructureAgentOptions> options,
         Platform.Engineering.Copilot.Core.Plugins.ConfigurationPlugin configurationPlugin,
@@ -56,6 +59,7 @@ public class InfrastructureAgent : ISpecializedAgent
         _logger = logger;
         _options = options.Value;
         _defaultSubscriptionId = azureOptions.Value.SubscriptionId;
+        _templateStorageService = templateStorageService;
         
         // Store optional services based on configuration
         _networkDesignService = _options.EnableNetworkDesign ? networkDesignService : null;
@@ -76,7 +80,8 @@ public class InfrastructureAgent : ISpecializedAgent
             _complianceEnhancer,
             policyEnforcementService,
             sharedMemory,
-            azureMcpClient);
+            azureMcpClient,
+            templateStorageService);
 
         // Register shared configuration plugin (set_azure_subscription, get_azure_subscription, etc.)
         try

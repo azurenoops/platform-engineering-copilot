@@ -87,4 +87,19 @@ public interface ITemplateStorageService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of template versions</returns>
     Task<List<TemplateVersion>> GetTemplateVersionsAsync(string templateName, CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Get templates by conversation ID (from metadata)
+    /// </summary>
+    /// <param name="conversationId">Conversation ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>List of templates for the conversation</returns>
+    Task<List<EnvironmentTemplate>> GetTemplatesByConversationIdAsync(string conversationId, CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Get the most recently created template
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Latest template or null if none exist</returns>
+    Task<EnvironmentTemplate?> GetLatestTemplateAsync(CancellationToken cancellationToken = default);
 }

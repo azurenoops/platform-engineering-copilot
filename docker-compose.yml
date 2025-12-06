@@ -34,6 +34,7 @@ services:
   # Platform MCP Server (Multi-Agent Orchestrator)
   # Dual-mode: HTTP for Chat web app, stdio for GitHub Copilot/Claude (external)
   platform-mcp:
+    platform: linux/amd64
     build:
       context: .
       dockerfile: src/Platform.Engineering.Copilot.Mcp/Dockerfile
@@ -108,15 +109,10 @@ services:
       - ~/.azure:/root/.azure:ro
     networks:
       - plaform-engineering-copilot-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5100/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   # Platform Chat Service
   platform-chat:
+    platform: linux/amd64
     build:
       context: .
       dockerfile: src/Platform.Engineering.Copilot.Chat/Dockerfile
@@ -129,9 +125,9 @@ services:
       sqlserver:
         condition: service_healthy
       platform-mcp:
-        condition: service_healthy
+        condition: service_started
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://0.0.0.0:5001
       - ASPNETCORE_HTTP_PORTS=5001
       - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=plaform-engineering-copilotPlatformChatDb;User=sa;Password=plaform-engineering-copilotDB123!;TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
@@ -144,15 +140,10 @@ services:
       - plaform-engineering-copilot-logs:/app/logs
     networks:
       - plaform-engineering-copilot-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   # Admin API Service
   admin-api:
+    platform: linux/amd64
     build:
       context: .
       dockerfile: src/Platform.Engineering.Copilot.Admin.API/Dockerfile
@@ -177,15 +168,10 @@ services:
       - plaform-engineering-copilot-logs:/app/logs
     networks:
       - plaform-engineering-copilot-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5002/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   # Admin Client Service
   admin-client:
+    platform: linux/amd64
     build:
       context: .
       dockerfile: src/Platform.Engineering.Copilot.Admin.Client/Dockerfile
@@ -196,9 +182,9 @@ services:
     restart: unless-stopped
     depends_on:
       admin-api:
-        condition: service_healthy
+        condition: service_started
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://0.0.0.0:5003
       - ASPNETCORE_HTTP_PORTS=5003
       - AdminApi__BaseUrl=http://admin-api:5002
@@ -210,12 +196,6 @@ services:
       - plaform-engineering-copilot-logs:/app/logs
     networks:
       - plaform-engineering-copilot-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5003/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   # Optional: Reverse Proxy (Nginx)
   nginx:
@@ -225,9 +205,9 @@ services:
     restart: unless-stopped
     depends_on:
       platform-mcp:
-        condition: service_healthy
+        condition: service_started
       platform-chat:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "80:80"
       - "443:443"

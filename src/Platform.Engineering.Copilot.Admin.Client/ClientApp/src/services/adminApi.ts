@@ -1044,6 +1044,57 @@ class AdminApiService {
   }
 
   // ==================== END COST MANAGEMENT METHODS ====================
+
+  // ==================== AGENT CONFIGURATION METHODS ====================
+
+  /**
+   * Get all agents grouped by category
+   */
+  async getAgents(): Promise<AgentConfigurationListResponse> {
+    const response = await this.apiClient.get<AgentConfigurationListResponse>('/agents');
+    return response.data;
+  }
+
+  /**
+   * Get a single agent by name
+   */
+  async getAgent(agentName: string): Promise<AgentConfiguration> {
+    const response = await this.apiClient.get<AgentConfiguration>(`/agents/${agentName}`);
+    return response.data;
+  }
+
+  /**
+   * Update agent enabled/disabled status
+   */
+  async updateAgentStatus(agentName: string, isEnabled: boolean, modifiedBy?: string): Promise<AgentConfiguration> {
+    const request: UpdateAgentStatusRequest = { isEnabled, modifiedBy };
+    const response = await this.apiClient.put<AgentConfiguration>(`/agents/${agentName}/status`, request);
+    return response.data;
+  }
+
+  /**
+   * Update agent configuration
+   */
+  async updateAgentConfiguration(agentName: string, request: UpdateAgentConfigurationRequest): Promise<AgentConfiguration> {
+    const response = await this.apiClient.put<AgentConfiguration>(`/agents/${agentName}`, request);
+    return response.data;
+  }
+
+  /**
+   * Sync agent configurations from database to in-memory
+   */
+  async syncAgentConfigurations(): Promise<void> {
+    await this.apiClient.post('/agents/sync');
+  }
+
+  /**
+   * Seed agent configurations from appsettings.json
+   */
+  async seedAgentConfigurations(): Promise<void> {
+    await this.apiClient.post('/agents/seed');
+  }
+
+  // ==================== END AGENT CONFIGURATION METHODS ====================
 }
 
 // ==================== ENVIRONMENT MANAGEMENT TYPES ====================
@@ -1390,5 +1441,54 @@ export interface CostOptimizationRecommendation {
   affectedResources: string[];
 }
 // ==================== END COST MANAGEMENT TYPES ====================
+
+// ==================== AGENT CONFIGURATION TYPES ====================
+export interface AgentConfiguration {
+  agentConfigurationId: number;
+  agentName: string;
+  displayName: string;
+  description?: string;
+  isEnabled: boolean;
+  category: string;
+  iconName?: string;
+  configurationJson?: string;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  modifiedBy?: string;
+  dependencies?: string;
+  lastExecutedAt?: string;
+  healthStatus?: string;
+}
+
+export interface AgentCategoryGroup {
+  category: string;
+  agents: AgentConfiguration[];
+  enabledCount: number;
+  totalCount: number;
+}
+
+export interface AgentConfigurationListResponse {
+  categories: AgentCategoryGroup[];
+  totalAgents: number;
+  enabledAgents: number;
+}
+
+export interface UpdateAgentStatusRequest {
+  isEnabled: boolean;
+  modifiedBy?: string;
+}
+
+export interface UpdateAgentConfigurationRequest {
+  displayName?: string;
+  description?: string;
+  isEnabled?: boolean;
+  configurationJson?: string;
+  iconName?: string;
+  displayOrder?: number;
+  dependencies?: string;
+  modifiedBy?: string;
+}
+// ==================== END AGENT CONFIGURATION TYPES ====================
 
 export default new AdminApiService();

@@ -42,7 +42,8 @@ public class TerraformAzureContainerInstancesModuleGenerator
         var app = request.Application ?? new ApplicationSpec();
         var deployment = request.Deployment ?? new DeploymentSpec();
         
-        sb.AppendLine("# Container Group Configuration");
+        sb.AppendLine("# Container Group Configuration - FedRAMP Compliant");
+        sb.AppendLine("# Implements: SC-7 (Network Isolation), AC-3 (Managed Identity), AU-2 (Logging), SC-8 (TLS)");
         sb.AppendLine("# Azure Container Instances - serverless container deployment");
         sb.AppendLine();
         sb.AppendLine("resource \"azurerm_container_group\" \"main\" {");

@@ -1,8 +1,8 @@
 # Knowledge Base Agent Test Suite
 
-**Last Updated:** November 13, 2025  
+**Last Updated:** December 2, 2025  
 **Agent:** KnowledgeBase  
-**Plugin Functions:** 18 total  
+**Plugin Functions:** 20 total  
 **Purpose:** Comprehensive testing of all Knowledge Base Agent capabilities
 
 ## 📋 Overview
@@ -459,9 +459,46 @@ Explain NIST AC-2 and scan my subscription for compliance
 
 ---
 
+### 9️⃣ Azure Documentation & Best Practices (2 functions)
+
+#### Test KB-9.1: Search Azure Documentation
+```
+Search Azure docs for AKS private cluster networking
+```
+**Expected Function:** `search_azure_documentation`  
+**Expected Output:**
+- ✅ Relevant documentation excerpts
+- ✅ Configuration examples
+- ✅ Links to official docs
+- ✅ Step-by-step guides
+
+**Validation:**
+- ✅ Accurate search results
+- ✅ Azure-specific content
+- ✅ Official Microsoft documentation
+
+---
+
+#### Test KB-9.2: Get Resource Best Practices
+```
+What are the best practices for my storage account?
+```
+**Expected Function:** `get_resource_best_practices`  
+**Expected Output:**
+- ✅ Resource-specific best practices
+- ✅ Azure MCP recommendations
+- ✅ Security hardening steps
+- ✅ Cost optimization tips
+
+**Validation:**
+- ✅ Relevant best practices
+- ✅ Actionable recommendations
+
+---
+
 ## 🚨 Anti-Patterns (Should NOT Work This Way)
 
-### ❌ Test KB-9.1: Assessment Request to Knowledge Base
+### ❌ Test KB-10.1: Assessment Request to Knowledge Base
 ```
 Check my subscription for NIST 800-53 compliance
 ```
@@ -470,7 +507,7 @@ Check my subscription for NIST 800-53 compliance
 
 ---
 
-### ❌ Test KB-9.2: Resource Creation Request
+### ❌ Test KB-10.2: Resource Creation Request
 ```
 Deploy infrastructure with NIST controls
 ```
@@ -545,6 +582,6 @@ For each Knowledge Base Agent test, verify:
 
 ---
 
-**Last Updated:** November 13, 2025  
-**Test Coverage:** 18 functions, 30+ test cases  
+**Last Updated:** December 2, 2025  
+**Test Coverage:** 20 functions, 32+ test cases  
 **Status:** Knowledge Base Agent routing FIXED and ready for testing

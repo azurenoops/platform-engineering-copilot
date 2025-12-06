@@ -26,6 +26,7 @@ using Platform.Engineering.Copilot.Core.Services.Validation.Validators;
 using Platform.Engineering.Copilot.Core.Services.ServiceCreation;
 using Platform.Engineering.Copilot.Core.Interfaces.Validation;
 using Platform.Engineering.Copilot.Core.Configuration;
+using Platform.Engineering.Copilot.Core.Data.Repositories;
 
 namespace Platform.Engineering.Copilot.Core.Extensions;
 
@@ -148,6 +149,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IConfigurationValidator, VMConfigValidator>();
         
         services.AddScoped<IAzureSecurityConfigurationService, AzureSecurityConfigurationService>();
+        
+        // Register Repository services (required by Storage services)
+        services.AddScoped<IEnvironmentTemplateRepository, EnvironmentTemplateRepository>();
+        services.AddScoped<IEnvironmentDeploymentRepository, EnvironmentDeploymentRepository>();
+        services.AddScoped<IComplianceAssessmentRepository, ComplianceAssessmentRepository>();
         
         // Register Template Storage Service (required by domain services)
         services.AddScoped<ITemplateStorageService, Data.Services.TemplateStorageService>();

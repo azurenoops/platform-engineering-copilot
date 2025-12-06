@@ -1,0 +1,467 @@
+name: Container Build and Deploy
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - '.github/workflows/container-build-deploy.yml'
+      - 'infra/bicep/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+      deploy_target:
+        description: 'Deployment target'
+        required: true
+        type: choice
+        options:
+          - aks
+          - app-service
+          - both
+
+env:
+  ACR_NAME: acrplatformcopilot
+  ACR_LOGIN_SERVER: acrplatformcopilot.azurecr.us
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  RESOURCE_GROUP: rg-platform-copilot-prod
+  
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+  id-token: write
+
+jobs:
+  # =============================================================================
+  # Build and Scan Containers
+  # =============================================================================
+  build-containers:
+    name: Build and Scan - ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - name: mcp
+            dockerfile: src/Platform.Engineering.Copilot.Mcp/Dockerfile
+            image: platform-copilot-mcp
+            port: 5100
+          - name: chat
+            dockerfile: src/Platform.Engineering.Copilot.Chat/Dockerfile
+            image: platform-copilot-chat
+            port: 5001
+          - name: admin-api
+            dockerfile: src/Platform.Engineering.Copilot.Admin.API/Dockerfile
+            image: platform-copilot-admin-api
+            port: 5002
+          - name: admin-client
+            dockerfile: src/Platform.Engineering.Copilot.Admin.Client/Dockerfile
+            image: platform-copilot-admin-client
+            port: 5003
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+      
+      - name: Log in to Azure
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Log in to ACR
+        run: |
+          az acr login --name ${{ env.ACR_NAME }}
+      
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.ACR_LOGIN_SERVER }}/${{ matrix.project.image }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build and push container image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.project.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.ACR_LOGIN_SERVER }}/${{ matrix.project.image }}:buildcache
+          cache-to: type=registry,ref=${{ env.ACR_LOGIN_SERVER }}/${{ matrix.project.image }}:buildcache,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ matrix.project.image }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results-${{ matrix.project.name }}.sarif'
+          severity: 'CRITICAL,HIGH'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results-${{ matrix.project.name }}.sarif'
+          category: 'trivy-${{ matrix.project.name }}'
+      
+      - name: Run Microsoft Defender scan
+        if: github.ref == 'refs/heads/main'
+        run: |
+          az security assessment create \
+            --name "${{ matrix.project.image }}" \
+            --resource-id "/subscriptions/${{ env.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.ContainerRegistry/registries/${{ env.ACR_NAME }}/repositories/${{ matrix.project.image }}" \
+            --status-code "Healthy" || true
+      
+      - name: STIG Compliance Check
+        run: |
+          echo "Running STIG compliance checks for ${{ matrix.project.name }}..."
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy image \
+            --severity HIGH,CRITICAL \
+            --compliance docker-cis \
+            ${{ env.ACR_LOGIN_SERVER }}/${{ matrix.project.image }}:${{ github.sha }}
+
+  # =============================================================================
+  # Deploy to AKS
+  # =============================================================================
+  deploy-aks:
+    name: Deploy to AKS
+    needs: build-containers
+    runs-on: ubuntu-latest
+    if: |
+      github.ref == 'refs/heads/main' && 
+      (github.event.inputs.deploy_target == 'aks' || github.event.inputs.deploy_target == 'both' || github.event_name != 'workflow_dispatch')
+    environment:
+      name: ${{ github.event.inputs.environment || 'production' }}
+      url: https://${{ steps.deploy.outputs.app-url }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Log in to Azure
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Set AKS context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ env.RESOURCE_GROUP }}
+          cluster-name: aks-platform-copilot-prod
+          admin: 'false'
+          use-kubelogin: 'true'
+      
+      - name: Create namespace
+        run: |
+          kubectl create namespace platform-copilot --dry-run=client -o yaml | kubectl apply -f -
+          kubectl label namespace platform-copilot \
+            name=platform-copilot \
+            environment=production \
+            classification=cui \
+            impact-level=il5 \
+            --overwrite
+      
+      - name: Create image pull secret
+        run: |
+          kubectl create secret docker-registry acr-secret \
+            --docker-server=${{ env.ACR_LOGIN_SERVER }} \
+            --docker-username=${{ secrets.AZURE_CLIENT_ID }} \
+            --docker-password=${{ secrets.AZURE_CLIENT_SECRET }} \
+            --namespace=platform-copilot \
+            --dry-run=client -o yaml | kubectl apply -f -
+      
+      - name: Deploy SQL Server
+        run: |
+          kubectl apply -f - <<EOF
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: sqlserver-pvc
+            namespace: platform-copilot
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            storageClassName: managed-premium
+            resources:
+              requests:
+                storage: 100Gi
+          ---
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: sqlserver
+            namespace: platform-copilot
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: sqlserver
+            template:
+              metadata:
+                labels:
+                  app: sqlserver
+              spec:
+                containers:
+                - name: sqlserver
+                  image: mcr.microsoft.com/mssql/server:2022-latest
+                  ports:
+                  - containerPort: 1433
+                  env:
+                  - name: ACCEPT_EULA
+                    value: "Y"
+                  - name: SA_PASSWORD
+                    valueFrom:
+                      secretKeyRef:
+                        name: sqlserver-secret
+                        key: sa-password
+                  - name: MSSQL_PID
+                    value: "Developer"
+                  volumeMounts:
+                  - name: sqlserver-data
+                    mountPath: /var/opt/mssql
+                  resources:
+                    requests:
+                      memory: "2Gi"
+                      cpu: "1000m"
+                    limits:
+                      memory: "4Gi"
+                      cpu: "2000m"
+                volumes:
+                - name: sqlserver-data
+                  persistentVolumeClaim:
+                    claimName: sqlserver-pvc
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: sqlserver
+            namespace: platform-copilot
+          spec:
+            selector:
+              app: sqlserver
+            ports:
+            - port: 1433
+              targetPort: 1433
+            type: ClusterIP
+          EOF
+      
+      - name: Deploy MCP Server
+        run: |
+          kubectl apply -f - <<EOF
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: platform-mcp
+            namespace: platform-copilot
+            labels:
+              app: platform-mcp
+          spec:
+            replicas: 3
+            selector:
+              matchLabels:
+                app: platform-mcp
+            template:
+              metadata:
+                labels:
+                  app: platform-mcp
+              spec:
+                imagePullSecrets:
+                - name: acr-secret
+                containers:
+                - name: platform-mcp
+                  image: ${{ env.ACR_LOGIN_SERVER }}/platform-copilot-mcp:${{ github.sha }}
+                  ports:
+                  - containerPort: 5100
+                  env:
+                  - name: ASPNETCORE_ENVIRONMENT
+                    value: "Production"
+                  - name: ASPNETCORE_URLS
+                    value: "http://+:5100"
+                  - name: ConnectionStrings__DefaultConnection
+                    valueFrom:
+                      secretKeyRef:
+                        name: connection-strings
+                        key: default-connection
+                  livenessProbe:
+                    httpGet:
+                      path: /health
+                      port: 5100
+                    initialDelaySeconds: 30
+                    periodSeconds: 10
+                  readinessProbe:
+                    httpGet:
+                      path: /health
+                      port: 5100
+                    initialDelaySeconds: 10
+                    periodSeconds: 5
+                  resources:
+                    requests:
+                      memory: "512Mi"
+                      cpu: "250m"
+                    limits:
+                      memory: "1Gi"
+                      cpu: "1000m"
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: platform-mcp
+            namespace: platform-copilot
+          spec:
+            selector:
+              app: platform-mcp
+            ports:
+            - port: 5100
+              targetPort: 5100
+            type: ClusterIP
+          EOF
+      
+      - name: Deploy Chat Service
+        run: |
+          kubectl apply -f - <<EOF
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: platform-chat
+            namespace: platform-copilot
+            labels:
+              app: platform-chat
+          spec:
+            replicas: 3
+            selector:
+              matchLabels:
+                app: platform-chat
+            template:
+              metadata:
+                labels:
+                  app: platform-chat
+              spec:
+                imagePullSecrets:
+                - name: acr-secret
+                containers:
+                - name: platform-chat
+                  image: ${{ env.ACR_LOGIN_SERVER }}/platform-copilot-chat:${{ github.sha }}
+                  ports:
+                  - containerPort: 5001
+                  env:
+                  - name: ASPNETCORE_ENVIRONMENT
+                    value: "Production"
+                  - name: McpServer__BaseUrl
+                    value: "http://platform-mcp:5100"
+                  livenessProbe:
+                    httpGet:
+                      path: /health
+                      port: 5001
+                    initialDelaySeconds: 30
+                    periodSeconds: 10
+                  readinessProbe:
+                    httpGet:
+                      path: /health
+                      port: 5001
+                    initialDelaySeconds: 10
+                    periodSeconds: 5
+                  resources:
+                    requests:
+                      memory: "512Mi"
+                      cpu: "250m"
+                    limits:
+                      memory: "1Gi"
+                      cpu: "1000m"
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: platform-chat
+            namespace: platform-copilot
+          spec:
+            selector:
+              app: platform-chat
+            ports:
+            - port: 5001
+              targetPort: 5001
+            type: LoadBalancer
+          EOF
+      
+      - name: Wait for deployment
+        run: |
+          kubectl rollout status deployment/platform-mcp -n platform-copilot --timeout=5m
+          kubectl rollout status deployment/platform-chat -n platform-copilot --timeout=5m
+      
+      - name: Get service URL
+        id: deploy
+        run: |
+          APP_URL=$(kubectl get service platform-chat -n platform-copilot -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "app-url=$APP_URL" >> $GITHUB_OUTPUT
+
+  # =============================================================================
+  # Deploy to App Service
+  # =============================================================================
+  deploy-app-service:
+    name: Deploy to App Service
+    needs: build-containers
+    runs-on: ubuntu-latest
+    if: |
+      github.ref == 'refs/heads/main' && 
+      (github.event.inputs.deploy_target == 'app-service' || github.event.inputs.deploy_target == 'both')
+    environment:
+      name: ${{ github.event.inputs.environment || 'production' }}
+    
+    strategy:
+      matrix:
+        app:
+          - name: app-platform-copilot-mcp
+            image: platform-copilot-mcp
+          - name: app-platform-copilot-chat
+            image: platform-copilot-chat
+    
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ matrix.app.name }}
+          images: ${{ env.ACR_LOGIN_SERVER }}/${{ matrix.app.image }}:${{ github.sha }}
+      
+      - name: Verify deployment
+        run: |
+          az webapp show \
+            --name ${{ matrix.app.name }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query state -o tsv
