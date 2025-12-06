@@ -4,23 +4,24 @@ using Azure.Core;
 using Azure.ResourceManager.Resources;
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Models.Compliance;
-using Platform.Engineering.Copilot.Core.Interfaces.Infrastructure;
 using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
 using Microsoft.Extensions.Options;
 using Platform.Engineering.Copilot.Compliance.Core.Configuration;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
-using System.Text.Json;
 using System.Text.RegularExpressions;
+using Platform.Engineering.Copilot.Core.Interfaces.Compliance.Remediation;
+using Platform.Engineering.Copilot.Core.Constants;
+using AzureTypes = Platform.Engineering.Copilot.Core.Constants.ComplianceConstants.AzureResourceTypes;
 
 namespace Platform.Engineering.Copilot.Compliance.Agent.Services.Compliance;
 /// <summary>
 /// Comprehensive ATO Remediation Engine implementation for orchestrating compliance remediation workflows
 /// </summary>
-public class AtoRemediationEngine : IAtoRemediationEngine
+public class AtoRemediationEngine : IRemediationEngine
 {
     private readonly IAzureResourceService _resourceService;
-    private readonly IInfrastructureRemediationService _infrastructureService;
+    private readonly IComplianceRemediationService _complianceRemediationService;
     private readonly ILogger<AtoRemediationEngine> _logger;
     private readonly ComplianceAgentOptions _options;
     private readonly IChatCompletionService? _chatCompletion;
@@ -43,7 +44,7 @@ public class AtoRemediationEngine : IAtoRemediationEngine
 
     public AtoRemediationEngine(        
         IAzureResourceService resourceService,
-        IInfrastructureRemediationService infrastructureService,
+        Copilot.Core.Interfaces.Compliance.Remediation.IComplianceRemediationService complianceRemediationService,
         ILogger<AtoRemediationEngine> logger,
         IOptions<ComplianceAgentOptions> options,
         INistRemediationStepsService nistRemediationSteps,
@@ -55,7 +56,7 @@ public class AtoRemediationEngine : IAtoRemediationEngine
         IScriptSanitizationService? sanitizationService = null)
     {        
         _resourceService = resourceService;
-        _infrastructureService = infrastructureService;
+        _complianceRemediationService = complianceRemediationService ?? throw new ArgumentNullException(nameof(complianceRemediationService));
         _logger = logger;
         _options = options.Value;
         _nistRemediationSteps = nistRemediationSteps ?? throw new ArgumentNullException(nameof(nistRemediationSteps));
@@ -277,18 +278,18 @@ public class AtoRemediationEngine : IAtoRemediationEngine
                         }
                     }
                     
-                    // Priority 2: Check if Infrastructure Remediation Service can handle this finding
+                    // Priority 2: Check if Compliance Remediation Service can handle this finding
                     if (!execution.Success)
                     {
-                        var canInfrastructureRemediate = await _infrastructureService.CanAutoRemediateAsync(finding);
+                        var canInfrastructureRemediate = await _complianceRemediationService.CanAutoRemediateAsync(finding);
                         
                         if (canInfrastructureRemediate)
                         {
-                            _logger.LogInformation("🔧 Using Infrastructure Remediation Service for finding {FindingId}", finding.Id);
+                            _logger.LogInformation("🔧 Using Compliance Remediation Service for finding {FindingId}", finding.Id);
                         
-                            // Use Infrastructure Service for Azure resource-level remediation
-                            var infraPlan = await _infrastructureService.GenerateRemediationPlanAsync(finding, null, cancellationToken);
-                            var infraResult = await _infrastructureService.ExecuteRemediationAsync(infraPlan, options.DryRun, cancellationToken);
+                            // Use Compliance Service for Azure resource-level remediation
+                            var infraPlan = await _complianceRemediationService.GenerateRemediationPlanAsync(finding, null, cancellationToken);
+                            var infraResult = await _complianceRemediationService.ExecuteRemediationAsync(infraPlan, options.DryRun, cancellationToken);
                             
                             // Map infrastructure results to ATO execution results
                             execution.StepsExecuted = infraResult.ActionResults.Select((a, index) => new RemediationStep
@@ -804,17 +805,17 @@ public class AtoRemediationEngine : IAtoRemediationEngine
 
         try
         {
-            // Try Infrastructure Service first for supported actions
-            if (await _infrastructureService.CanAutoRemediateAsync(finding))
+            // Try Compliance Service first for supported actions
+            if (await _complianceRemediationService.CanAutoRemediateAsync(finding))
             {
-                _logger.LogInformation("🔧 Delegating action {ActionType} to Infrastructure Service", action.ToolCommand);
+                _logger.LogInformation("🔧 Delegating action {ActionType} to Compliance Service", action.ToolCommand);
                 
-                var infraPlan = await _infrastructureService.GenerateRemediationPlanAsync(finding, null, cancellationToken);
-                var infraResult = await _infrastructureService.ExecuteRemediationAsync(infraPlan, false, cancellationToken);
+                var infraPlan = await _complianceRemediationService.GenerateRemediationPlanAsync(finding, null, cancellationToken);
+                var infraResult = await _complianceRemediationService.ExecuteRemediationAsync(infraPlan, false, cancellationToken);
                 
                 return infraResult.IsSuccess 
-                    ? $"Infrastructure Service: {string.Join("; ", infraResult.ActionResults.Select(r => r.Action.Description))}"
-                    : $"Infrastructure Service failed: {string.Join("; ", infraResult.Errors)}";
+                    ? $"Compliance Service: {string.Join("; ", infraResult.ActionResults.Select(r => r.Action.Description))}"
+                    : $"Compliance Service failed: {string.Join("; ", infraResult.Errors)}";
             }
 
             // Fallback to legacy action execution for unsupported actions
@@ -912,14 +913,14 @@ public class AtoRemediationEngine : IAtoRemediationEngine
 
     /// <summary>
     /// Legacy method - returns automation script paths that were never implemented.
-    /// Actual remediation uses IInfrastructureRemediationService via Azure ARM APIs.
+    /// Actual remediation uses IComplianceRemediationService via Azure ARM APIs.
     /// This is only used for display purposes when RemediationActions are not populated.
     /// </summary>
     private string? GetAutomationScript(AtoFinding finding)
     {
         // NOTE: These PowerShell scripts do not exist and are never executed.
         // Actual auto-remediation flows through:
-        // 1. IInfrastructureRemediationService.ExecuteRemediationAsync() - Primary path
+        // 1. IComplianceRemediationService.ExecuteRemediationAsync() - Primary path
         // 2. finding.RemediationActions - Populated by FindingAutoRemediationService
         // This method exists only for backward compatibility in fallback scenarios.
         
@@ -1787,10 +1788,10 @@ public class AtoRemediationEngine : IAtoRemediationEngine
         // Base effort on finding type and complexity
         return finding.ResourceType switch
         {
-            "Microsoft.Storage/storageAccounts" => TimeSpan.FromHours(2),
-            "Microsoft.Compute/virtualMachines" => TimeSpan.FromHours(4),
-            "Microsoft.Network/networkSecurityGroups" => TimeSpan.FromHours(3),
-            "Microsoft.KeyVault/vaults" => TimeSpan.FromHours(2),
+            AzureTypes.StorageAccount => TimeSpan.FromHours(2),
+            AzureTypes.VirtualMachine => TimeSpan.FromHours(4),
+            AzureTypes.NetworkSecurityGroup => TimeSpan.FromHours(3),
+            AzureTypes.KeyVault => TimeSpan.FromHours(2),
             _ => TimeSpan.FromHours(1)
         };
     }

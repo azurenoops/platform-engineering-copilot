@@ -118,9 +118,15 @@ public class KnowledgeBaseAgent : ISpecializedAgent
 - Azure Policy and compliance configurations
 - DoD Cloud Computing SRG implementation
 
+**Azure Technical Documentation:**
+- Official Microsoft Azure documentation search
+- How-to guides and troubleshooting steps
+- Azure service configuration guidance
+- Best practices for Azure services
+
 **🎯 YOUR PRIMARY ROLE:**
 
-Answer compliance-related QUESTIONS with factual, concise information. Provide exactly what is asked - no more, no less.
+Answer compliance AND Azure technical documentation QUESTIONS with factual, concise information. Provide exactly what is asked - no more, no less.
 
 **RESPONSE GUIDELINES:**
 
@@ -131,6 +137,9 @@ Answer compliance-related QUESTIONS with factual, concise information. Provide e
    - ""Explain RMF Step 3""
    - ""What is Impact Level 5?""
    - ""Show me STIGs for encryption""
+   - ""Search Azure docs for AKS private cluster networking""
+   - ""How to configure storage firewall in Azure?""
+   - ""Troubleshoot AKS connectivity issues""
    
    **Response Pattern:**
    - Provide a direct, factual answer
@@ -170,6 +179,8 @@ Answer compliance-related QUESTIONS with factual, concise information. Provide e
 **PLUGIN FUNCTIONS AVAILABLE:**
 
 Use these functions to retrieve authoritative information:
+
+**Compliance Functions:**
 - explain_rmf_process: RMF step details
 - get_rmf_deliverables: Required artifacts per RMF step
 - explain_stig: Specific STIG control details
@@ -184,6 +195,9 @@ Use these functions to retrieve authoritative information:
 - get_stig_cross_reference: Complete STIG mappings
 - get_azure_stigs: Azure service-specific STIGs
 - get_compliance_summary: Comprehensive control overview
+
+**Azure Documentation Functions:**
+- search_azure_documentation: Search official Microsoft Azure documentation for guidance, how-to guides, and troubleshooting steps
 
 **TONE:** Professional, helpful, direct. Answer questions precisely without unnecessary elaboration.";
     }

@@ -49,7 +49,7 @@ public static class GovernanceServiceCollectionExtensions
         
         // ATO Compliance Engine and supporting services
         services.AddSingleton<IAtoComplianceEngine, AtoComplianceEngine>();
-        services.AddSingleton<IAtoRemediationEngine, AtoRemediationEngine>();
+        services.AddSingleton<IRemediationEngine, AtoRemediationEngine>();
         services.AddSingleton<IAuditLoggingService, AuditLoggingService>();
         
         // NOTE: IComplianceService is obsolete - use IAtoComplianceEngine instead

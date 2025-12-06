@@ -2,7 +2,7 @@
   "name": "platform-copilot-github",
   "displayName": "Platform Engineering Copilot for GitHub Copilot",
   "description": "GitHub Copilot Chat extension for Platform Engineering - AI-powered Azure infrastructure management",
-  "version": "0.6.35",
+  "version": "0.8.0",
   "publisher": "Microsoft",
   "repository": {
     "type": "git",
@@ -90,7 +90,7 @@
       "properties": {
         "platform-copilot.apiUrl": {
           "type": "string",
-          "default": "http://localhost:5100",
+          "default": "http://platengcopilot-dev-platform-mcp.usgovvirginia.azurecontainer.console.azure.us:5100",
           "description": "MCP HTTP endpoint (legacy label)"
         },
         "platform-copilot.apiKey": {

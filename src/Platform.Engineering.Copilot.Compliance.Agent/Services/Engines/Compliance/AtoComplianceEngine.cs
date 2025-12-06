@@ -9,13 +9,11 @@ using System.Text.Json;
 using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
 using Platform.Engineering.Copilot.Core.Models.Azure;
 using Platform.Engineering.Copilot.Core.Interfaces.KnowledgeBase;
-using Platform.Engineering.Copilot.Core.Models.KnowledgeBase;
 using Azure.Core;
-using Azure.ResourceManager.Resources;
-using Azure;
-using Platform.Engineering.Copilot.Core.Data.Context;
-using Microsoft.EntityFrameworkCore;
 using Platform.Engineering.Copilot.Compliance.Core.Data.Entities;
+using Platform.Engineering.Copilot.Core.Helpers;
+using Platform.Engineering.Copilot.Core.Constants;
+using CF = Platform.Engineering.Copilot.Core.Constants.ComplianceConstants.ControlFamilies;
 
 namespace Platform.Engineering.Copilot.Compliance.Agent.Services.Compliance;
 
@@ -34,9 +32,9 @@ public class AtoComplianceEngine : IAtoComplianceEngine
     private readonly ComplianceAgentOptions _options;
     private readonly Dictionary<string, IComplianceScanner> _scanners;
     private readonly Dictionary<string, IEvidenceCollector> _evidenceCollectors;
-    private readonly PlatformEngineeringCopilotContext _dbContext;
+    private readonly IAssessmentService _assessmentService;
     private readonly IDefenderForCloudService _defenderForCloudService;
-    private readonly EvidenceStorageService _evidenceStorage;
+    private readonly IEvidenceStorageService _evidenceStorage;
 
     // Knowledge Base Services for enhanced compliance assessment
     private readonly IRmfKnowledgeService _rmfKnowledgeService;
@@ -57,13 +55,13 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         // IAtoComplianceReportService reportService, // TODO: Implement this service
         ComplianceMetricsService metricsService,
         IOptions<ComplianceAgentOptions> options,
-        PlatformEngineeringCopilotContext dbContext,
+        IAssessmentService assessmentService,
         IRmfKnowledgeService rmfKnowledgeService,
         IStigKnowledgeService stigKnowledgeService,
         IDoDInstructionService dodInstructionService,
         IDoDWorkflowService dodWorkflowService,
         IDefenderForCloudService defenderForCloudService,
-        EvidenceStorageService evidenceStorage,
+        IEvidenceStorageService evidenceStorage,
         IStigValidationService stigValidationService)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -74,7 +72,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         // _reportService = reportService ?? throw new ArgumentNullException(nameof(reportService));
         _metricsService = metricsService ?? throw new ArgumentNullException(nameof(metricsService));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
-        _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+        _assessmentService = assessmentService ?? throw new ArgumentNullException(nameof(assessmentService));
 
         _rmfKnowledgeService = rmfKnowledgeService ?? throw new ArgumentNullException(nameof(rmfKnowledgeService));
         _stigKnowledgeService = stigKnowledgeService ?? throw new ArgumentNullException(nameof(stigKnowledgeService));
@@ -141,12 +139,8 @@ public class AtoComplianceEngine : IAtoComplianceEngine
             _logger.LogInformation("Cache warmup completed in {ElapsedMs}ms for {Scope} in subscription {SubscriptionId}",
                 cacheWarmupStopwatch.ElapsedMilliseconds, scope, subscriptionId);
 
-            // Get all NIST control families - using known families
-            var controlFamilies = new List<string>
-            {
-                "AC", "AU", "SC", "SI", "CM", "CP", "IA", "IR", "MA", "MP",
-                "PE", "PL", "PS", "RA", "SA", "CA", "AT", "PM"
-            };
+            // Get all NIST control families from constants
+            var controlFamilies = ComplianceConstants.ControlFamilies.All.ToList();
 
             // Report initial progress
             progress?.Report(new AssessmentProgress
@@ -705,16 +699,16 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         var gatewayOptions = Options.Create(_options.Gateway);
         return new Dictionary<string, IComplianceScanner>
         {
-            { "AC", new AccessControlScanner(_logger, _azureResourceService) },
-            { "AU", new AuditScanner(_logger, _azureResourceService, gatewayOptions) },
-            { "SC", new SystemCommunicationScanner(_logger, _azureResourceService) },
-            { "SI", new SystemIntegrityScanner(_logger, _azureResourceService) },
-            { "CP", new ContingencyPlanningScanner(_logger, _azureResourceService) },
-            { "IA", new IdentificationAuthenticationScanner(_logger, _azureResourceService) },
-            { "CM", new ConfigurationManagementScanner(_logger, _azureResourceService) },
-            { "IR", new IncidentResponseScanner(_logger, _azureResourceService) },
-            { "RA", new RiskAssessmentScanner(_logger, _azureResourceService, _defenderForCloudService) },
-            { "CA", new SecurityAssessmentScanner(_logger, _azureResourceService, _defenderForCloudService) },
+            { CF.AccessControl, new AccessControlScanner(_logger, _azureResourceService) },
+            { CF.AuditAccountability, new AuditScanner(_logger, _azureResourceService, gatewayOptions) },
+            { CF.SystemCommunications, new SystemCommunicationScanner(_logger, _azureResourceService) },
+            { CF.SystemInformationIntegrity, new SystemIntegrityScanner(_logger, _azureResourceService) },
+            { CF.ContingencyPlanning, new ContingencyPlanningScanner(_logger, _azureResourceService) },
+            { CF.IdentificationAuthentication, new IdentificationAuthenticationScanner(_logger, _azureResourceService) },
+            { CF.ConfigurationManagement, new ConfigurationManagementScanner(_logger, _azureResourceService) },
+            { CF.IncidentResponse, new IncidentResponseScanner(_logger, _azureResourceService) },
+            { CF.RiskAssessment, new RiskAssessmentScanner(_logger, _azureResourceService, _defenderForCloudService) },
+            { CF.SecurityAssessment, new SecurityAssessmentScanner(_logger, _azureResourceService, _defenderForCloudService) },
             { "Default", new DefaultComplianceScanner(_logger) }
         };
     }
@@ -723,16 +717,16 @@ public class AtoComplianceEngine : IAtoComplianceEngine
     {
         return new Dictionary<string, IEvidenceCollector>
         {
-            { "AC", new AccessControlEvidenceCollector(_logger, _azureResourceService) },
-            { "AU", new AuditEvidenceCollector(_logger, _azureResourceService) },
-            { "SC", new SecurityEvidenceCollector(_logger, _azureResourceService) },
-            { "CP", new ContingencyPlanningEvidenceCollector(_logger, _azureResourceService) },
-            { "IA", new IdentificationAuthenticationEvidenceCollector(_logger, _azureResourceService) },
-            { "CM", new ConfigurationManagementEvidenceCollector(_logger, _azureResourceService) },
-            { "IR", new IncidentResponseEvidenceCollector(_logger, _azureResourceService) },
-            { "SI", new SystemIntegrityEvidenceCollector(_logger, _azureResourceService) },
-            { "RA", new RiskAssessmentEvidenceCollector(_logger, _azureResourceService, _defenderForCloudService) },
-            { "CA", new SecurityAssessmentEvidenceCollector(_logger, _azureResourceService, _defenderForCloudService) },
+            { CF.AccessControl, new AccessControlEvidenceCollector(_logger, _azureResourceService) },
+            { CF.AuditAccountability, new AuditEvidenceCollector(_logger, _azureResourceService) },
+            { CF.SystemCommunications, new SecurityEvidenceCollector(_logger, _azureResourceService) },
+            { CF.ContingencyPlanning, new ContingencyPlanningEvidenceCollector(_logger, _azureResourceService) },
+            { CF.IdentificationAuthentication, new IdentificationAuthenticationEvidenceCollector(_logger, _azureResourceService) },
+            { CF.ConfigurationManagement, new ConfigurationManagementEvidenceCollector(_logger, _azureResourceService) },
+            { CF.IncidentResponse, new IncidentResponseEvidenceCollector(_logger, _azureResourceService) },
+            { CF.SystemInformationIntegrity, new SystemIntegrityEvidenceCollector(_logger, _azureResourceService) },
+            { CF.RiskAssessment, new RiskAssessmentEvidenceCollector(_logger, _azureResourceService, _defenderForCloudService) },
+            { CF.SecurityAssessment, new SecurityAssessmentEvidenceCollector(_logger, _azureResourceService, _defenderForCloudService) },
             { "Default", new DefaultEvidenceCollector(_logger) }
         };
     }
@@ -746,7 +740,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         var assessment = new ControlFamilyAssessment
         {
             ControlFamily = family,
-            FamilyName = GetControlFamilyName(family),
+            FamilyName = ComplianceHelpers.GetControlFamilyName(family),
             AssessmentTime = DateTimeOffset.UtcNow,
             Findings = new List<AtoFinding>()
         };
@@ -867,87 +861,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         string subscriptionId,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            // Get the latest assessment to determine monitored controls
-            var latestAssessment = await _dbContext.ComplianceAssessments
-                .Include(a => a.Findings)
-                .Where(a => a.SubscriptionId == subscriptionId && a.Status == "Completed")
-                .OrderByDescending(a => a.CompletedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (latestAssessment == null)
-            {
-                _logger.LogDebug("No assessments found for subscription {SubscriptionId}", subscriptionId);
-                return new List<MonitoredControl>();
-            }
-
-            // Extract unique control IDs from findings
-            var controlIds = latestAssessment.Findings
-                .Where(f => !string.IsNullOrEmpty(f.ControlId))
-                .Select(f => f.ControlId!)
-                .Distinct()
-                .ToList();
-
-            // Also extract from AffectedNistControls JSON
-            var affectedControls = latestAssessment.Findings
-                .Where(f => !string.IsNullOrEmpty(f.AffectedNistControls))
-                .SelectMany(f => 
-                {
-                    try
-                    {
-                        return JsonSerializer.Deserialize<List<string>>(f.AffectedNistControls!) ?? new List<string>();
-                    }
-                    catch
-                    {
-                        return new List<string>();
-                    }
-                })
-                .Distinct()
-                .ToList();
-
-            // Combine all control IDs
-            var allControlIds = controlIds.Concat(affectedControls).Distinct().ToList();
-
-            // Build MonitoredControl objects
-            var monitoredControls = allControlIds.Select(controlId =>
-            {
-                // Find findings for this control
-                var controlFindings = latestAssessment.Findings
-                    .Where(f => f.ControlId == controlId || 
-                               (!string.IsNullOrEmpty(f.AffectedNistControls) && 
-                                f.AffectedNistControls.Contains(controlId)))
-                    .ToList();
-
-                // Determine compliance status based on findings
-                var hasFailures = controlFindings.Any(f => 
-                    f.ComplianceStatus == "NonCompliant" || 
-                    f.Severity == "Critical" || 
-                    f.Severity == "High");
-
-                // Detect drift if there are new or unresolved findings
-                var hasDrift = controlFindings.Any(f => f.ResolvedAt == null);
-
-                return new MonitoredControl
-                {
-                    ControlId = controlId,
-                    LastChecked = latestAssessment.CompletedAt ?? DateTimeOffset.UtcNow,
-                    ComplianceStatus = hasFailures ? "NonCompliant" : "Compliant",
-                    DriftDetected = hasDrift,
-                    AutoRemediationEnabled = controlFindings.Any(f => f.IsAutomaticallyFixable)
-                };
-            }).ToList();
-
-            _logger.LogInformation("Retrieved {Count} monitored controls for subscription {SubscriptionId}",
-                monitoredControls.Count, subscriptionId);
-
-            return monitoredControls;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to retrieve monitored controls for subscription {SubscriptionId}", subscriptionId);
-            return new List<MonitoredControl>();
-        }
+        return await _assessmentService.GetMonitoredControlsAsync(subscriptionId, cancellationToken);
     }
 
     private async Task<List<ComplianceAlert>> GetControlAlertsAsync(
@@ -955,53 +869,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         string controlId,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            // Query findings for this control that are unresolved and high priority
-            var findings = await _dbContext.ComplianceFindings
-                .Where(f => f.Assessment.SubscriptionId == subscriptionId &&
-                           f.ResolvedAt == null &&
-                           (f.ControlId == controlId || f.AffectedNistControls!.Contains(controlId)) &&
-                           (f.Severity == "Critical" || f.Severity == "High"))
-                .OrderByDescending(f => f.Severity)
-                .ThenByDescending(f => f.DetectedAt)
-                .Take(10) // Limit to top 10 alerts per control
-                .ToListAsync(cancellationToken);
-
-            // Convert findings to ComplianceAlert objects
-            var alerts = findings.Select(f => new ComplianceAlert
-            {
-                AlertId = Guid.NewGuid().ToString(),
-                ControlId = controlId,
-                Type = DetermineAlertType(f.FindingType),
-                Severity = ParseAlertSeverity(f.Severity),
-                SeverityString = f.Severity,
-                Title = f.Title,
-                Message = f.Description,
-                Description = f.Description,
-                AffectedResources = new List<string> 
-                { 
-                    f.ResourceId ?? "Unknown Resource" 
-                }.Where(r => !string.IsNullOrEmpty(r)).ToList(),
-                ActionRequired = !string.IsNullOrEmpty(f.Remediation) 
-                    ? f.Remediation 
-                    : "Review and remediate this finding",
-                AlertTime = f.DetectedAt,
-                DueDate = CalculateAlertDueDate(f.Severity, f.DetectedAt),
-                Acknowledged = false
-            }).ToList();
-
-            _logger.LogDebug("Retrieved {Count} alerts for control {ControlId} in subscription {SubscriptionId}",
-                alerts.Count, controlId, subscriptionId);
-
-            return alerts;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to retrieve alerts for control {ControlId} in subscription {SubscriptionId}",
-                controlId, subscriptionId);
-            return new List<ComplianceAlert>();
-        }
+        return await _assessmentService.GetControlAlertsAsync(subscriptionId, controlId, 10, cancellationToken);
     }
 
     private AlertType DetermineAlertType(string findingType)
@@ -1057,11 +925,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         try
         {
             // Count findings that were auto-remediable and have been resolved
-            var count = await _dbContext.ComplianceFindings
-                .Where(f => f.Assessment.SubscriptionId == subscriptionId &&
-                           f.IsAutomaticallyFixable &&
-                           f.ResolvedAt != null)
-                .CountAsync(cancellationToken);
+            var count = await _assessmentService.CountAutoRemediatedFindingsAsync(subscriptionId, cancellationToken);
 
             return count;
         }
@@ -1103,16 +967,16 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         // Target number of different evidence types we expect for each control family
         return controlFamily switch
         {
-            "AC" => 5,  // Access Control: NSGs, Key Vaults, Log Analytics, RBAC, Conditional Access
-            "AU" => 4,  // Audit: Logs, Retention, Protection, Monitoring
-            "SC" => 5,  // System Communications: Network, Encryption, Certificates, Firewalls, DDoS
-            "IA" => 4,  // Identification & Authentication: MFA, Identity, Access Policies, Authentication
-            "CM" => 4,  // Configuration Management: Config, Baselines, Change Control, Inventory
-            "IR" => 3,  // Incident Response: Response Plans, Detection, Monitoring
-            "RA" => 3,  // Risk Assessment: Assessments, Vulnerabilities, Risks
-            "CA" => 4,  // Security Assessment: Continuous Monitoring, Assessments, Testing, Reviews
-            "SI" => 4,  // System Integrity: Integrity Checks, Malware Protection, Updates, Monitoring
-            "CP" => 3,  // Contingency Planning: Backups, Recovery, Business Continuity
+            CF.AccessControl => 5,  // Access Control: NSGs, Key Vaults, Log Analytics, RBAC, Conditional Access
+            CF.AuditAccountability => 4,  // Audit: Logs, Retention, Protection, Monitoring
+            CF.SystemCommunications => 5,  // System Communications: Network, Encryption, Certificates, Firewalls, DDoS
+            CF.IdentificationAuthentication => 4,  // Identification & Authentication: MFA, Identity, Access Policies, Authentication
+            CF.ConfigurationManagement => 4,  // Configuration Management: Config, Baselines, Change Control, Inventory
+            CF.IncidentResponse => 3,  // Incident Response: Response Plans, Detection, Monitoring
+            CF.RiskAssessment => 3,  // Risk Assessment: Assessments, Vulnerabilities, Risks
+            CF.SecurityAssessment => 4,  // Security Assessment: Continuous Monitoring, Assessments, Testing, Reviews
+            CF.SystemInformationIntegrity => 4,  // System Integrity: Integrity Checks, Malware Protection, Updates, Monitoring
+            CF.ContingencyPlanning => 3,  // Contingency Planning: Backups, Recovery, Business Continuity
             _ => 3      // Default: expect at least 3 different types of evidence
         };
     }
@@ -1130,95 +994,14 @@ public class AtoComplianceEngine : IAtoComplianceEngine
     {
         try
         {
-            // Store in database for persistence
-            var dbAssessment = new ComplianceAssessment
-            {
-                Id = assessment.AssessmentId,
-                SubscriptionId = assessment.SubscriptionId,
-                AssessmentType = "NIST-800-53",
-                Status = "Completed",
-                ComplianceScore = (decimal)assessment.OverallComplianceScore,
-                TotalFindings = assessment.TotalFindings,
-                CriticalFindings = assessment.CriticalFindings,
-                HighFindings = assessment.HighFindings,
-                MediumFindings = assessment.MediumFindings,
-                LowFindings = assessment.LowFindings,
-                InformationalFindings = assessment.InformationalFindings,
-                ExecutiveSummary = assessment.ExecutiveSummary,
-                RiskProfile = JsonSerializer.Serialize(assessment.RiskProfile),
-                Results = JsonSerializer.Serialize(assessment.ControlFamilyResults),
-                Recommendations = assessment.Recommendations != null ? JsonSerializer.Serialize(assessment.Recommendations) : null,
-                InitiatedBy = "ComplianceAgent",
-                StartedAt = assessment.StartTime.DateTime,
-                CompletedAt = assessment.EndTime.DateTime,
-                Duration = assessment.Duration.Ticks // Store as ticks (BIGINT)
-            };
-
-            // Add findings
-            foreach (var familyResult in assessment.ControlFamilyResults.Values)
-            {
-                foreach (var finding in familyResult.Findings)
-                {
-                    var dbFinding = new ComplianceFinding
-                    {
-                        AssessmentId = assessment.AssessmentId,
-                        FindingId = finding.Id,
-                        RuleId = finding.RuleId,
-                        Title = finding.Title ?? finding.Description.Substring(0, Math.Min(200, finding.Description.Length)),
-                        Description = finding.Description,
-                        Severity = finding.Severity.ToString(),
-                        ComplianceStatus = finding.ComplianceStatus.ToString(),
-                        FindingType = finding.FindingType.ToString(),
-                        ResourceId = finding.ResourceId,
-                        ResourceType = finding.ResourceType,
-                        ResourceName = finding.ResourceName,
-                        ControlId = finding.AffectedNistControls.FirstOrDefault(),
-                        AffectedNistControls = System.Text.Json.JsonSerializer.Serialize(finding.AffectedNistControls),
-                        Evidence = finding.Evidence != null ? System.Text.Json.JsonSerializer.Serialize(finding.Evidence) : null,
-                        Remediation = finding.RemediationGuidance,
-                        IsRemediable = finding.IsRemediable,
-                        IsAutomaticallyFixable = finding.IsAutoRemediable,
-                        DetectedAt = DateTime.UtcNow
-                    };
-                    dbAssessment.Findings.Add(dbFinding);
-                }
-            }
-
-            _dbContext.ComplianceAssessments.Add(dbAssessment);
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            // Use AssessmentService to persist the assessment
+            await _assessmentService.SaveAssessmentAsync(assessment, cancellationToken);
 
             _logger.LogInformation("✅ Persisted assessment {AssessmentId} with {FindingsCount} findings to database",
-                assessment.AssessmentId, dbAssessment.Findings.Count);
+                assessment.AssessmentId, assessment.ControlFamilyResults.Values.Sum(cf => cf.Findings.Count));
 
-            // Also store in memory cache for fast access
-            var cacheKey = $"ComplianceAssessment_{assessment.AssessmentId}";
-            var cacheOptions = new MemoryCacheEntryOptions
-            {
-                SlidingExpiration = TimeSpan.FromHours(24) // Keep assessment results for 24 hours
-            };
-
-            var assessmentSummary = new
-            {
-                assessment.AssessmentId,
-                assessment.SubscriptionId,
-                assessment.OverallComplianceScore,
-                assessment.TotalFindings,
-                assessment.CriticalFindings,
-                assessment.HighFindings,
-                assessment.MediumFindings,
-                assessment.LowFindings,
-                FindingsCount = assessment.ControlFamilyResults.Values.Sum(cf => cf.Findings.Count),
-                PassedControls = assessment.ControlFamilyResults.Values.Sum(cf => cf.PassedControls),
-                TotalControls = assessment.ControlFamilyResults.Values.Sum(cf => cf.TotalControls),
-                StartTime = assessment.StartTime,
-                EndTime = assessment.EndTime,
-                Duration = assessment.Duration
-            };
-
-            _cache.Set(cacheKey, assessmentSummary, cacheOptions);
-
-            _logger.LogInformation("✅ Stored assessment {AssessmentId} with {FindingsCount} findings in memory cache",
-                assessment.AssessmentId, assessmentSummary.FindingsCount);
+            // Also cache the assessment summary for fast access
+            _assessmentService.CacheAssessmentSummary(assessment);
         }
         catch (Exception ex)
         {
@@ -1406,146 +1189,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         string subscriptionId,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            _logger.LogInformation("🔍 Querying database for latest assessment for subscription {SubscriptionId}", subscriptionId);
-
-            // Query the database for the most recent completed assessment for this subscription
-            var latestDbAssessment = await _dbContext.ComplianceAssessments
-                .Include(a => a.Findings)
-                .Where(a => a.SubscriptionId == subscriptionId && a.Status == "Completed")
-                .OrderByDescending(a => a.CompletedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (latestDbAssessment == null)
-            {
-                _logger.LogInformation("No assessment found in database for subscription {SubscriptionId}", subscriptionId);
-                return null;
-            }
-
-            _logger.LogInformation("Found assessment {AssessmentId} completed at {CompletedAt} with score {Score}%",
-                latestDbAssessment.Id, latestDbAssessment.CompletedAt, latestDbAssessment.ComplianceScore);
-
-            // Convert database findings to AtoFinding model
-            var allFindings = latestDbAssessment.Findings
-                .Select(f => new AtoFinding
-                {
-                    Id = f.FindingId,
-                    RuleId = f.RuleId,
-                    Title = f.Title,
-                    Description = f.Description,
-                    Severity = ParseSeverity(f.Severity),
-                    ComplianceStatus = Enum.TryParse<AtoComplianceStatus>(f.ComplianceStatus, out var status) ? status : AtoComplianceStatus.NonCompliant,
-                    FindingType = Enum.TryParse<AtoFindingType>(f.FindingType, out var type) ? type : AtoFindingType.Configuration,
-                    ResourceId = f.ResourceId ?? string.Empty,
-                    ResourceType = f.ResourceType ?? string.Empty,
-                    ResourceName = f.ResourceName ?? string.Empty,
-                    AffectedNistControls = !string.IsNullOrEmpty(f.AffectedNistControls)
-                        ? JsonSerializer.Deserialize<List<string>>(f.AffectedNistControls) ?? new List<string>()
-                        : new List<string> { f.ControlId ?? string.Empty }.Where(c => !string.IsNullOrEmpty(c)).ToList(),
-                    ComplianceFrameworks = !string.IsNullOrEmpty(f.ComplianceFrameworks)
-                        ? JsonSerializer.Deserialize<List<string>>(f.ComplianceFrameworks) ?? new List<string>()
-                        : new List<string>(),
-                    Evidence = f.Evidence ?? string.Empty,
-                    RemediationGuidance = f.Remediation ?? string.Empty,
-                    IsRemediable = f.IsRemediable,
-                    IsAutoRemediable = f.IsAutomaticallyFixable,
-                    DetectedAt = f.DetectedAt,
-                    Metadata = !string.IsNullOrEmpty(f.Metadata)
-                        ? JsonSerializer.Deserialize<Dictionary<string, object>>(f.Metadata) ?? new Dictionary<string, object>()
-                        : new Dictionary<string, object>()
-                })
-                .ToList();
-
-            // Group findings by control family to reconstruct ControlFamilyResults
-            var controlFamilyResults = new Dictionary<string, ControlFamilyAssessment>();
-            
-            // Get all unique control families from findings
-            var controlFamilies = allFindings
-                .SelectMany(f => f.AffectedNistControls)
-                .Select(controlId => controlId.Length >= 2 ? controlId.Substring(0, 2).ToUpper() : controlId)
-                .Distinct()
-                .ToHashSet();
-
-            // Build a ControlFamilyAssessment for each family
-            foreach (var family in controlFamilies)
-            {
-                var familyFindings = allFindings
-                    .Where(f => f.AffectedNistControls.Any(c => c.StartsWith(family, StringComparison.OrdinalIgnoreCase)))
-                    .ToList();
-
-                var familyAssessment = new ControlFamilyAssessment
-                {
-                    ControlFamily = family,
-                    FamilyName = GetControlFamilyName(family),
-                    AssessmentTime = latestDbAssessment.CompletedAt ?? DateTimeOffset.UtcNow,
-                    Findings = familyFindings,
-                    TotalControls = 0, // Cannot reconstruct without re-querying NIST controls
-                    PassedControls = 0, // Cannot reconstruct without re-querying NIST controls
-                    ComplianceScore = 0 // Will be calculated below
-                };
-
-                // Estimate compliance score based on findings
-                // If there are findings, assume some controls failed
-                // This is an approximation since we don't have the original total/passed control counts
-                if (familyFindings.Any())
-                {
-                    // Assume 20 controls per family (rough average)
-                    // Calculate failed controls based on unique affected controls
-                    var affectedControls = familyFindings
-                        .SelectMany(f => f.AffectedNistControls)
-                        .Where(c => c.StartsWith(family, StringComparison.OrdinalIgnoreCase))
-                        .Distinct()
-                        .Count();
-                    
-                    familyAssessment.TotalControls = Math.Max(20, affectedControls);
-                    familyAssessment.PassedControls = Math.Max(0, familyAssessment.TotalControls - affectedControls);
-                    familyAssessment.ComplianceScore = familyAssessment.TotalControls > 0
-                        ? (double)familyAssessment.PassedControls / familyAssessment.TotalControls * 100
-                        : 100;
-                }
-                else
-                {
-                    // No findings = 100% compliant
-                    familyAssessment.TotalControls = 20;
-                    familyAssessment.PassedControls = 20;
-                    familyAssessment.ComplianceScore = 100;
-                }
-
-                controlFamilyResults[family] = familyAssessment;
-            }
-
-            // Reconstruct full AtoComplianceAssessment
-            var assessment = new AtoComplianceAssessment
-            {
-                AssessmentId = latestDbAssessment.Id,
-                SubscriptionId = latestDbAssessment.SubscriptionId,
-                StartTime = latestDbAssessment.StartedAt,
-                EndTime = latestDbAssessment.CompletedAt ?? DateTimeOffset.UtcNow,
-                Duration = latestDbAssessment.Duration.HasValue ? TimeSpan.FromTicks(latestDbAssessment.Duration.Value) : TimeSpan.Zero,
-                OverallComplianceScore = (double)latestDbAssessment.ComplianceScore,
-                ControlFamilyResults = controlFamilyResults,
-                TotalFindings = latestDbAssessment.TotalFindings,
-                CriticalFindings = latestDbAssessment.CriticalFindings,
-                HighFindings = latestDbAssessment.HighFindings,
-                MediumFindings = latestDbAssessment.MediumFindings,
-                LowFindings = latestDbAssessment.LowFindings,
-                ExecutiveSummary = latestDbAssessment.ExecutiveSummary,
-                RiskProfile = !string.IsNullOrEmpty(latestDbAssessment.RiskProfile)
-                    ? JsonSerializer.Deserialize<RiskProfile>(latestDbAssessment.RiskProfile)
-                    : null
-            };
-
-            _logger.LogInformation("Successfully reconstructed assessment with {FamilyCount} control families and {FindingCount} findings",
-                controlFamilyResults.Count, allFindings.Count);
-
-            return assessment;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to retrieve latest assessment for {SubscriptionId}", subscriptionId);
-            return null;
-        }
+        return await _assessmentService.GetLatestCompletedAssessmentAsync(subscriptionId, cancellationToken);
     }
 
     private AtoFindingSeverity ParseSeverity(string severity)
@@ -1557,31 +1201,6 @@ public class AtoComplianceEngine : IAtoComplianceEngine
             "medium" => AtoFindingSeverity.Medium,
             "low" => AtoFindingSeverity.Low,
             _ => AtoFindingSeverity.Informational
-        };
-    }
-
-    private string GetControlFamilyName(string familyCode)
-    {
-        return familyCode switch
-        {
-            "AC" => "Access Control",
-            "AU" => "Audit and Accountability",
-            "AT" => "Awareness and Training",
-            "CM" => "Configuration Management",
-            "CP" => "Contingency Planning",
-            "IA" => "Identification and Authentication",
-            "IR" => "Incident Response",
-            "MA" => "Maintenance",
-            "MP" => "Media Protection",
-            "PE" => "Physical and Environmental Protection",
-            "PL" => "Planning",
-            "PS" => "Personnel Security",
-            "RA" => "Risk Assessment",
-            "CA" => "Security Assessment and Authorization",
-            "SC" => "System and Communications Protection",
-            "SI" => "System and Information Integrity",
-            "SA" => "System and Services Acquisition",
-            _ => familyCode
         };
     }
 
@@ -1598,24 +1217,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         DateTimeOffset date,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            // Find the closest assessment to the specified date
-            var assessment = await _dbContext.ComplianceAssessments
-                .Where(a => a.SubscriptionId == subscriptionId && 
-                           a.Status == "Completed" &&
-                           a.CompletedAt != null &&
-                           a.CompletedAt.Value.Date == date.Date)
-                .OrderByDescending(a => a.CompletedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            return assessment != null ? (double)assessment.ComplianceScore : 0;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to retrieve compliance score for date {Date}", date);
-            return 0;
-        }
+        return await _assessmentService.GetComplianceScoreAtDateAsync(subscriptionId, date, cancellationToken);
     }
 
     private async Task<int> GetFailedControlsAtDateAsync(
@@ -1623,45 +1225,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         DateTimeOffset date,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            // Find assessments for the specified date
-            var assessment = await _dbContext.ComplianceAssessments
-                .Include(a => a.Findings)
-                .Where(a => a.SubscriptionId == subscriptionId && 
-                           a.Status == "Completed" &&
-                           a.CompletedAt != null &&
-                           a.CompletedAt.Value.Date == date.Date)
-                .OrderByDescending(a => a.CompletedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (assessment == null)
-                return 0;
-
-            // Count unique affected controls (controls with findings = failed)
-            var failedControls = assessment.Findings
-                .Where(f => !string.IsNullOrEmpty(f.AffectedNistControls))
-                .SelectMany(f => 
-                {
-                    try
-                    {
-                        return JsonSerializer.Deserialize<List<string>>(f.AffectedNistControls!) ?? new List<string>();
-                    }
-                    catch
-                    {
-                        return !string.IsNullOrEmpty(f.ControlId) ? new List<string> { f.ControlId } : new List<string>();
-                    }
-                })
-                .Distinct()
-                .Count();
-
-            return failedControls;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to retrieve failed controls for date {Date}", date);
-            return 0;
-        }
+        return await _assessmentService.GetFailedControlsAtDateAsync(subscriptionId, date, cancellationToken);
     }
 
     private async Task<int> GetPassedControlsAtDateAsync(
@@ -1669,31 +1233,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         DateTimeOffset date,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var assessment = await _dbContext.ComplianceAssessments
-                .Where(a => a.SubscriptionId == subscriptionId && 
-                           a.Status == "Completed" &&
-                           a.CompletedAt != null &&
-                           a.CompletedAt.Value.Date == date.Date)
-                .OrderByDescending(a => a.CompletedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (assessment == null)
-                return 0;
-
-            // Estimate passed controls based on compliance score
-            // Assuming ~100 total controls across all families
-            var estimatedTotalControls = 100;
-            var passedControls = (int)Math.Round(estimatedTotalControls * ((double)assessment.ComplianceScore / 100));
-
-            return passedControls;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to retrieve passed controls for date {Date}", date);
-            return 0;
-        }
+        return await _assessmentService.GetPassedControlsAtDateAsync(subscriptionId, date, cancellationToken);
     }
 
     private async Task<int> GetActiveFindingsAtDateAsync(
@@ -1701,23 +1241,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         DateTimeOffset date,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var assessment = await _dbContext.ComplianceAssessments
-                .Where(a => a.SubscriptionId == subscriptionId && 
-                           a.Status == "Completed" &&
-                           a.CompletedAt != null &&
-                           a.CompletedAt.Value.Date == date.Date)
-                .OrderByDescending(a => a.CompletedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            return assessment?.TotalFindings ?? 0;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to retrieve active findings for date {Date}", date);
-            return 0;
-        }
+        return await _assessmentService.GetActiveFindingsAtDateAsync(subscriptionId, date, cancellationToken);
     }
 
     private async Task<int> GetRemediatedFindingsAtDateAsync(
@@ -1725,42 +1249,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         DateTimeOffset date,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            // Get current assessment for the date
-            var currentAssessment = await _dbContext.ComplianceAssessments
-                .Where(a => a.SubscriptionId == subscriptionId && 
-                           a.Status == "Completed" &&
-                           a.CompletedAt != null &&
-                           a.CompletedAt.Value.Date == date.Date)
-                .OrderByDescending(a => a.CompletedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (currentAssessment == null)
-                return 0;
-
-            // Get previous assessment (before this date)
-            var previousAssessment = await _dbContext.ComplianceAssessments
-                .Where(a => a.SubscriptionId == subscriptionId && 
-                           a.Status == "Completed" &&
-                           a.CompletedAt != null &&
-                           a.CompletedAt < currentAssessment.CompletedAt)
-                .OrderByDescending(a => a.CompletedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (previousAssessment == null)
-                return 0;
-
-            // Calculate remediated findings as the difference
-            var remediatedCount = Math.Max(0, previousAssessment.TotalFindings - currentAssessment.TotalFindings);
-
-            return remediatedCount;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to retrieve remediated findings for date {Date}", date);
-            return 0;
-        }
+        return await _assessmentService.GetRemediatedFindingsAtDateAsync(subscriptionId, date, cancellationToken);
     }
 
     private async Task<List<string>> GetComplianceEventsAtDateAsync(
@@ -1768,85 +1257,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         DateTimeOffset date,
         CancellationToken cancellationToken)
     {
-        var events = new List<string>();
-
-        try
-        {
-            // Get current assessment for the date
-            var currentAssessment = await _dbContext.ComplianceAssessments
-                .Where(a => a.SubscriptionId == subscriptionId && 
-                           a.Status == "Completed" &&
-                           a.CompletedAt != null &&
-                           a.CompletedAt.Value.Date == date.Date)
-                .OrderByDescending(a => a.CompletedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (currentAssessment == null)
-                return events;
-
-            // Get previous assessment for comparison
-            var previousAssessment = await _dbContext.ComplianceAssessments
-                .Where(a => a.SubscriptionId == subscriptionId && 
-                           a.Status == "Completed" &&
-                           a.CompletedAt != null &&
-                           a.CompletedAt < currentAssessment.CompletedAt)
-                .OrderByDescending(a => a.CompletedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            // Detect significant events
-            if (previousAssessment != null)
-            {
-                var scoreDelta = (double)(currentAssessment.ComplianceScore - previousAssessment.ComplianceScore);
-
-                // Score improved significantly
-                if (scoreDelta >= 10)
-                {
-                    events.Add($"Compliance score improved by {scoreDelta:F1}% (from {previousAssessment.ComplianceScore}% to {currentAssessment.ComplianceScore}%)");
-                }
-                // Score declined significantly
-                else if (scoreDelta <= -10)
-                {
-                    events.Add($"⚠️ Compliance score declined by {Math.Abs(scoreDelta):F1}% (from {previousAssessment.ComplianceScore}% to {currentAssessment.ComplianceScore}%)");
-                }
-
-                // New critical findings
-                var newCritical = currentAssessment.CriticalFindings - previousAssessment.CriticalFindings;
-                if (newCritical > 0)
-                {
-                    events.Add($"🔴 {newCritical} new critical finding{(newCritical > 1 ? "s" : "")} detected");
-                }
-                // Critical findings resolved
-                else if (newCritical < 0)
-                {
-                    events.Add($"✅ {Math.Abs(newCritical)} critical finding{(Math.Abs(newCritical) > 1 ? "s" : "")} resolved");
-                }
-
-                // Significant finding reduction
-                var findingDelta = previousAssessment.TotalFindings - currentAssessment.TotalFindings;
-                if (findingDelta >= 10)
-                {
-                    events.Add($"✅ {findingDelta} findings remediated");
-                }
-            }
-            else
-            {
-                // First assessment
-                events.Add($"Initial compliance assessment completed: {currentAssessment.ComplianceScore}% compliance with {currentAssessment.TotalFindings} findings");
-            }
-
-            // High finding count
-            if (currentAssessment.CriticalFindings > 0)
-            {
-                events.Add($"⚠️ {currentAssessment.CriticalFindings} critical findings require immediate attention");
-            }
-
-            return events;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to retrieve compliance events for date {Date}", date);
-            return events;
-        }
+        return await _assessmentService.GetComplianceEventsAtDateAsync(subscriptionId, date, cancellationToken);
     }
 
     private ComplianceTrends CalculateComplianceTrends(List<ComplianceDataPoint> dataPoints)
@@ -2052,6 +1463,135 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         }
 
         return insights;
+    }
+
+    #endregion
+
+    #region Data Access Methods (delegated to AssessmentService)
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ComplianceAssessmentSummary>> GetComplianceHistoryAsync(
+        string subscriptionId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default)
+    {
+        return await _assessmentService.GetComplianceHistoryAsync(subscriptionId, startDate, endDate, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AssessmentAuditEntry>> GetAssessmentAuditLogAsync(
+        string subscriptionId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default)
+    {
+        return await _assessmentService.GetAssessmentAuditLogAsync(subscriptionId, startDate, endDate, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ComplianceAssessmentWithFindings>> GetComplianceTrendsDataAsync(
+        string subscriptionId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default)
+    {
+        return await _assessmentService.GetComplianceTrendsDataAsync(subscriptionId, startDate, endDate, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<ComplianceAssessmentWithFindings?> GetCachedAssessmentAsync(
+        string subscriptionId,
+        string? resourceGroupName,
+        int cacheHours,
+        CancellationToken cancellationToken = default)
+    {
+        return await _assessmentService.GetCachedAssessmentAsync(subscriptionId, resourceGroupName, cacheHours, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> SaveAssessmentAsync(
+        AtoComplianceAssessment assessment,
+        string subscriptionId,
+        string? resourceGroupName,
+        string initiatedBy,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _assessmentService.SaveAssessmentAsync(assessment, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save assessment");
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<AtoFinding?> GetFindingByIdAsync(
+        string findingId,
+        CancellationToken cancellationToken = default)
+    {
+        var findings = await _assessmentService.GetFindingsAsync(string.Empty, cancellationToken);
+        return findings.FirstOrDefault(f => f.Id == findingId);
+    }
+
+    /// <inheritdoc />
+    public async Task<AtoFinding?> GetFindingByIdWithAssessmentAsync(
+        string findingId,
+        string subscriptionId,
+        CancellationToken cancellationToken = default)
+    {
+        // Search for the finding across assessments for this subscription
+        var assessments = await _assessmentService.GetAssessmentsAsync(subscriptionId, cancellationToken);
+
+        foreach (var assessment in assessments)
+        {
+            var finding = assessment.ControlFamilyResults.Values
+                .SelectMany(cf => cf.Findings)
+                .FirstOrDefault(f => f.Id == findingId);
+            if (finding != null)
+            {
+                return finding;
+            }
+        }
+
+        return null;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AtoFinding>> GetUnresolvedFindingsAsync(
+        string subscriptionId,
+        CancellationToken cancellationToken = default)
+    {
+        var assessments = await _assessmentService.GetAssessmentsAsync(subscriptionId, cancellationToken);
+
+        var unresolvedFindings = assessments
+            .SelectMany(a => a.ControlFamilyResults.Values)
+            .SelectMany(cf => cf.Findings)
+            .Where(f => f.RemediationStatus != AtoRemediationStatus.Completed)
+            .ToList();
+
+        return unresolvedFindings;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> UpdateFindingStatusAsync(
+        string findingId,
+        string status,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Find and resolve the finding
+            return await _assessmentService.ResolveFindingAsync(string.Empty, findingId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update finding status for {FindingId}", findingId);
+            return false;
+        }
     }
 
     #endregion

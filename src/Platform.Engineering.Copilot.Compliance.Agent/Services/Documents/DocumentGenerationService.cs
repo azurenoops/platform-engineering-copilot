@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Compliance.Agent.Services.Compliance;
+using Platform.Engineering.Copilot.Core.Constants;
 using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
 using Platform.Engineering.Copilot.Core.Models.Compliance;
 using System.Text;
@@ -25,14 +26,14 @@ public class DocumentGenerationService : IDocumentGenerationService
 {
     private readonly IAtoComplianceEngine _complianceEngine;
     private readonly INistControlsService _nistService;
-    private readonly EvidenceStorageService _storageService;
+    private readonly IEvidenceStorageService _storageService;
     private readonly ILogger<DocumentGenerationService> _logger;
     private readonly IChatCompletionService? _chatCompletion;
 
     public DocumentGenerationService(
         IAtoComplianceEngine complianceEngine,
         INistControlsService nistService,
-        EvidenceStorageService storageService,
+        IEvidenceStorageService storageService,
         ILogger<DocumentGenerationService> logger,
         Kernel? kernel = null)
     {
@@ -597,12 +598,12 @@ public class DocumentGenerationService : IDocumentGenerationService
         var family = finding.AffectedNistControls.FirstOrDefault()?.Split('-')[0] ?? "General";
         return family switch
         {
-            "AC" => "IAM Team",
-            "AU" => "Security Operations",
-            "SC" => "Network Security Team",
-            "SI" => "Security Operations",
-            "CM" => "Platform Engineering",
-            "IA" => "IAM Team",
+            ComplianceConstants.ControlFamilies.AccessControl => "IAM Team",
+            ComplianceConstants.ControlFamilies.AuditAccountability => "Security Operations",
+            ComplianceConstants.ControlFamilies.SystemCommunications => "Network Security Team",
+            ComplianceConstants.ControlFamilies.SystemInformationIntegrity => "Security Operations",
+            ComplianceConstants.ControlFamilies.ConfigurationManagement => "Platform Engineering",
+            ComplianceConstants.ControlFamilies.IdentificationAuthentication => "IAM Team",
             _ => "Security Team"
         };
     }

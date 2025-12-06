@@ -1,7 +1,6 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
-using Platform.Engineering.Copilot.Core.Data.Context;
+using Platform.Engineering.Copilot.Core.Data.Repositories;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models.EnvironmentManagement;
 using DataEntities = Platform.Engineering.Copilot.Core.Data.Entities;
@@ -10,18 +9,20 @@ using CoreModels = Platform.Engineering.Copilot.Core.Models;
 namespace Platform.Engineering.Copilot.Core.Data.Services;
 
 /// <summary>
-/// Template storage service implementation using Entity Framework Core
+/// Template storage service implementation using Repository pattern.
+/// Manages EnvironmentTemplates (service templates for Environment Agent deployments)
+/// and their associated TemplateFiles (individual files that make up a template).
 /// </summary>
 public class TemplateStorageService : ITemplateStorageService
 {
-    private readonly PlatformEngineeringCopilotContext _context;
+    private readonly IEnvironmentTemplateRepository _templateRepository;
     private readonly ILogger<TemplateStorageService> _logger;
 
     public TemplateStorageService(
-        PlatformEngineeringCopilotContext context,
+        IEnvironmentTemplateRepository templateRepository,
         ILogger<TemplateStorageService> logger)
     {
-        _context = context;
+        _templateRepository = templateRepository;
         _logger = logger;
     }
 
@@ -30,8 +31,7 @@ public class TemplateStorageService : ITemplateStorageService
         _logger.LogInformation("Storing template: {TemplateName}", name);
 
         // Check if **active** template already exists (not soft-deleted ones)
-        var existingActiveTemplate = await _context.EnvironmentTemplates
-            .FirstOrDefaultAsync(t => t.Name == name && t.IsActive, cancellationToken);
+        var existingActiveTemplate = await _templateRepository.GetByNameAsync(name, cancellationToken);
 
         if (existingActiveTemplate != null)
         {
@@ -39,48 +39,8 @@ public class TemplateStorageService : ITemplateStorageService
             return await UpdateTemplateAsync(name, template, cancellationToken);
         }
 
-        // Check for soft-deleted templates with the same name and physically remove them
-        var softDeletedTemplates = await _context.EnvironmentTemplates
-            .Where(t => t.Name == name && !t.IsActive)
-            .ToListAsync(cancellationToken);
-
-        if (softDeletedTemplates.Any())
-        {
-            _logger.LogInformation("Found {Count} soft-deleted template(s) with name {TemplateName}, physically deleting them", 
-                softDeletedTemplates.Count, name);
-            
-            // First, nullify the TemplateId in any deployments that reference these templates
-            // This preserves deployment history while allowing template deletion
-            foreach (var softDeleted in softDeletedTemplates)
-            {
-                var deployments = await _context.EnvironmentDeployments
-                    .Where(d => d.TemplateId == softDeleted.Id)
-                    .ToListAsync(cancellationToken);
-                
-                if (deployments.Any())
-                {
-                    _logger.LogInformation("Unlinking {Count} deployment(s) from template {TemplateId}", 
-                        deployments.Count, softDeleted.Id);
-                    foreach (var deployment in deployments)
-                    {
-                        deployment.TemplateId = null;
-                    }
-                }
-            }
-            
-            // Delete associated files
-            foreach (var softDeleted in softDeletedTemplates)
-            {
-                var associatedFiles = await _context.TemplateFiles
-                    .Where(f => f.TemplateId == softDeleted.Id)
-                    .ToListAsync(cancellationToken);
-                _context.TemplateFiles.RemoveRange(associatedFiles);
-            }
-            
-            _context.EnvironmentTemplates.RemoveRange(softDeletedTemplates);
-            await _context.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Physically deleted {Count} soft-deleted template(s)", softDeletedTemplates.Count);
-        }
+        // Clean up soft-deleted templates with the same name
+        await _templateRepository.CleanupSoftDeletedByNameAsync(name, cancellationToken);
 
         // Extract template properties and files
         var (templateData, files) = ExtractTemplateDataAndFiles(template);
@@ -113,17 +73,20 @@ public class TemplateStorageService : ITemplateStorageService
             MainFileType = DetermineMainFileType(files)
         };
 
-        _context.EnvironmentTemplates.Add(newTemplate);
+        // Create template in repository
+        await _templateRepository.CreateAsync(newTemplate, cancellationToken);
 
-        // Add individual files
+        // Add individual TemplateFiles (the files that make up this template)
         if (files.Count > 0)
         {
             _logger.LogInformation("Storing {Count} files for template {TemplateName}", files.Count, name);
             var entryPointFile = DetermineEntryPoint(files);
+            var templateFiles = new List<DataEntities.TemplateFile>();
             var order = 0;
+            
             foreach (var (fileName, content) in files.OrderBy(f => f.Key))
             {
-                var templateFile = new DataEntities.TemplateFile
+                templateFiles.Add(new DataEntities.TemplateFile
                 {
                     Id = Guid.NewGuid(),
                     TemplateId = newTemplate.Id,
@@ -135,16 +98,15 @@ public class TemplateStorageService : ITemplateStorageService
                     Order = order++,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
-                };
-                _context.TemplateFiles.Add(templateFile);
+                });
             }
+            
+            await _templateRepository.AddFilesAsync(templateFiles, cancellationToken);
         }
         else
         {
             _logger.LogWarning("No files provided for template {TemplateName}", name);
         }
-
-        await _context.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Template {TemplateName} stored successfully with ID: {TemplateId}, Files: {FilesCount}", name, newTemplate.Id, files.Count);
         
@@ -157,11 +119,7 @@ public class TemplateStorageService : ITemplateStorageService
     {
         _logger.LogInformation("Listing all active templates");
 
-        var entities = await _context.EnvironmentTemplates
-            .Where(t => t.IsActive)
-            .OrderBy(t => t.Name)
-            .Include(t => t.Versions)
-            .ToListAsync(cancellationToken);
+        var entities = await _templateRepository.GetAllActiveAsync(cancellationToken);
         
         return entities.Select(MapToDto).ToList();
     }
@@ -170,11 +128,7 @@ public class TemplateStorageService : ITemplateStorageService
     {
         _logger.LogInformation("Getting template: {TemplateName}", name);
 
-        var entity = await _context.EnvironmentTemplates
-            .Include(t => t.Files)  // Include template files for multi-file templates
-            .Include(t => t.Versions)
-            .Include(t => t.Deployments)
-            .FirstOrDefaultAsync(t => t.Name == name && t.IsActive, cancellationToken);
+        var entity = await _templateRepository.GetByNameAsync(name, cancellationToken);
         
         if (entity != null)
         {
@@ -195,55 +149,22 @@ public class TemplateStorageService : ITemplateStorageService
             return null;
         }
 
-        _logger.LogInformation("Parsed GUID: {ParsedGuid}, Original String: {OriginalString}", templateId, id);
+        var entity = await _templateRepository.GetByIdAsync(templateId, cancellationToken);
         
-        // First, let's check if any templates exist at all
-        var allTemplates = await _context.EnvironmentTemplates.Where(t => t.IsActive).ToListAsync(cancellationToken);
-        _logger.LogInformation("Found {Count} active templates", allTemplates.Count);
-        
-        foreach (var t in allTemplates) 
+        if (entity != null)
         {
-            _logger.LogInformation("Template ID: {Id}, Name: {Name}", t.Id, t.Name);
-        }
-
-        // Try string comparison instead of GUID comparison for SQLite compatibility  
-        var idString = id.ToLowerInvariant(); // Ensure consistent casing
-        _logger.LogInformation("Using string comparison with: {IdString}", idString);
-        
-        // Load all active templates and do comparison in memory (for debugging)
-        var allActiveTemplates = await _context.EnvironmentTemplates
-            .Where(t => t.IsActive)
-            .ToListAsync(cancellationToken);
-            
-        var memoryResult = allActiveTemplates.FirstOrDefault(t => t.Id.ToString().ToLowerInvariant() == idString);
-        _logger.LogInformation("Memory comparison result: {Result}", memoryResult != null ? "Found" : "Not Found");
-        
-        if (memoryResult != null)
-        {
-            // Load the full template with includes using string comparison instead of GUID
-            var foundIdString = memoryResult.Id.ToString().ToLowerInvariant();
-            var result = await _context.EnvironmentTemplates
-                .Include(t => t.Versions)
-                .Include(t => t.Deployments)
-                .Include(t => t.Files)
-                .Where(t => t.IsActive)
-                .ToListAsync(cancellationToken);
-                
-            // Use in-memory comparison for the final result too
-            var finalResult = result.FirstOrDefault(t => t.Id.ToString().ToLowerInvariant() == foundIdString);
-            _logger.LogInformation("Full memory-based query result: {Result}", finalResult != null ? "Found" : "Not Found");
-            return finalResult != null ? MapToDto(finalResult) : null;
+            _logger.LogInformation("Template {TemplateName} loaded with {FileCount} files", 
+                entity.Name, entity.Files?.Count ?? 0);
         }
         
-        return null;
+        return entity != null ? MapToDto(entity) : null;
     }
 
     public async Task<bool> DeleteTemplateAsync(string name, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Deleting template: {TemplateName}", name);
 
-        var template = await _context.EnvironmentTemplates
-            .FirstOrDefaultAsync(t => t.Name == name && t.IsActive, cancellationToken);
+        var template = await _templateRepository.GetByNameAsync(name, cancellationToken);
 
         if (template == null)
         {
@@ -251,14 +172,15 @@ public class TemplateStorageService : ITemplateStorageService
             return false;
         }
 
-        // Soft delete - mark as inactive
-        template.IsActive = false;
-        template.UpdatedAt = DateTime.UtcNow;
+        // Soft delete via repository
+        var result = await _templateRepository.SoftDeleteAsync(template.Id, cancellationToken);
 
-        await _context.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Template {TemplateName} deleted successfully", name);
-        return true;
+        if (result)
+        {
+            _logger.LogInformation("Template {TemplateName} deleted successfully", name);
+        }
+        
+        return result;
     }
 
     public async Task<object> SyncTemplatesAsync(CancellationToken cancellationToken = default)
@@ -267,11 +189,12 @@ public class TemplateStorageService : ITemplateStorageService
 
         // Implementation would sync from Git repositories, Azure DevOps, etc.
         // For now, return a placeholder response
+        var templates = await _templateRepository.GetAllActiveAsync(cancellationToken);
         var syncResult = new
         {
             Message = "Template sync completed",
             SyncedAt = DateTime.UtcNow,
-            TemplatesProcessed = await _context.EnvironmentTemplates.CountAsync(t => t.IsActive, cancellationToken),
+            TemplatesProcessed = templates.Count,
             Source = "Local Database"
         };
 
@@ -310,8 +233,7 @@ public class TemplateStorageService : ITemplateStorageService
     {
         _logger.LogInformation("Updating template: {TemplateName}", name);
 
-        var existingTemplate = await _context.EnvironmentTemplates
-            .FirstOrDefaultAsync(t => t.Name == name && t.IsActive, cancellationToken);
+        var existingTemplate = await _templateRepository.GetByNameAsync(name, cancellationToken);
 
         if (existingTemplate == null)
         {
@@ -332,7 +254,7 @@ public class TemplateStorageService : ITemplateStorageService
             IsDeprecated = false
         };
 
-        _context.TemplateVersions.Add(newVersion);
+        await _templateRepository.AddVersionAsync(newVersion, cancellationToken);
 
         // Update the main template
         var templateData = ExtractTemplateData(template);
@@ -354,7 +276,7 @@ public class TemplateStorageService : ITemplateStorageService
         existingTemplate.MonitoringEnabled = templateData.MonitoringEnabled;
         existingTemplate.BackupEnabled = templateData.BackupEnabled;
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await _templateRepository.UpdateAsync(existingTemplate, cancellationToken);
 
         _logger.LogInformation("Template {TemplateName} updated successfully", name);
         return MapToDto(existingTemplate);
@@ -364,11 +286,7 @@ public class TemplateStorageService : ITemplateStorageService
     {
         _logger.LogInformation("Getting templates by type: {TemplateType}", templateType);
 
-        var entities = await _context.EnvironmentTemplates
-            .Where(t => t.IsActive && t.TemplateType == templateType)
-            .OrderBy(t => t.Name)
-            .Include(t => t.Versions)
-            .ToListAsync(cancellationToken);
+        var entities = await _templateRepository.GetByTypeAsync(templateType, cancellationToken);
         
         return entities.Select(MapToDto).ToList();
     }
@@ -377,21 +295,47 @@ public class TemplateStorageService : ITemplateStorageService
     {
         _logger.LogInformation("Getting versions for template: {TemplateName}", templateName);
 
-        var template = await _context.EnvironmentTemplates
-            .FirstOrDefaultAsync(t => t.Name == templateName && t.IsActive, cancellationToken);
+        var template = await _templateRepository.GetByNameAsync(templateName, cancellationToken);
 
         if (template == null)
         {
             return new List<CoreModels.TemplateVersion>();
         }
 
-        var entities = await _context.TemplateVersions
-            .Where(v => v.TemplateId == template.Id)
-            .OrderByDescending(v => v.CreatedAt)
-            .ToListAsync(cancellationToken);
+        var entities = await _templateRepository.GetVersionsAsync(template.Id, cancellationToken);
         
-        return entities.Select(MapToDto).ToList();
+        return entities.Select(MapVersionToDto).ToList();
     }
+
+    public async Task<List<CoreModels.EnvironmentTemplate>> GetTemplatesByConversationIdAsync(string conversationId, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting templates for conversation: {ConversationId}", conversationId);
+        
+        var templates = await _templateRepository.GetByConversationIdAsync(conversationId, cancellationToken);
+        
+        _logger.LogInformation("Found {Count} template(s) for conversation: {ConversationId}", templates.Count, conversationId);
+        
+        return templates.Select(MapToDto).ToList();
+    }
+
+    public async Task<CoreModels.EnvironmentTemplate?> GetLatestTemplateAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting latest template");
+        
+        var template = await _templateRepository.GetLatestAsync(cancellationToken);
+        
+        if (template == null)
+        {
+            _logger.LogWarning("No templates found");
+            return null;
+        }
+        
+        _logger.LogInformation("Found latest template: {TemplateName} created at {CreatedAt}", template.Name, template.CreatedAt);
+        
+        return MapToDto(template);
+    }
+
+    #region Private Helper Methods
 
     private static TemplateData ExtractTemplateData(object template)
     {
@@ -449,7 +393,8 @@ public class TemplateStorageService : ITemplateStorageService
         // Check if template is an anonymous object with template and files properties
         var templateType = template.GetType();
         var templateProp = templateType.GetProperty("template");
-        var filesProp = templateType.GetProperty("files");
+        // Try both "files" and "Files" for case-insensitive matching
+        var filesProp = templateType.GetProperty("files") ?? templateType.GetProperty("Files");
 
         object actualTemplate = template;
 
@@ -508,6 +453,42 @@ public class TemplateStorageService : ITemplateStorageService
             templateData.MonitoringEnabled = GetBoolValueOrDefault(dict, "monitoringEnabled", true);
             templateData.BackupEnabled = GetBoolValueOrDefault(dict, "backupEnabled", false);
         }
+        else
+        {
+            // Handle anonymous types via reflection
+            var actualType = actualTemplate.GetType();
+            templateData.Description = GetPropertyValue<string>(actualType, actualTemplate, "Description") ?? "Generated template";
+            templateData.TemplateType = GetPropertyValue<string>(actualType, actualTemplate, "TemplateType") ?? "microservice";
+            templateData.Version = GetPropertyValue<string>(actualType, actualTemplate, "Version") ?? "1.0.0";
+            templateData.Content = GetPropertyValue<string>(actualType, actualTemplate, "Content") ?? string.Empty;
+            templateData.Format = GetPropertyValue<string>(actualType, actualTemplate, "Format") ?? "YAML";
+            templateData.DeploymentTier = GetPropertyValue<string>(actualType, actualTemplate, "DeploymentTier") ?? "standard";
+            templateData.MultiRegionSupported = GetPropertyValue<bool?>(actualType, actualTemplate, "MultiRegionSupported") ?? false;
+            templateData.DisasterRecoverySupported = GetPropertyValue<bool?>(actualType, actualTemplate, "DisasterRecoverySupported") ?? false;
+            templateData.HighAvailabilitySupported = GetPropertyValue<bool?>(actualType, actualTemplate, "HighAvailabilitySupported") ?? true;
+            templateData.Parameters = GetPropertyValue<string>(actualType, actualTemplate, "Parameters") ?? "{}";
+            templateData.CreatedBy = GetPropertyValue<string>(actualType, actualTemplate, "CreatedBy") ?? "system";
+            templateData.IsPublic = GetPropertyValue<bool?>(actualType, actualTemplate, "IsPublic") ?? false;
+            templateData.AzureService = GetPropertyValue<string>(actualType, actualTemplate, "AzureService") ?? "";
+            templateData.AutoScalingEnabled = GetPropertyValue<bool?>(actualType, actualTemplate, "AutoScalingEnabled") ?? false;
+            templateData.MonitoringEnabled = GetPropertyValue<bool?>(actualType, actualTemplate, "MonitoringEnabled") ?? true;
+            templateData.BackupEnabled = GetPropertyValue<bool?>(actualType, actualTemplate, "BackupEnabled") ?? false;
+            
+            // Handle Tags - could be Dictionary<string, string> or string
+            var tagsProp = actualType.GetProperty("Tags");
+            if (tagsProp != null)
+            {
+                var tagsValue = tagsProp.GetValue(actualTemplate);
+                if (tagsValue is Dictionary<string, string> tagsDict)
+                {
+                    templateData.Tags = JsonSerializer.Serialize(tagsDict);
+                }
+                else if (tagsValue is string tagsStr)
+                {
+                    templateData.Tags = tagsStr;
+                }
+            }
+        }
 
         return (templateData, files);
     }
@@ -523,6 +504,27 @@ public class TemplateStorageService : ITemplateStorageService
         if (files.Keys.Any(k => k.EndsWith(".json")))
             return "json";
         return "unknown";
+    }
+
+    private static T? GetPropertyValue<T>(Type type, object obj, string propertyName)
+    {
+        var prop = type.GetProperty(propertyName);
+        if (prop == null) return default;
+        
+        var value = prop.GetValue(obj);
+        if (value == null) return default;
+        
+        if (value is T typedValue)
+            return typedValue;
+            
+        try
+        {
+            return (T)Convert.ChangeType(value, typeof(T));
+        }
+        catch
+        {
+            return default;
+        }
     }
 
     private static string DetermineEntryPoint(Dictionary<string, string> files)
@@ -571,7 +573,7 @@ public class TemplateStorageService : ITemplateStorageService
     }
 
     /// <summary>
-    /// Maps Data Entity to Core DTO
+    /// Maps Data Entity to Core DTO for EnvironmentTemplate
     /// </summary>
     private static CoreModels.EnvironmentTemplate MapToDto(DataEntities.EnvironmentTemplate entity)
     {
@@ -616,7 +618,7 @@ public class TemplateStorageService : ITemplateStorageService
     /// <summary>
     /// Maps Data Entity to Core DTO for TemplateVersion
     /// </summary>
-    private static CoreModels.TemplateVersion MapToDto(DataEntities.TemplateVersion entity)
+    private static CoreModels.TemplateVersion MapVersionToDto(DataEntities.TemplateVersion entity)
     {
         return new CoreModels.TemplateVersion
         {
@@ -630,6 +632,10 @@ public class TemplateStorageService : ITemplateStorageService
             IsDeprecated = entity.IsDeprecated
         };
     }
+
+    #endregion
+
+    #region Private Classes
 
     private class TemplateData
     {
@@ -651,4 +657,6 @@ public class TemplateStorageService : ITemplateStorageService
         public bool MonitoringEnabled { get; set; } = true;
         public bool BackupEnabled { get; set; } = false;
     }
+
+    #endregion
 }

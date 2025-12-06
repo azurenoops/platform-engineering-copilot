@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import adminApi, { TemplateStats, EnvironmentListResponse, DeploymentStatusResponse } from '../services/adminApi';
+import adminApi, { TemplateStats, EnvironmentListResponse, DeploymentStatusResponse, AgentConfigurationListResponse } from '../services/adminApi';
 import PendingApprovalsPanel from './PendingApprovalsPanel';
 import ChatPanel from './ChatPanel';
 import DeploymentProgress from './DeploymentProgress';
 import InsightsSummary from './InsightsSummary';
+import { loadFeatureFlags, FeatureFlags } from '../utils/featureFlags';
 import './Dashboard.css';
 
 const Dashboard: React.FC = () => {
@@ -12,26 +13,43 @@ const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<TemplateStats | null>(null);
   const [environments, setEnvironments] = useState<EnvironmentListResponse | null>(null);
   const [activeDeployments, setActiveDeployments] = useState<DeploymentStatusResponse[]>([]);
+  const [agentData, setAgentData] = useState<AgentConfigurationListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(loadFeatureFlags());
 
   useEffect(() => {
     loadDashboardData();
     // Poll for active deployments every 30 seconds
     const interval = setInterval(loadActiveDeployments, 30000);
-    return () => clearInterval(interval);
+    
+    // Listen for feature flag changes
+    const handleFeatureFlagsUpdate = () => {
+      setFeatureFlags(loadFeatureFlags());
+    };
+    
+    window.addEventListener('featureFlagsUpdated', handleFeatureFlagsUpdate);
+    window.addEventListener('storage', handleFeatureFlagsUpdate);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('featureFlagsUpdated', handleFeatureFlagsUpdate);
+      window.removeEventListener('storage', handleFeatureFlagsUpdate);
+    };
   }, []);
 
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const [statsData, envData] = await Promise.all([
+      const [statsData, envData, agents] = await Promise.all([
         adminApi.getStats(),
-        adminApi.listEnvironments()
+        adminApi.listEnvironments(),
+        adminApi.getAgents()
       ]);
       setStats(statsData);
       setEnvironments(envData);
+      setAgentData(agents);
       setError(null);
       
       // Also load active deployments
@@ -82,19 +100,21 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="stat-card">
-          <h3>Environments</h3>
-          <div className="stat-value">{environments?.totalCount || 0}</div>
-          <div className="stat-details">
-            <span className="stat-active">🟢 Running</span>
-            <button 
-              className="stat-link"
-              onClick={() => navigate('/environments')}
-            >
-              View All →
-            </button>
+        {featureFlags.environments && (
+          <div className="stat-card">
+            <h3>Environments</h3>
+            <div className="stat-value">{environments?.totalCount || 0}</div>
+            <div className="stat-details">
+              <span className="stat-active">🟢 Running</span>
+              <button 
+                className="stat-link"
+                onClick={() => navigate('/environments')}
+              >
+                View All →
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="stat-card">
           <h3>Template Types</h3>
@@ -109,20 +129,30 @@ const Dashboard: React.FC = () => {
         </div>
 
         <div className="stat-card">
-          <h3>Formats</h3>
+          <h3>Active Agents</h3>
+          <div className="stat-value">{agentData?.enabledAgents || 0}/{agentData?.totalAgents || 0}</div>
           <div className="stat-list">
-            {stats?.byFormat && stats.byFormat.map((item) => (
-              <div key={item.format} className="stat-item">
-                <span>{item.format}</span>
-                <span className="stat-count">{item.count}</span>
-              </div>
-            ))}
+            {agentData?.categories && agentData.categories
+              .filter(cat => cat.enabledCount > 0)
+              .map((cat) => (
+                <div key={cat.category} className="stat-item">
+                  <span>{cat.category}</span>
+                  <span className="stat-count">{cat.enabledCount}</span>
+                </div>
+              ))}
           </div>
+          <button 
+            className="stat-link"
+            onClick={() => navigate('/agents')}
+            style={{ marginTop: '8px' }}
+          >
+            Manage Agents →
+          </button>
         </div>
       </div>
 
       {/* Insights Summary */}
-      <InsightsSummary />
+      {featureFlags.platformInsights && <InsightsSummary />}
 
       {/* Active Deployments Section */}
       {activeDeployments && activeDeployments.length > 0 && (
@@ -144,7 +174,7 @@ const Dashboard: React.FC = () => {
       )}
 
       {/* Active Environments Section */}
-      {environments && environments.totalCount > 0 && (
+      {featureFlags.environments && environments && environments.totalCount > 0 && (
         <div className="environments-section">
           <div className="section-header">
             <h3>🌐 Active Environments</h3>
@@ -205,36 +235,46 @@ const Dashboard: React.FC = () => {
       )}
 
       {/* Unified Pending Approvals Panel (Infrastructure + ServiceCreation) */}
-      <PendingApprovalsPanel />
+      {featureFlags.provision && <PendingApprovalsPanel />}
 
-      <div className="recent-templates">
-        <h3>📅 Recently Created Templates</h3>
-        <div className="recent-list">
-          {stats?.recentlyCreated && stats.recentlyCreated.map((template, index) => (
-            <div key={index} className="recent-item">
-              <div className="recent-name">{template.name}</div>
-              <div className="recent-meta">
-                Created {new Date(template.createdAt).toLocaleDateString()} by {template.createdBy}
+      {featureFlags.serviceCatalog && (
+        <div className="recent-templates">
+          <h3>📅 Recently Created Templates</h3>
+          <div className="recent-list">
+            {stats?.recentlyCreated && stats.recentlyCreated.map((template, index) => (
+              <div key={index} className="recent-item">
+                <div className="recent-name">{template.name}</div>
+                <div className="recent-meta">
+                  Created {new Date(template.createdAt).toLocaleDateString()} by {template.createdBy}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       <br />
-      <div className="quick-actions">
-        <h3>Quick Actions</h3>
-        <div className="action-buttons">
-          <button onClick={() => window.location.href = '/templates/create'} className="btn-primary">
-            ➕ Create New Template
-          </button>
-          <button onClick={() => window.location.href = '/templates'} className="btn-secondary">
-            📋 View All Templates
-          </button>
-          <button onClick={() => window.location.href = '/infrastructure'} className="btn-secondary">
-            🏗️ Manage Infrastructure
-          </button>
+      {(featureFlags.serviceCatalog || featureFlags.provision) && (
+        <div className="quick-actions">
+          <h3>Quick Actions</h3>
+          <div className="action-buttons">
+            {featureFlags.serviceCatalog && (
+              <>
+                <button onClick={() => window.location.href = '/templates/create'} className="btn-primary">
+                  ➕ Create New Template
+                </button>
+                <button onClick={() => window.location.href = '/templates'} className="btn-secondary">
+                  📋 View All Templates
+                </button>
+              </>
+            )}
+            {featureFlags.provision && (
+              <button onClick={() => window.location.href = '/infrastructure'} className="btn-secondary">
+                🏗️ Manage Infrastructure
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="info-panel">
         <h3>ℹ️ System Information</h3>

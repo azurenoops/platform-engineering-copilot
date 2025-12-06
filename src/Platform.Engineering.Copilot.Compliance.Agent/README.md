@@ -288,7 +288,7 @@ Orchestrate ATO package preparation (see [ATO Preparation Agent README](./ATO-AG
 | `ComplianceValidationService` | Control validation and assessment |
 | `CodeScanningEngine` | Repository and code analysis |
 | `GovernanceEngine` | Azure Policy evaluation |
-| `InfrastructureRemediationService` | Automated remediation |
+| `ComplianceRemediationService` | Automated remediation |
 | `DefenderForCloudService` | Microsoft Defender integration |
 | `AssessmentService` | Store and retrieve assessment results |
 | `EvidenceCollectors` | Control-specific evidence gathering |

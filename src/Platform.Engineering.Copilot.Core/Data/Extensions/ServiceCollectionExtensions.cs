@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Platform.Engineering.Copilot.Core.Data.Context;
+using Platform.Engineering.Copilot.Core.Data.Repositories;
+using Platform.Engineering.Copilot.Core.Services;
 
 namespace Platform.Engineering.Copilot.Core.Data.Extensions;
 
@@ -66,15 +68,14 @@ public static class ServiceCollectionExtensions
         });
 
         // Add repository services
-        services.AddScoped<IEnvironmentTemplateRepository, EnvironmentTemplateRepository>();
-        services.AddScoped<IEnvironmentDeploymentRepository, EnvironmentDeploymentRepository>();
-        services.AddScoped<IScalingPolicyRepository, ScalingPolicyRepository>();
-        services.AddScoped<IEnvironmentMetricsRepository, EnvironmentMetricsRepository>();
-        services.AddScoped<IComplianceScanRepository, ComplianceScanRepository>();
-        services.AddScoped<ISemanticIntentRepository, SemanticIntentRepository>();
-
-        // Add unit of work pattern
-        services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<Repositories.IEnvironmentTemplateRepository, Repositories.EnvironmentTemplateRepository>();
+        services.AddScoped<Repositories.IEnvironmentDeploymentRepository, Repositories.EnvironmentDeploymentRepository>();
+        services.AddScoped<Repositories.IComplianceAssessmentRepository, Repositories.ComplianceAssessmentRepository>();
+        
+        // Semantic Intent Repository and Service (real implementations)
+        services.AddScoped<Platform.Engineering.Copilot.Core.Data.Repositories.ISemanticIntentRepository, 
+            Platform.Engineering.Copilot.Core.Data.Repositories.SemanticIntentRepository>();
+        services.AddScoped<ISemanticIntentService, SemanticIntentService>();
 
         return services;
     }
@@ -94,34 +95,15 @@ public static class ServiceCollectionExtensions
         });
 
         // Add repository services
-        services.AddScoped<IEnvironmentTemplateRepository, EnvironmentTemplateRepository>();
-        services.AddScoped<IEnvironmentDeploymentRepository, EnvironmentDeploymentRepository>();
-        services.AddScoped<IScalingPolicyRepository, ScalingPolicyRepository>();
-        services.AddScoped<IEnvironmentMetricsRepository, EnvironmentMetricsRepository>();
-        services.AddScoped<IComplianceScanRepository, ComplianceScanRepository>();
-        services.AddScoped<ISemanticIntentRepository, SemanticIntentRepository>();
-
-        // Add unit of work pattern
-        services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<Repositories.IEnvironmentTemplateRepository, Repositories.EnvironmentTemplateRepository>();
+        services.AddScoped<Repositories.IEnvironmentDeploymentRepository, Repositories.EnvironmentDeploymentRepository>();
+        services.AddScoped<Repositories.IComplianceAssessmentRepository, Repositories.ComplianceAssessmentRepository>();
+        
+        // Semantic Intent Repository and Service (real implementations)
+        services.AddScoped<Platform.Engineering.Copilot.Core.Data.Repositories.ISemanticIntentRepository, 
+            Platform.Engineering.Copilot.Core.Data.Repositories.SemanticIntentRepository>();
+        services.AddScoped<ISemanticIntentService, SemanticIntentService>();
 
         return services;
     }
 }
-
-// Placeholder interfaces for repositories (to be implemented)
-public interface IEnvironmentTemplateRepository { }
-public interface IEnvironmentDeploymentRepository { }
-public interface IScalingPolicyRepository { }
-public interface IEnvironmentMetricsRepository { }
-public interface IComplianceScanRepository { }
-public interface ISemanticIntentRepository { }
-public interface IUnitOfWork { }
-
-// Placeholder implementations (to be expanded)
-public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository { }
-public class EnvironmentDeploymentRepository : IEnvironmentDeploymentRepository { }
-public class ScalingPolicyRepository : IScalingPolicyRepository { }
-public class EnvironmentMetricsRepository : IEnvironmentMetricsRepository { }
-public class ComplianceScanRepository : IComplianceScanRepository { }
-public class SemanticIntentRepository : ISemanticIntentRepository { }
-public class UnitOfWork : IUnitOfWork { }

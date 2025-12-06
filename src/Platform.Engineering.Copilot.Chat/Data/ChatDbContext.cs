@@ -24,6 +24,7 @@ public class ChatDbContext : DbContext
         modelBuilder.Entity<Conversation>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(450); // Match foreign key references
             entity.Property(e => e.Title).HasMaxLength(200).IsRequired();
             entity.Property(e => e.UserId).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Metadata)
@@ -47,7 +48,7 @@ public class ChatDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Content).IsRequired();
-            entity.Property(e => e.ConversationId).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.ConversationId).HasMaxLength(450).IsRequired(); // Match Conversation.Id length
             entity.Property(e => e.Role).HasConversion<string>();
             entity.Property(e => e.Status).HasConversion<string>();
             entity.Property(e => e.Metadata)
@@ -80,7 +81,7 @@ public class ChatDbContext : DbContext
         modelBuilder.Entity<ConversationContext>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.ConversationId).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.ConversationId).HasMaxLength(450).IsRequired(); // Match Conversation.Id length
             entity.Property(e => e.Type).HasMaxLength(50).IsRequired();
             entity.Property(e => e.Title).HasMaxLength(200).IsRequired();
             entity.Property(e => e.Data)
@@ -104,7 +105,7 @@ public class ChatDbContext : DbContext
         modelBuilder.Entity<MessageAttachment>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.MessageId).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.MessageId).HasMaxLength(450).IsRequired(); // Match ChatMessage.Id length
             entity.Property(e => e.FileName).HasMaxLength(255).IsRequired();
             entity.Property(e => e.ContentType).HasMaxLength(100).IsRequired();
             entity.Property(e => e.StoragePath).HasMaxLength(500).IsRequired();

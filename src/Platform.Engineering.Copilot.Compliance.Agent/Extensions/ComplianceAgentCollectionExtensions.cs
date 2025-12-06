@@ -15,6 +15,8 @@ using Platform.Engineering.Copilot.Core.Services.DocumentProcessing;
 using Platform.Engineering.Copilot.Core.Services.DiagramGeneration;
 using Platform.Engineering.Copilot.Core.Services.Analyzers;
 using Platform.Engineering.Copilot.Compliance.Agent.Plugins;
+using Platform.Engineering.Copilot.Compliance.Agent.Plugins.Compliance;
+using Platform.Engineering.Copilot.Compliance.Agent.Plugins.Code;
 
 namespace Platform.Engineering.Copilot.Compliance.Agent.Extensions;
 

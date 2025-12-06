@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
+using Platform.Engineering.Copilot.Core.Interfaces.Discovery;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 using Platform.Engineering.Copilot.Core.Models.Azure;
 using Platform.Engineering.Copilot.Core.Services.Azure;
@@ -18,6 +19,7 @@ namespace Platform.Engineering.Copilot.Discovery.Agent.Plugins;
 /// </summary>
 public class AzureResourceDiscoveryPlugin : BaseSupervisorPlugin
 {
+    private readonly IAzureResourceDiscoveryService _discoveryService;
     private readonly IAzureResourceService _azureResourceService;
     private readonly AzureMcpClient _azureMcpClient;
     private readonly DiscoveryAgentOptions _options;
@@ -25,10 +27,12 @@ public class AzureResourceDiscoveryPlugin : BaseSupervisorPlugin
     public AzureResourceDiscoveryPlugin(
         ILogger<AzureResourceDiscoveryPlugin> logger,
         Kernel kernel,
+        IAzureResourceDiscoveryService discoveryService,
         IAzureResourceService azureResourceService,
         AzureMcpClient azureMcpClient,
         IOptions<DiscoveryAgentOptions> options) : base(logger, kernel)
     {
+        _discoveryService = discoveryService ?? throw new ArgumentNullException(nameof(discoveryService));
         _azureResourceService = azureResourceService ?? throw new ArgumentNullException(nameof(azureResourceService));
         _azureMcpClient = azureMcpClient ?? throw new ArgumentNullException(nameof(azureMcpClient));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
@@ -150,9 +154,10 @@ public class AzureResourceDiscoveryPlugin : BaseSupervisorPlugin
     }
 
     [KernelFunction("get_resource_details")]
-    [Description("Get comprehensive details about a specific Azure resource. " +
-                 "Shows configuration, properties, tags, location, health status, and metadata. " +
-                 "Use to inspect specific resources and understand their configuration.")]
+    [Description("Get detailed information about a specific Azure resource using Azure Resource Graph for fast retrieval. " +
+                 "PRIMARY FUNCTION: Use this for all normal resource detail queries. " +
+                 "Returns configuration, properties, SKU, kind, tags, location, provisioning state, and health status. " +
+                 "Optimized for speed using Azure Resource Graph API.")]
     public async Task<string> GetResourceDetailsAsync(
         [Description("Full Azure resource ID (e.g., /subscriptions/{sub}/resourceGroups/{rg}/providers/{type}/{name})")] string resourceId,
         [Description("Include health status information (default: true)")] bool includeHealth = true,
@@ -171,56 +176,70 @@ public class AzureResourceDiscoveryPlugin : BaseSupervisorPlugin
                 }, new JsonSerializerOptions { WriteIndented = true });
             }
 
-            var resource = await _azureResourceService.GetResourceAsync(resourceId);
+            _logger.LogInformation("Getting resource details for: {ResourceId}", resourceId);
 
-            if (resource == null)
+            // Extract subscription ID from resource ID
+            var parts = resourceId.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var subIndex = Array.IndexOf(parts, "subscriptions");
+            var subscriptionId = (subIndex >= 0 && subIndex + 1 < parts.Length) ? parts[subIndex + 1] : string.Empty;
+            
+            if (string.IsNullOrEmpty(subscriptionId))
             {
                 return JsonSerializer.Serialize(new
                 {
                     success = false,
-                    error = $"Resource not found: {resourceId}"
+                    error = "Could not extract subscription ID from resource ID"
                 }, new JsonSerializerOptions { WriteIndented = true });
             }
 
-            // Get health status if requested and enabled
-            object? healthStatus = null;
-            if (includeHealth && _options.EnableHealthMonitoring)
+            // Call Discovery Service (orchestration engine) - it handles Resource Graph + API fallback + MCP
+            _logger.LogInformation("🔍 DIAGNOSTIC [get_resource_details]: About to call _discoveryService.GetResourceDetailsAsync");
+            _logger.LogInformation("🔍 DIAGNOSTIC [get_resource_details]: _discoveryService is null: {IsNull}", _discoveryService == null);
+            _logger.LogInformation("🔍 DIAGNOSTIC [get_resource_details]: Resource ID: {ResourceId}, Subscription: {SubscriptionId}", resourceId, subscriptionId);
+            
+            var result = await _discoveryService.GetResourceDetailsAsync(
+                resourceId,  // Pass resource ID as query (AI will parse it)
+                subscriptionId,
+                cancellationToken);
+            
+            _logger.LogInformation("🔍 DIAGNOSTIC [get_resource_details]: _discoveryService.GetResourceDetailsAsync returned. Success: {Success}", result.Success);
+
+            if (!result.Success || result.Resource == null)
             {
-                try
+                return JsonSerializer.Serialize(new
                 {
-                    healthStatus = await _azureResourceService.GetResourceHealthAsync(resourceId, cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Could not retrieve health status for resource {ResourceId}", resourceId);
-                }
+                    success = false,
+                    error = result.ErrorDetails ?? "Resource not found"
+                }, new JsonSerializerOptions { WriteIndented = true });
             }
 
             return JsonSerializer.Serialize(new
             {
                 success = true,
                 resourceId = resourceId,
+                dataSource = result.DataSource ?? "Unknown",
                 resource = new
                 {
-                    id = resource.Id ?? resourceId,
-                    name = resource.Name ?? "Unknown",
-                    type = resource.Type ?? "Unknown",
-                    location = resource.Location ?? "Unknown",
-                    tags = resource.Tags,
-                    sku = resource.Sku,
-                    kind = resource.Kind,
-                    provisioningState = resource.ProvisioningState
+                    id = result.Resource.ResourceId ?? resourceId,
+                    name = result.Resource.Name ?? "Unknown",
+                    type = result.Resource.Type ?? "Unknown",
+                    location = result.Resource.Location ?? "Unknown",
+                    tags = result.Resource.Tags ?? new Dictionary<string, string>(),
+                    sku = result.Resource.Sku ?? "Not specified",
+                    kind = result.Resource.Kind ?? "Not specified",
+                    provisioningState = result.Resource.ProvisioningState ?? "Not specified",
+                    properties = result.Resource.Properties ?? new Dictionary<string, object>()
                 },
-                health = healthStatus != null ? (object)new
+                health = result.HealthStatus != null ? (object)new
                 {
                     available = true,
-                    status = healthStatus
+                    status = result.HealthStatus
                 } : new
                 {
                     available = false,
                     message = "Health status not available for this resource type"
                 },
-                nextSteps = healthStatus != null
+                nextSteps = result.HealthStatus != null
                     ? "Review the resource configuration and properties shown above. Check the health status for any issues. Say 'analyze dependencies for this resource' to see what it depends on, or 'show me the health history for this resource' for historical health data."
                     : "Review the resource configuration and properties shown above. Say 'analyze dependencies for this resource' to see what it depends on, or 'show me the health history for this resource' for historical health data."
             }, new JsonSerializerOptions { WriteIndented = true });
@@ -670,18 +689,14 @@ public class AzureResourceDiscoveryPlugin : BaseSupervisorPlugin
                 {
                     totalSubscriptions = subList.Count
                 },
-                subscriptions = subList.Select(sub =>
+                subscriptions = subList.Select(sub => new
                 {
-                    dynamic subData = sub;
-                    return new
-                    {
-                        subscriptionId = subData.subscriptionId?.ToString(),
-                        displayName = subData.displayName?.ToString(),
-                        state = subData.state?.ToString(),
-                        subscriptionPolicies = TryGetProperty(subData, "subscriptionPolicies"),
-                        authorizationSource = TryGetProperty(subData, "authorizationSource")?.ToString(),
-                        managedByTenants = TryGetProperty(subData, "managedByTenants")
-                    };
+                    subscriptionId = sub.SubscriptionId,
+                    displayName = sub.SubscriptionName,
+                    state = sub.State,
+                    tenantId = sub.TenantId,
+                    createdDate = sub.CreatedDate,
+                    tags = sub.Tags
                 }),
                 nextSteps = new[]
                 {
@@ -1354,9 +1369,10 @@ public class AzureResourceDiscoveryPlugin : BaseSupervisorPlugin
     }
 
     [KernelFunction("get_resource_with_diagnostics")]
-    [Description("Get comprehensive resource details with AppLens diagnostics and troubleshooting guidance. " +
-                 "Combines SDK resource data with Azure MCP's AppLens diagnostics for deep analysis. " +
-                 "Use when troubleshooting resource issues or performing detailed health analysis.")]
+    [Description("TROUBLESHOOTING ONLY: Get resource details with AppLens diagnostics for troubleshooting. " +
+                 "Only use when user EXPLICITLY asks to troubleshoot, diagnose, or fix problems. " +
+                 "NOT for normal resource queries - use get_resource_details for standard requests. " +
+                 "Includes AppLens diagnostics which adds significant latency.")]
     public async Task<string> GetResourceDetailsWithDiagnosticsAsync(
         [Description("Full Azure resource ID")] string resourceId,
         [Description("Include AppLens diagnostics (default: true)")] bool includeDiagnostics = true,
@@ -1376,10 +1392,33 @@ public class AzureResourceDiscoveryPlugin : BaseSupervisorPlugin
                 }, new JsonSerializerOptions { WriteIndented = true });
             }
 
-            // 1. Use SDK for resource details
-            var resource = await _azureResourceService.GetResourceAsync(resourceId);
+            // Extract subscription ID from resource ID
+            var parts = resourceId.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var subIndex = Array.IndexOf(parts, "subscriptions");
+            var subscriptionId = (subIndex >= 0 && subIndex + 1 < parts.Length) ? parts[subIndex + 1] : string.Empty;
+            
+            if (string.IsNullOrEmpty(subscriptionId))
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = "Could not extract subscription ID from resource ID"
+                }, new JsonSerializerOptions { WriteIndented = true });
+            }
 
-            if (resource == null)
+            // 1. Use Discovery Service (which uses Resource Graph + API fallback)
+            _logger.LogInformation("🔍 DIAGNOSTIC: About to call _discoveryService.GetResourceDetailsAsync");
+            _logger.LogInformation("🔍 DIAGNOSTIC: _discoveryService is null: {IsNull}", _discoveryService == null);
+            _logger.LogInformation("🔍 DIAGNOSTIC: Resource ID: {ResourceId}, Subscription: {SubscriptionId}", resourceId, subscriptionId);
+            
+            var result = await _discoveryService.GetResourceDetailsAsync(
+                resourceId,
+                subscriptionId,
+                cancellationToken);
+            
+            _logger.LogInformation("🔍 DIAGNOSTIC: _discoveryService.GetResourceDetailsAsync returned. Success: {Success}", result.Success);
+
+            if (!result.Success || result.Resource == null)
             {
                 return JsonSerializer.Serialize(new
                 {
@@ -1388,19 +1427,10 @@ public class AzureResourceDiscoveryPlugin : BaseSupervisorPlugin
                 }, new JsonSerializerOptions { WriteIndented = true });
             }
 
-            // 2. Get health status if requested and enabled
-            object? healthStatus = null;
-            if (includeHealth && _options.EnableHealthMonitoring)
-            {
-                try
-                {
-                    healthStatus = await _azureResourceService.GetResourceHealthAsync(resourceId, cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Could not retrieve health status for resource {ResourceId}", resourceId);
-                }
-            }
+            var resource = result.Resource;
+
+            // 2. Health status is already included in the Discovery Service result
+            object? healthStatus = result.HealthStatus;
 
             // 3. Use Azure MCP AppLens for advanced diagnostics
             object? diagnosticsData = null;
@@ -1442,14 +1472,16 @@ public class AzureResourceDiscoveryPlugin : BaseSupervisorPlugin
                 resourceId = resourceId,
                 resource = new
                 {
-                    id = resource.Id ?? resourceId,
+                    id = resource.ResourceId ?? resourceId,
                     name = resource.Name ?? "Unknown",
                     type = resource.Type ?? "Unknown",
                     location = resource.Location ?? "Unknown",
+                    resourceGroup = resource.ResourceGroup,
                     tags = resource.Tags,
                     sku = resource.Sku,
                     kind = resource.Kind,
-                    provisioningState = resource.ProvisioningState
+                    provisioningState = resource.ProvisioningState,
+                    dataSource = result.DataSource  // Show if data came from ResourceGraph or API
                 },
                 health = healthStatus != null ? (object)new
                 {
@@ -1477,132 +1509,13 @@ public class AzureResourceDiscoveryPlugin : BaseSupervisorPlugin
         }
     }
 
-    [KernelFunction("search_azure_documentation")]
-    [Description("Search official Microsoft Azure documentation for guidance and troubleshooting. " +
-                 "Powered by Azure MCP Server with access to up-to-date Microsoft Learn content. " +
-                 "Use when you need official documentation, how-to guides, or troubleshooting steps.")]
-    public async Task<string> SearchAzureDocumentationAsync(
-        [Description("Search query (e.g., 'how to configure storage firewall', 'troubleshoot AKS connectivity')")] string query,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            _logger.LogInformation("Searching Azure documentation for: {Query}", query);
+    // REMOVED: search_azure_documentation - Moved to KnowledgeBase Agent
+    // Azure documentation search is now handled by KnowledgeBase Agent for consistency
+    // with other documentation queries (NIST, STIGs, DoD Instructions)
 
-            if (string.IsNullOrWhiteSpace(query))
-            {
-                return JsonSerializer.Serialize(new
-                {
-                    success = false,
-                    error = "Search query is required"
-                }, new JsonSerializerOptions { WriteIndented = true });
-            }
-
-            await _azureMcpClient.InitializeAsync(cancellationToken);
-
-            var docs = await _azureMcpClient.CallToolAsync("documentation", 
-                new Dictionary<string, object?>
-                {
-                    ["query"] = query
-                }, cancellationToken);
-
-            return JsonSerializer.Serialize(new
-            {
-                success = docs.Success,
-                query = query,
-                results = docs.Success ? docs.Result : "Documentation search unavailable",
-                nextSteps = new[]
-                {
-                    "Review the documentation results above for official Microsoft guidance.",
-                    "Say 'get best practices for <resource-type>' for specific recommendations.",
-                    "Say 'show me details for resource <resource-id>' to apply this guidance to your resources."
-                }
-            }, new JsonSerializerOptions { WriteIndented = true });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error searching Azure documentation for query: {Query}", query);
-            return CreateErrorResponse("search Azure documentation", ex);
-        }
-    }
-
-    [KernelFunction("get_resource_best_practices")]
-    [Description("Get Azure and Terraform best practices for specific resource types. " +
-                 "Powered by Azure MCP Server with curated recommendations from Microsoft. " +
-                 "Use for optimization, compliance, security, and infrastructure improvements.")]
-    public async Task<string> GetResourceBestPracticesAsync(
-        [Description("Resource type (e.g., 'Microsoft.Storage/storageAccounts', 'AKS', 'App Service')")] string resourceType,
-        [Description("Include Terraform best practices (default: false)")] bool includeTerraform = false,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            _logger.LogInformation("Getting best practices for resource type: {ResourceType}", resourceType);
-
-            if (string.IsNullOrWhiteSpace(resourceType))
-            {
-                return JsonSerializer.Serialize(new
-                {
-                    success = false,
-                    error = "Resource type is required"
-                }, new JsonSerializerOptions { WriteIndented = true });
-            }
-
-            await _azureMcpClient.InitializeAsync(cancellationToken);
-
-            var bestPracticesResults = new List<object>();
-
-            // 1. Get Azure best practices
-            var azureBp = await _azureMcpClient.CallToolAsync("get_bestpractices", 
-                new Dictionary<string, object?>
-                {
-                    ["resourceType"] = resourceType
-                }, cancellationToken);
-
-            bestPracticesResults.Add(new
-            {
-                source = "Azure",
-                available = azureBp.Success,
-                data = azureBp.Success ? azureBp.Result : "Azure best practices not available"
-            });
-
-            // 2. Get Terraform best practices if requested
-            if (includeTerraform)
-            {
-                var tfBp = await _azureMcpClient.CallToolAsync("azureterraformbestpractices", 
-                    new Dictionary<string, object?>
-                    {
-                        ["resourceType"] = resourceType
-                    }, cancellationToken);
-
-                bestPracticesResults.Add(new
-                {
-                    source = "Terraform",
-                    available = tfBp.Success,
-                    data = tfBp.Success ? tfBp.Result : "Terraform best practices not available"
-                });
-            }
-
-            return JsonSerializer.Serialize(new
-            {
-                success = true,
-                resourceType = resourceType,
-                bestPractices = bestPracticesResults,
-                nextSteps = new[]
-                {
-                    "Review the best practices above to optimize your resources.",
-                    "Say 'discover resources of type <type>' to find resources that could benefit from these practices.",
-                    "Say 'search Azure documentation for <topic>' for more detailed implementation guidance.",
-                    includeTerraform ? null : "Say 'include Terraform best practices' to see Infrastructure as Code recommendations."
-                }.Where(s => s != null)
-            }, new JsonSerializerOptions { WriteIndented = true });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting best practices for resource type: {ResourceType}", resourceType);
-            return CreateErrorResponse("get resource best practices", ex);
-        }
-    }
+    // REMOVED: get_resource_best_practices - Moved to KnowledgeBase Agent
+    // Azure best practices are knowledge/documentation resources, handled by KnowledgeBase Agent
+    // alongside Azure documentation search, NIST controls, and STIGs
 
     [KernelFunction("generate_bicep_for_resource")]
     [Description("Generate Bicep Infrastructure as Code for an existing Azure resource. " +

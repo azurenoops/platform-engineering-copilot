@@ -1,3 +1,4 @@
+using Platform.Engineering.Copilot.Core.Constants;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Models.Compliance;
@@ -350,7 +351,7 @@ public class StigValidationService : IStigValidationService
                 : await _azureResourceService.ListAllResourcesAsync(subscriptionId, cancellationToken);
 
             var nsgs = allResources.Where(r =>
-                r.Type.Equals("Microsoft.Network/networkSecurityGroups", StringComparison.OrdinalIgnoreCase)).ToList();
+                r.Type.Equals(ComplianceConstants.AzureResourceTypes.NetworkSecurityGroups, StringComparison.OrdinalIgnoreCase)).ToList();
 
             var armClient = _azureResourceService.GetArmClient();
             if (armClient == null)
@@ -460,7 +461,7 @@ public class StigValidationService : IStigValidationService
                 : await _azureResourceService.ListAllResourcesAsync(subscriptionId, cancellationToken);
 
             var storageAccounts = allResources.Where(r =>
-                r.Type.Equals("Microsoft.Storage/storageAccounts", StringComparison.OrdinalIgnoreCase)).ToList();
+                r.Type.Equals(ComplianceConstants.AzureResourceTypes.StorageAccounts, StringComparison.OrdinalIgnoreCase)).ToList();
 
             var armClient = _azureResourceService.GetArmClient();
             if (armClient == null)
@@ -569,7 +570,7 @@ public class StigValidationService : IStigValidationService
                 : await _azureResourceService.ListAllResourcesAsync(subscriptionId, cancellationToken);
 
             var storageAccounts = allResources.Where(r =>
-                r.Type.Equals("Microsoft.Storage/storageAccounts", StringComparison.OrdinalIgnoreCase)).ToList();
+                r.Type.Equals(ComplianceConstants.AzureResourceTypes.StorageAccounts, StringComparison.OrdinalIgnoreCase)).ToList();
 
             var armClient = _azureResourceService.GetArmClient();
             if (armClient == null)
@@ -660,10 +661,10 @@ public class StigValidationService : IStigValidationService
 
             var criticalResourceTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                "Microsoft.KeyVault/vaults",
-                "Microsoft.Network/networkSecurityGroups",
-                "Microsoft.Storage/storageAccounts",
-                "Microsoft.Sql/servers"
+                ComplianceConstants.AzureResourceTypes.KeyVaults,
+                ComplianceConstants.AzureResourceTypes.NetworkSecurityGroups,
+                ComplianceConstants.AzureResourceTypes.StorageAccounts,
+                ComplianceConstants.AzureResourceTypes.SqlServers
             };
 
             var criticalResources = allResources.Where(r =>
@@ -1009,7 +1010,7 @@ public class StigValidationService : IStigValidationService
                 : await _azureResourceService.ListAllResourcesAsync(subscriptionId, cancellationToken);
 
             var firewalls = allResources.Where(r =>
-                r.Type.Equals("Microsoft.Network/azureFirewalls", StringComparison.OrdinalIgnoreCase)).ToList();
+                r.Type.Equals(ComplianceConstants.AzureResourceTypes.AzureFirewalls, StringComparison.OrdinalIgnoreCase)).ToList();
 
             if (firewalls.Count == 0)
             {
@@ -1022,7 +1023,7 @@ public class StigValidationService : IStigValidationService
                     ComplianceStatus = AtoComplianceStatus.NonCompliant,
                     ResourceId = $"/subscriptions/{subscriptionId}",
                     ResourceName = "Subscription",
-                    ResourceType = "Microsoft.Resources/subscriptions",
+                    ResourceType = ComplianceConstants.AzureResourceTypes.Subscription,
                     Evidence = "No Azure Firewall resources found",
                     RemediationGuidance = stig.FixText,
                     Metadata = new Dictionary<string, object>
@@ -1063,7 +1064,7 @@ public class StigValidationService : IStigValidationService
                 : await _azureResourceService.ListAllResourcesAsync(subscriptionId, cancellationToken);
 
             var storageAccounts = allResources.Where(r =>
-                r.Type.Equals("Microsoft.Storage/storageAccounts", StringComparison.OrdinalIgnoreCase)).ToList();
+                r.Type.Equals(ComplianceConstants.AzureResourceTypes.StorageAccounts, StringComparison.OrdinalIgnoreCase)).ToList();
 
             var armClient = _azureResourceService.GetArmClient();
             if (armClient == null)
@@ -1235,7 +1236,7 @@ public class StigValidationService : IStigValidationService
                 : await _azureResourceService.ListAllResourcesAsync(subscriptionId, cancellationToken);
 
             var sqlServers = allResources.Where(r =>
-                r.Type.Equals("Microsoft.Sql/servers", StringComparison.OrdinalIgnoreCase)).ToList();
+                r.Type.Equals(ComplianceConstants.AzureResourceTypes.SqlServers, StringComparison.OrdinalIgnoreCase)).ToList();
 
             var armClient = _azureResourceService.GetArmClient();
             if (armClient == null)
@@ -1453,7 +1454,7 @@ public class StigValidationService : IStigValidationService
                 : await _azureResourceService.ListAllResourcesAsync(subscriptionId, cancellationToken);
 
             var vms = allResources.Where(r =>
-                r.Type.Equals("Microsoft.Compute/virtualMachines", StringComparison.OrdinalIgnoreCase)).ToList();
+                r.Type.Equals(ComplianceConstants.AzureResourceTypes.VirtualMachines, StringComparison.OrdinalIgnoreCase)).ToList();
 
             var armClient = _azureResourceService.GetArmClient();
             if (armClient == null)

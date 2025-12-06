@@ -44,7 +44,8 @@ public class TerraformAKSModuleGenerator
         
         var region = infrastructure.Region ?? "eastus";
         
-        sb.AppendLine("# AKS Cluster Configuration");
+        sb.AppendLine("# AKS Cluster Configuration - FedRAMP Compliant");
+        sb.AppendLine("# Implements: AC-3 (RBAC), AU-2 (Auditing), SC-7 (Network Segmentation), SC-28 (Encryption), SI-4 (Defender)");
         sb.AppendLine();
         sb.AppendLine("resource \"azurerm_kubernetes_cluster\" \"main\" {");
         sb.AppendLine("  name                = var.cluster_name");

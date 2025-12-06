@@ -4,9 +4,9 @@
 > **Previous Phase:** Phase 1 - Foundational Copilot ✅ **COMPLETE**
 
 **Document Version:** 2.0  
-**Last Updated:** November 2025  
+**Last Updated:** December 2025  
 **Phase 1 Status:** ✅ **COMPLETE**  
-**Phase 2 Status:** � In Progress
+**Phase 2 Status:** 🟡 In Progress
 
 ---
 
@@ -72,8 +72,8 @@ Phase 1 focused on **advisory and generation capabilities only** - no direct res
 **Compliance Score:** ✅ **100% Compliant**
 
 **Code References:**
-- `src/Platform.Engineering.Copilot.Core/Agents/Discovery/AzureResourceDiscoveryPlugin.cs` - Resource Q&A
-- `src/Platform.Engineering.Copilot.Core/Agents/Compliance/CompliancePlugin.cs` - Compliance guidance
+- `src/Platform.Engineering.Copilot.Discovery.Agent/Plugins/AzureResourceDiscoveryPlugin.cs` - Resource Q&A
+- `src/Platform.Engineering.Copilot.Compliance.Agent/Plugins/CompliancePlugin.cs` - Compliance guidance
 - `src/Platform.Engineering.Copilot.Compliance.Agent/Plugins/KnowledgeBasePlugin.cs` - **RMF/STIG/DoD knowledge base** ✅
 - `src/Platform.Engineering.Copilot.Compliance.Agent/Services/KnowledgeBase/` - **RMF, STIG, DoD services** ✅
 - `src/Platform.Engineering.Copilot.Core/KnowledgeBase/` - **Knowledge base data files** ✅
@@ -154,7 +154,7 @@ Phase 1 focused on **advisory and generation capabilities only** - no direct res
 **Compliance Score:** ✅ **85% Compliant** (pipeline generation implemented, IL enforcement partial)
 
 **Code References:**
-- `src/Platform.Engineering.Copilot.Core/Agents/Infrastructure/InfrastructureProvisioningPlugin.cs` - Template generation
+- `src/Platform.Engineering.Copilot.Infrastructure.Agent/Plugins/InfrastructurePlugin.cs` - Template generation
 - `src/Platform.Engineering.Copilot.Infrastructure.Agent/Services/TemplateGeneration/DynamicTemplateGeneratorService.cs` - Universal template generator (489 lines)
 - `src/Platform.Engineering.Copilot.Infrastructure.Agent/Services/Generators/Workflow/GitHubActionsWorkflowGenerator.cs` - CI/CD pipeline generation (1,221 lines) ✅
 - `extensions/platform-engineering-copilot-github/src/services/workspaceService.ts` - Workspace creation (**Phase 1 Perfect**)
@@ -308,7 +308,7 @@ Phase 1 focused on **advisory and generation capabilities only** - no direct res
 **Compliance Score:** ✅ **100% Compliant**
 
 **Code References:**
-- `src/Platform.Engineering.Copilot.Core/Agents/Compliance/CompliancePlugin.cs` - Assessment engine
+- `src/Platform.Engineering.Copilot.Compliance.Agent/Plugins/CompliancePlugin.cs` - Assessment engine
 - `src/Platform.Engineering.Copilot.Core/Services/Compliance/NistComplianceService.cs` - NIST scanning
 - `src/Platform.Engineering.Copilot.Compliance.Agent/Plugins/KnowledgeBasePlugin.cs` - **Compliance mapping functions** ✅
 - `src/Platform.Engineering.Copilot.Compliance.Agent/Services/KnowledgeBase/StigKnowledgeService.cs` - **STIG cross-reference** ✅
@@ -482,8 +482,8 @@ Phase 1 focused on **advisory and generation capabilities only** - no direct res
 **Compliance Score:** ✅ **90% Compliant**
 
 **Code References:**
-- `src/Platform.Engineering.Copilot.Core/Agents/Document/DocumentGenerationPlugin.cs` - Documentation generation
-- `src/Platform.Engineering.Copilot.Core/Agents/Compliance/AtoPreparationAgent.cs` - ATO package creation
+- `src/Platform.Engineering.Copilot.Compliance.Agent/Plugins/DocumentGenerationPlugin.cs` - Documentation generation
+- `src/Platform.Engineering.Copilot.Compliance.Agent/Services/Agents/AtoPreparationAgent.cs` - ATO package creation
 - `src/Platform.Engineering.Copilot.Document.Agent/Services/DiagramGeneration/MermaidDiagramService.cs` - **Mermaid diagram generation** ✅
 - `src/Platform.Engineering.Copilot.Document.Agent/Services/DiagramGeneration/DiagramRenderService.cs` - **PNG/SVG rendering** ✅
 - `src/Platform.Engineering.Copilot.Document.Agent/Plugins/DiagramGenerationPlugin.cs` - **Diagram kernel functions** ✅

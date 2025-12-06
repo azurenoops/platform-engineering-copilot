@@ -69,8 +69,8 @@ export class PlatformChatParticipant implements vscode.Disposable {
                 }
             );
 
-            // Handle response
-            await this.handleSuccessResponse(response, stream);
+            // Handle response - pass conversationId for template lookup
+            await this.handleSuccessResponse(response, stream, response.conversationId || conversationId);
 
             // Handle follow-up if needed
             if (response.requiresFollowUp && response.followUpPrompt) {
@@ -97,7 +97,8 @@ export class PlatformChatParticipant implements vscode.Disposable {
 
     private async handleSuccessResponse(
         response: McpChatResponse,
-        stream: vscode.ChatResponseStream
+        stream: vscode.ChatResponseStream,
+        conversationId?: string
     ): Promise<void> {
         // Determine icon based on intent type
         let icon = '✅';
@@ -144,14 +145,49 @@ export class PlatformChatParticipant implements vscode.Disposable {
             });
         }
 
-        // Add workspace creation button for infrastructure templates
+        // Check for infrastructure templates - try to fetch from database first
         config.log(`Checking for infrastructure templates - intentType: ${response.intentType}`);
-        const hasTemplates = this.containsInfrastructureTemplates(response.response);
-        config.log(`Contains infrastructure templates: ${hasTemplates}`);
+        const looksLikeInfraResponse = this.looksLikeInfrastructureResponse(response.response);
+        config.log(`Looks like infrastructure response: ${looksLikeInfraResponse}`);
         
-        if (response.intentType === 'infrastructure' || hasTemplates) {
-            const templates = this.extractInfrastructureTemplates(response.response);
-            config.log(`Extracted ${templates.size} template(s):`);
+        if (response.intentType === 'infrastructure' || looksLikeInfraResponse) {
+            // Try to fetch templates from database
+            let templates: Map<string, string> = new Map();
+            
+            try {
+                // First try by conversation ID
+                if (conversationId) {
+                    config.log(`Fetching templates from DB for conversation: ${conversationId}`);
+                    const dbResponse = await this.apiClient.getTemplatesByConversationId(conversationId);
+                    if (dbResponse.success && dbResponse.templates && dbResponse.templates.length > 0) {
+                        for (const template of dbResponse.templates) {
+                            for (const file of template.files) {
+                                templates.set(file.fileName, file.content);
+                            }
+                        }
+                        config.log(`Fetched ${templates.size} file(s) from DB by conversation ID`);
+                    }
+                }
+                
+                // If no templates found by conversation ID, try latest
+                if (templates.size === 0) {
+                    config.log(`Fetching latest template from DB`);
+                    const latestResponse = await this.apiClient.getLatestTemplate();
+                    if (latestResponse.success && latestResponse.template) {
+                        for (const file of latestResponse.template.files) {
+                            templates.set(file.fileName, file.content);
+                        }
+                        config.log(`Fetched ${templates.size} file(s) from latest template`);
+                    }
+                }
+            } catch (error) {
+                config.error('Failed to fetch templates from DB:', error);
+                // Fall back to extracting from response
+                templates = this.extractInfrastructureTemplates(response.response);
+                config.log(`Fallback: Extracted ${templates.size} template(s) from response`);
+            }
+            
+            config.log(`Total templates found: ${templates.size}`);
             for (const [filename, content] of templates.entries()) {
                 config.log(`  - ${filename} (${content.length} bytes)`);
             }
@@ -159,7 +195,7 @@ export class PlatformChatParticipant implements vscode.Disposable {
             if (templates.size > 0) {
                 stream.markdown('\n---\n\n');
                 stream.markdown('### 💾 Save to Workspace\n\n');
-                stream.markdown('The response contains infrastructure templates. Click below to save them to your workspace:\n\n');
+                stream.markdown('Infrastructure templates are ready. Click below to save them to your workspace:\n\n');
                 
                 stream.button({
                     command: 'platform-copilot.createWorkspace',
@@ -174,6 +210,27 @@ export class PlatformChatParticipant implements vscode.Disposable {
                 });
             }
         }
+    }
+
+    /**
+     * Check if response looks like infrastructure template generation
+     * (without requiring actual code blocks)
+     */
+    private looksLikeInfrastructureResponse(response: string): boolean {
+        const indicators = [
+            /Generated \d+ Files/i,
+            /\.bicep/i,
+            /\.tf\b/i,
+            /main\.bicep/i,
+            /main\.tf/i,
+            /terraform/i,
+            /Bicep template/i,
+            /infrastructure template/i,
+            /Create Project in Workspace/i,
+            /📄 \*\*Generated/i
+        ];
+        
+        return indicators.some(pattern => pattern.test(response));
     }
 
     private async handleFollowUpResponse(

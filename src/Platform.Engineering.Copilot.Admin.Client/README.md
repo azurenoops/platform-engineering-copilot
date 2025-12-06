@@ -1,10 +1,10 @@
-# Platform Engineering Admin Console
+# Platform Engineering Copilot Admin Console
 
 Web-based admin interface for managing service templates and infrastructure.
 
 ## Overview
 
-The Platform Engineering Admin Console provides a user-friendly interface for platform engineers to:
+The Platform Engineering Copilot Admin Console provides a user-friendly interface for platform engineers to:
 
 - **Create & Manage Templates**: Full CRUD operations for service templates
 - **View Statistics**: Dashboard with template analytics

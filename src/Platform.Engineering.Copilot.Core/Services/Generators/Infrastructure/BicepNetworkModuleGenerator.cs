@@ -25,6 +25,11 @@ public class BicepNetworkModuleGenerator
     {
         var sb = new StringBuilder();
 
+        // FedRAMP Header
+        sb.AppendLine("// Azure Network Infrastructure Module - FedRAMP Compliant");
+        sb.AppendLine("// Implements: SC-7 (Boundary Protection), AC-4 (Information Flow), SC-8 (Transmission Confidentiality)");
+        sb.AppendLine();
+
         // Parameters
         sb.AppendLine("@description('The name of the virtual network')");
         sb.AppendLine($"param vnetName string = '{networkConfig.VNetName}'");

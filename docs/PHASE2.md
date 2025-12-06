@@ -4,7 +4,7 @@
 > **Previous Phase:** Phase 1 - Foundational Copilot ✅ COMPLETE
 
 **Document Version:** 2.0  
-**Last Updated:** January 2025  
+**Last Updated:** December 2025  
 **Phase 1 Status:** ✅ Complete  
 **Phase 2 Status:** 🟡 69% Complete
 
@@ -70,9 +70,9 @@ All Phase 1 requirements achieved:
 **Compliance Score:** 🟡 **60% Compliant**
 
 **Code References:**
-- `src/Platform.Engineering.Copilot.Core/Agents/Infrastructure/InfrastructureProvisioningPlugin.cs` - Resource deployment
-- `src/Platform.Engineering.Copilot.Core/Agents/Environment/EnvironmentManagementPlugin.cs` - Environment operations
-- `src/Platform.Engineering.Copilot.Data/Entities/AuditLog.cs` - Audit logging
+- `src/Platform.Engineering.Copilot.Infrastructure.Agent/Plugins/InfrastructurePlugin.cs` - Resource deployment
+- `src/Platform.Engineering.Copilot.Environment.Agent/Plugins/EnvironmentManagementPlugin.cs` - Environment operations
+- `src/Platform.Engineering.Copilot.Core/Data/Entities/AuditLogEntity.cs` - Audit logging
 
 **Current Capabilities:**
 ```csharp
@@ -283,388 +283,516 @@ Copilot: ✅ **Deploying AKS Cluster to Production**
 - Requires 2-person integrity to approve
 - Auto-expires after task completion
 
+**Integration Strategy: Use Azure Native JIT Services**
+
+Instead of building a custom JIT system, integrate with Azure's built-in capabilities:
+1. **Azure PIM (Privileged Identity Management)** - For Azure RBAC role elevation
+2. **Azure JIT VM Access** - For temporary VM access
+3. **Azure AD Entitlement Management** - For access package requests
+
 **Current Implementation:**
 
 | Feature | Status | Evidence | Gap |
 |---------|--------|----------|-----|
-| **Privilege Elevation Request** | 🔴 Not Implemented | - | Need JIT-PE workflow |
-| **2-Person Integrity** | 🔴 Not Implemented | - | Need approval mechanism |
-| **Auto-expiring Permissions** | 🔴 Not Implemented | - | Need time-bound access |
-| **Audit Trail** | ✅ Implemented | All operations logged | - |
-| **Role Assumption** | 🔴 Not Implemented | - | Need temporary role elevation |
+| **Azure PIM Integration** | 🔴 Not Implemented | - | Need PIM API integration |
+| **JIT VM Access** | 🔴 Not Implemented | - | Need Security Center API |
+| **2-Person Integrity** | 🔴 Not Implemented | - | Use PIM approval workflow |
+| **Auto-expiring Permissions** | ✅ Azure Native | PIM handles expiration | - |
+| **Audit Trail** | ✅ Implemented | All operations logged + Azure audit | - |
 
 **Compliance Score:** 🔴 **20% Compliant** (audit logging only)
 
-**Required Implementation:**
+**Required Implementation - Azure PIM Integration:**
 
 ```csharp
-public class JitPrivilegeElevationService : IJitElevationService
+public class AzurePimIntegrationService : IJitElevationService
 {
-    private readonly IApplicationDbContext _db;
-    private readonly IAzureRbacService _azureRbac;
-    private readonly INotificationService _notifications;
-    private readonly IBackgroundJobService _backgroundJobs;
+    private readonly IGraphServiceClient _graphClient;
     private readonly IAuditService _audit;
+    private readonly INotificationService _notifications;
     
-    // Step 1: Request elevation
-    public async Task<ElevationRequest> RequestElevationAsync(
+    // Step 1: Request PIM role activation
+    public async Task<PrivilegedAccessElevationRequest> RequestPimElevationAsync(
         string userId,
-        string targetRole,
+        string roleDefinitionId,
         string scope,
         string justification,
         TimeSpan duration)
     {
         // Validation
         if (duration > TimeSpan.FromHours(8))
-            throw new ArgumentException("Max elevation duration is 8 hours");
+            throw new ArgumentException("Max PIM activation duration is 8 hours");
         
         if (string.IsNullOrWhiteSpace(justification))
-            throw new ArgumentException("Justification required");
+            throw new ArgumentException("Justification required for PIM activation");
         
-        // Create request
-        var request = new ElevationRequest
+        // Create PIM role assignment schedule request
+        var request = new UnifiedRoleAssignmentScheduleRequest
         {
-            RequestId = Guid.NewGuid(),
-            UserId = userId,
-            TargetRole = targetRole,
-            Scope = scope,
+            Action = UnifiedRoleScheduleRequestActions.SelfActivate,
+            PrincipalId = userId,
+            RoleDefinitionId = roleDefinitionId,
+            DirectoryScopeId = scope,
             Justification = justification,
-            RequestedDuration = duration,
-            RequestedAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow + duration,
-            Status = ElevationStatus.PendingApproval,
-            RequiredApprovals = 2 // 2-person integrity
-        };
-        
-        await _db.ElevationRequests.AddAsync(request);
-        await _db.SaveChangesAsync();
-        
-        // Notify approvers
-        await _notifications.NotifyApproversAsync(request);
-        
-        // Audit log
-        await _audit.LogAsync("JIT-PE Request Created", new
-        {
-            request.RequestId,
-            userId,
-            targetRole,
-            scope,
-            duration
-        });
-        
-        return request;
-    }
-    
-    // Step 2: Approve elevation (requires 2 approvals)
-    public async Task<ApprovalResult> ApproveElevationAsync(
-        Guid requestId,
-        string approverId,
-        string comments = null)
-    {
-        var request = await _db.ElevationRequests
-            .Include(r => r.Approvals)
-            .FirstOrDefaultAsync(r => r.RequestId == requestId);
-        
-        if (request == null)
-            throw new NotFoundException("Elevation request not found");
-        
-        // Prevent self-approval
-        if (request.UserId == approverId)
-            throw new InvalidOperationException(
-                "Cannot approve your own elevation request");
-        
-        // Prevent duplicate approval
-        if (request.Approvals.Any(a => a.ApproverId == approverId))
-            throw new InvalidOperationException(
-                "You have already approved this request");
-        
-        // Check if expired
-        if (request.Status == ElevationStatus.Expired)
-            throw new InvalidOperationException("Request has expired");
-        
-        // Add approval
-        var approval = new Approval
-        {
-            ApproverId = approverId,
-            ApprovedAt = DateTime.UtcNow,
-            Comments = comments
-        };
-        
-        request.Approvals.Add(approval);
-        
-        // Check if sufficient approvals (2-person integrity)
-        if (request.Approvals.Count >= request.RequiredApprovals)
-        {
-            request.Status = ElevationStatus.Approved;
-            request.ApprovedAt = DateTime.UtcNow;
-            
-            // Grant elevation
-            await GrantElevationAsync(request);
-            
-            // Notify requester
-            await _notifications.NotifyRequesterAsync(request, approved: true);
-        }
-        
-        await _db.SaveChangesAsync();
-        
-        // Audit log
-        await _audit.LogAsync("JIT-PE Approval", new
-        {
-            requestId,
-            approverId,
-            approvalCount = request.Approvals.Count,
-            status = request.Status
-        });
-        
-        return new ApprovalResult
-        {
-            Success = true,
-            CurrentApprovals = request.Approvals.Count,
-            RequiredApprovals = request.RequiredApprovals,
-            Status = request.Status
-        };
-    }
-    
-    // Step 3: Grant temporary role
-    private async Task GrantElevationAsync(ElevationRequest request)
-    {
-        // Assign Azure RBAC role with expiration
-        await _azureRbac.AssignRoleAsync(new RoleAssignment
-        {
-            PrincipalId = request.UserId,
-            RoleDefinitionId = request.TargetRole,
-            Scope = request.Scope,
-            ExpiresAt = request.ExpiresAt,
-            Metadata = new Dictionary<string, string>
+            ScheduleInfo = new RequestSchedule
             {
-                ["RequestId"] = request.RequestId.ToString(),
-                ["Type"] = "JIT-PE"
+                StartDateTime = DateTimeOffset.UtcNow,
+                Expiration = new ExpirationPattern
+                {
+                    Type = ExpirationPatternType.AfterDuration,
+                    Duration = duration
+                }
+            },
+            TicketInfo = new TicketInfo
+            {
+                TicketNumber = $"COPILOT-{DateTime.UtcNow:yyyyMMdd-HHmmss}",
+                TicketSystem = "Platform Engineering Copilot"
             }
-        });
+        };
         
-        // Schedule auto-revocation
-        _backgroundJobs.Schedule(
-            () => RevokeElevationAsync(request.RequestId),
-            request.ExpiresAt
-        );
+        // Submit to Azure PIM
+        var response = await _graphClient.RoleManagement.Directory
+            .RoleAssignmentScheduleRequests
+            .PostAsync(request);
         
-        await _audit.LogAsync("JIT-PE Granted", new
+        // Audit log
+        await _audit.LogAsync("PIM Activation Requested", new
         {
-            request.RequestId,
-            request.UserId,
-            request.TargetRole,
-            request.ExpiresAt
+            requestId = response.Id,
+            userId,
+            roleDefinitionId,
+            scope,
+            duration,
+            justification
         });
+        
+        return new PrivilegedAccessElevationRequest
+        {
+            RequestId = response.Id,
+            Status = response.Status,
+            RequiresApproval = response.IsValidationOnly == true,
+            ApprovalSteps = response.ApprovalSteps
+        };
     }
     
-    // Step 4: Auto-revoke when expired
-    public async Task RevokeElevationAsync(Guid requestId)
+    // Step 2: Request JIT VM Access
+    public async Task<JitAccessRequest> RequestJitVmAccessAsync(
+        string vmResourceId,
+        string[] ports,
+        TimeSpan duration,
+        string justification)
     {
-        var request = await _db.ElevationRequests.FindAsync(requestId);
+        var armClient = new ArmClient(new DefaultAzureCredential());
+        var vmResource = armClient.GetGenericResource(new ResourceIdentifier(vmResourceId));
         
-        if (request == null || request.Status != ElevationStatus.Approved)
-            return;
-        
-        // Remove Azure RBAC assignment
-        await _azureRbac.RemoveRoleAssignmentAsync(
-            request.UserId,
-            request.TargetRole,
-            request.Scope
-        );
-        
-        // Update status
-        request.Status = ElevationStatus.Expired;
-        request.RevokedAt = DateTime.UtcNow;
-        
-        await _db.SaveChangesAsync();
-        
-        // Notify user
-        await _notifications.NotifyElevationExpiredAsync(request);
-        
-        await _audit.LogAsync("JIT-PE Revoked", new
+        // Build JIT request
+        var jitRequest = new
         {
-            requestId,
-            userId = request.UserId,
-            targetRole = request.TargetRole,
-            revokedAt = request.RevokedAt
-        });
-    }
-    
-    // Check active elevations for user
-    public async Task<List<ActiveElevation>> GetActiveElevationsAsync(string userId)
-    {
-        return await _db.ElevationRequests
-            .Where(r => r.UserId == userId && 
-                        r.Status == ElevationStatus.Approved &&
-                        r.ExpiresAt > DateTime.UtcNow)
-            .Select(r => new ActiveElevation
+            virtualMachines = new[]
             {
-                RequestId = r.RequestId,
-                TargetRole = r.TargetRole,
-                Scope = r.Scope,
-                ExpiresAt = r.ExpiresAt,
-                TimeRemaining = r.ExpiresAt - DateTime.UtcNow
-            })
-            .ToListAsync();
+                new
+                {
+                    id = vmResourceId,
+                    ports = ports.Select(p => new
+                    {
+                        number = int.Parse(p),
+                        duration = duration.TotalMinutes,
+                        allowedSourceAddressPrefix = "*" // Can restrict to user's IP
+                    })
+                }
+            },
+            justification = justification
+        };
+        
+        // Call Azure Security Center JIT API
+        var response = await armClient
+            .GetGenericResource(new ResourceIdentifier(
+                $"{vmResource.Data.Id}/providers/Microsoft.Security/jitNetworkAccessPolicies/default"))
+            .PostAsync(jitRequest);
+        
+        await _audit.LogAsync("JIT VM Access Requested", new
+        {
+            vmResourceId,
+            ports,
+            duration,
+            justification
+        });
+        
+        return new JitAccessRequest
+        {
+            RequestId = response.Value.Id,
+            Status = "Approved", // JIT VM is usually auto-approved
+            ExpiresAt = DateTime.UtcNow + duration
+        };
+    }
+    
+    // Step 3: Check PIM activation status
+    public async Task<PimActivationStatus> GetPimActivationStatusAsync(string requestId)
+    {
+        var request = await _graphClient.RoleManagement.Directory
+            .RoleAssignmentScheduleRequests[requestId]
+            .GetAsync();
+        
+        return new PimActivationStatus
+        {
+            RequestId = request.Id,
+            Status = request.Status,
+            IsActive = request.Status == "Provisioned",
+            ApprovalStatus = request.ApprovalSteps?.FirstOrDefault()?.Status,
+            ExpiresAt = request.ScheduleInfo?.Expiration?.EndDateTime
+        };
+    }
+    
+    // Step 4: List active PIM roles for user
+    public async Task<List<ActivePimRole>> GetActivePimRolesAsync(string userId)
+    {
+        var assignments = await _graphClient.RoleManagement.Directory
+            .RoleAssignmentScheduleInstances
+            .GetAsync(config => 
+            {
+                config.QueryParameters.Filter = 
+                    $"principalId eq '{userId}' and assignmentType eq 'Activated'";
+            });
+        
+        return assignments.Value.Select(a => new ActivePimRole
+        {
+            RoleDefinitionId = a.RoleDefinitionId,
+            RoleName = GetRoleName(a.RoleDefinitionId),
+            Scope = a.DirectoryScopeId,
+            ActivatedAt = a.StartDateTime,
+            ExpiresAt = a.EndDateTime,
+            TimeRemaining = a.EndDateTime - DateTimeOffset.UtcNow
+        }).ToList();
+    }
+    
+    // Helper: Get role display name
+    private async Task<string> GetRoleNameAsync(string roleDefinitionId)
+    {
+        var role = await _graphClient.RoleManagement.Directory
+            .RoleDefinitions[roleDefinitionId]
+            .GetAsync();
+        
+        return role?.DisplayName ?? "Unknown Role";
     }
 }
 
-// Database entities
-public class ElevationRequest
+// Alternative: Azure Entitlement Management for Access Packages
+public class AzureEntitlementManagementService
 {
-    public Guid RequestId { get; set; }
+    private readonly IGraphServiceClient _graphClient;
+    
+    // Request access package (pre-configured bundles of permissions)
+    public async Task<AccessPackageAssignmentRequest> RequestAccessPackageAsync(
+        string userId,
+        string accessPackageId,
+        string justification)
+    {
+        var request = new AccessPackageAssignmentRequest
+        {
+            RequestType = "UserAdd",
+            AccessPackageAssignment = new AccessPackageAssignment
+            {
+                AccessPackageId = accessPackageId,
+                TargetId = userId
+            },
+            Justification = justification
+        };
+        
+        // Access packages can include:
+        // - Multiple Azure roles
+        // - AD group memberships
+        // - SharePoint/Teams access
+        // - Custom resources
+        
+        return await _graphClient.IdentityGovernance.EntitlementManagement
+            .AccessPackageAssignmentRequests
+            .PostAsync(request);
+    }
+}
+
+// Database entities (simplified - PIM handles most of this)
+public class CopilotJitRequest
+{
+    public Guid CopilotRequestId { get; set; } // Our tracking ID
+    public string PimRequestId { get; set; } // Azure PIM request ID
+    public string JitRequestId { get; set; } // Azure JIT request ID
     public string UserId { get; set; }
-    public string TargetRole { get; set; }
-    public string Scope { get; set; }
+    public string ConversationId { get; set; } // Link to chat session
+    public JitRequestType RequestType { get; set; } // PIM, JIT VM, Access Package
+    public string TargetResource { get; set; }
     public string Justification { get; set; }
-    public TimeSpan RequestedDuration { get; set; }
     public DateTime RequestedAt { get; set; }
-    public DateTime? ApprovedAt { get; set; }
-    public DateTime ExpiresAt { get; set; }
-    public DateTime? RevokedAt { get; set; }
-    public ElevationStatus Status { get; set; }
-    public int RequiredApprovals { get; set; }
-    public List<Approval> Approvals { get; set; } = new();
+    public DateTime? CompletedAt { get; set; }
+    public string Status { get; set; } // Pending, Approved, Active, Expired, Denied
 }
 
-public class Approval
+public enum JitRequestType
 {
-    public int Id { get; set; }
-    public string ApproverId { get; set; }
-    public DateTime ApprovedAt { get; set; }
-    public string Comments { get; set; }
-}
-
-public enum ElevationStatus
-{
-    PendingApproval,
-    Approved,
-    Denied,
-    Expired,
-    Revoked
+    PimRoleActivation,      // Azure PIM for RBAC roles
+    JitVmAccess,            // Security Center JIT VM access
+    AccessPackage,          // Entitlement Management access bundle
+    PimGroupMembership      // PIM for Groups
 }
 ```
 
-**Example Workflow:**
+**Example Workflow with Azure PIM:**
 
 ```
 User: @platform I need to deploy to production rg-prod
 
 Copilot: 🔍 **Permission Check**
 
-**Current Role:** Reader (rg-prod)
+**Current Roles:** Reader (rg-prod)
 **Required Role:** Contributor (rg-prod)
 
 ⚠️ You don't have permission to deploy to production.
 
-**Options:**
-1. Request Just-In-Time privilege elevation
-2. Contact your administrator
-3. Deploy to non-production environment
+**Eligible Roles (via Azure PIM):**
+✅ Contributor - Eligible (requires activation)
+✅ Owner - Eligible (requires approval)
 
-Would you like to request JIT elevation?
+Would you like to activate a PIM role?
 
 ---
 
-User: Yes, request elevation
+User: Yes, activate Contributor
 
-Copilot: 🔐 **JIT Privilege Elevation Request**
+Copilot: 🔐 **Azure PIM Role Activation**
 
-**Target Role:** Contributor
+**Role:** Contributor
 **Scope:** rg-prod (Production)
-**Default Duration:** 2 hours
-**Required Approvals:** 2 (2-person integrity)
+**Eligible Duration:** Up to 8 hours
+**Approval Required:** Yes (configured in PIM)
 
-Please provide justification:
-
----
-
-User: Need to deploy critical security patch for CVE-2025-001
-
-Copilot: ✅ **JIT Elevation Request Submitted**
-
-**Request ID:** JIT-20250109-001
-**Target Role:** Contributor (rg-prod)
-**Duration:** 2 hours
-**Justification:** Critical security patch for CVE-2025-001
-**Status:** Pending (0/2 approvals)
-
-**Notified Approvers:**
-- john.smith@navy.mil (Infrastructure Lead)
-- jane.doe@navy.mil (Security Manager)
-
-**Next Steps:**
-Awaiting 2 approvals. Estimated time: 15 minutes.
-
-I'll notify you when approved.
+Please specify:
+1. Duration (default: 2 hours): _____
+2. Justification: _____
 
 ---
 
-[15 minutes later]
+User: 2 hours, deploying critical security patch for CVE-2025-001
 
-Copilot: ✅ **JIT Elevation APPROVED!**
+Copilot: ✅ **PIM Activation Request Submitted**
 
-**Request ID:** JIT-20250109-001
-**Status:** Approved
+**Azure PIM Request ID:** pim-20250109-a3b4c5d
+**Copilot Tracking:** COPILOT-20250109-001
 
-**Approvals:**
+**Details:**
+- Role: Contributor (rg-prod)
+- Duration: 2 hours
+- Justification: Deploying critical security patch for CVE-2025-001
+- Status: Pending Approval
+
+**PIM Approval Workflow (configured in Azure):**
+- Required Approvers: 2
+- Approvers:
+  - john.smith@navy.mil (Infrastructure Lead)
+  - jane.doe@navy.mil (Security Manager)
+
+**Notifications Sent:**
+✅ Email to approvers
+✅ Teams notification (if configured)
+✅ Azure Portal notification
+
+I'll monitor this request and notify you when activated.
+
+---
+
+[15 minutes later - Azure PIM processes approval]
+
+Copilot: ✅ **PIM Role Activated!**
+
+**Request ID:** pim-20250109-a3b4c5d
+
+**Approval Timeline:**
 1. john.smith@navy.mil - Approved at 10:15 AM
    Comment: "CVE-2025-001 is critical, approved"
 2. jane.doe@navy.mil - Approved at 10:18 AM
    Comment: "Validated with security team, proceed"
 
-**Granted Privileges:**
+**Active Role Assignment:**
 - Role: Contributor
-- Scope: rg-prod
+- Scope: rg-prod (Production)
+- Activated: 10:18 AM
 - Expires: 12:18 PM (2 hours)
-- Auto-revocation scheduled
+- Auto-deactivation: Handled by Azure PIM
 
-You can now deploy to production. Proceed with deployment?
+**Next Steps:**
+You can now deploy to production. Azure will automatically revoke this role in 2 hours.
+
+Proceed with deployment?
 
 ---
 
 User: Yes, deploy the Bicep template
 
-Copilot: ✅ **Deploying to Production** (using elevated privileges)
+Copilot: ✅ **Deploying to Production**
 
-[Deployment in progress...]
+[Using activated PIM role: Contributor]
+
+**Deployment Started**
+- Template: main.bicep
+- Target: rg-prod
+- Resources: 3 (AKS, Storage, KeyVault)
+- Using PIM role: Contributor (expires 12:18 PM)
+
+[Deployment progress...]
 
 **Deployment Complete!**
-- Resources created: 3
 - Duration: 8 minutes
-- Audit ID: AUD-20250109-156
+- Resources created: 3
+- Status: Succeeded
+- Deployment ID: dep-20250109-xyz
 
-**Privilege Status:**
-- Current role: Contributor (rg-prod)
-- Expires in: 1 hour 52 minutes
-- Auto-revocation at: 12:18 PM
+**Audit Trail:**
+- Copilot request: COPILOT-20250109-001
+- PIM activation: pim-20250109-a3b4c5d
+- Azure deployment: dep-20250109-xyz
+- All activity logged in Azure Activity Log
+
+**PIM Role Status:**
+- Still active: Contributor (rg-prod)
+- Time remaining: 1 hour 52 minutes
+- Will auto-deactivate: 12:18 PM
 
 ---
 
-[At 12:18 PM - Auto-revocation]
+[Optional: JIT VM Access]
 
-Copilot: 🔒 **JIT Elevation Expired**
+User: @platform I need SSH access to vm-prod-001
 
-**Request ID:** JIT-20250109-001
+Copilot: 🔐 **JIT VM Access Request**
 
-Your temporary Contributor role for rg-prod has been revoked.
+**VM:** vm-prod-001 (Production)
+**Current Access:** None (JIT policy active)
 
-**Summary:**
-- Duration held: 2 hours
-- Operations performed: 1 deployment
-- Audit trail: AUD-20250109-156
+**Available Ports:**
+- 22 (SSH)
+- 3389 (RDP) - Not requested
 
-Your access has returned to: Reader (rg-prod)
+**Security Center JIT Configuration:**
+- Max duration: 3 hours
+- Allowed source: Your IP (203.0.113.45)
+- Approval: Auto-approved for authorized users
+
+Request SSH access for how long?
+Default: 3 hours
+
+---
+
+User: 1 hour
+
+Copilot: ✅ **JIT VM Access Granted**
+
+**VM:** vm-prod-001
+**Port:** 22 (SSH)
+**Duration:** 1 hour
+**Source IP:** 203.0.113.45 (your current IP)
+**Expires:** 11:30 AM
+
+**Connection Details:**
+```bash
+ssh admin@vm-prod-001.eastus.cloudapp.azure.com
+```
+
+**NSG Rule Created:**
+- Priority: 100
+- Action: Allow
+- Source: 203.0.113.45
+- Destination Port: 22
+- Expires: 11:30 AM (auto-removed by Azure)
+
+**Security:**
+✅ Access logged in Security Center
+✅ NSG rule auto-expires in 1 hour
+✅ Audit trail in Azure Activity Log
+
+You can connect now. Access will be revoked automatically at 11:30 AM.
 ```
 
 **Action Items:**
-1. Create database schema for `ElevationRequests` and `Approvals` tables
-2. Implement `JitPrivilegeElevationService` class
-3. Add Azure RBAC integration for temporary role assignments
-4. Create notification service (email, Teams integration)
-5. Build background job for auto-revocation
-6. Add JIT-PE UI in GitHub Copilot Chat interface
-7. Implement comprehensive audit logging
+1. Integrate with **Azure PIM API** (Microsoft Graph)
+   - Role activation requests
+   - Approval status monitoring
+   - Active assignment tracking
+2. Integrate with **Azure Security Center JIT VM Access API**
+   - JIT network access requests
+   - Port-specific access control
+3. Configure **Azure PIM policies** for eligible roles
+   - Define which roles are eligible for activation
+   - Set maximum activation duration
+   - Configure approval requirements (2-person integrity)
+4. Implement **conversation-based PIM workflow** in Copilot
+   - Natural language role activation
+   - Justification collection
+   - Status monitoring and notifications
+5. Add **PIM role discovery** - Show eligible roles to user
+6. Build **unified audit trail** - Combine Copilot logs + Azure Activity Log
+
+**Benefits of Azure Native Integration:**
+- ✅ No custom approval workflow needed (use PIM's built-in)
+- ✅ Auto-expiration handled by Azure (no background jobs)
+- ✅ Full audit trail in Azure Activity Log
+- ✅ Compliance: PIM is FedRAMP authorized
+- ✅ Integration with Azure AD Conditional Access
+- ✅ SOC/Security team can manage policies centrally
+- ✅ Reduced development effort (60% less code)
+
+**PIM Configuration Requirements:**
+```powershell
+# Enable PIM for Azure Resources
+# 1. Assign eligible roles (not permanent assignments)
+New-AzRoleAssignment -ObjectId $userId `
+    -RoleDefinitionName "Contributor" `
+    -Scope "/subscriptions/{sub-id}/resourceGroups/rg-prod" `
+    -AssignmentType "Eligible"
+
+# 2. Configure PIM policy
+$policy = @{
+    rules = @(
+        @{
+            ruleType = "RoleManagementPolicyApprovalRule"
+            setting = @{
+                isApprovalRequired = $true
+                approvalStages = @(
+                    @{
+                        approvalStageTimeOutInDays = 1
+                        isApproverJustificationRequired = $true
+                        escalationTimeInMinutes = 0
+                        primaryApprovers = @(
+                            @{ id = $infraLeadId }
+                            @{ id = $securityManagerId }
+                        )
+                        isEscalationEnabled = $false
+                        escalationApprovers = @()
+                    }
+                )
+            }
+        }
+        @{
+            ruleType = "RoleManagementPolicyExpirationRule"
+            setting = @{
+                maximumDuration = "PT8H" # 8 hours max
+                isExpirationRequired = $true
+            }
+        }
+        @{
+            ruleType = "RoleManagementPolicyEnablementRule"
+            setting = @{
+                enabledRules = @(
+                    "Justification"
+                    "MultiFactorAuthentication"
+                )
+            }
+        }
+    )
+}
+
+# Apply policy to role
+Update-AzRoleManagementPolicy -Scope $scope `
+    -Name "Contributor_EndUser_Assignment" `
+    -Rule $policy.rules
+```
 
 ---
 
@@ -1103,9 +1231,9 @@ Would you like to:
 **Compliance Score:** ✅ **75% Compliant**
 
 **Code References:**
-- `src/Platform.Engineering.Copilot.Core/Agents/Document/DocumentGenerationPlugin.cs`
-- `src/Platform.Engineering.Copilot.Core/Agents/Compliance/AtoPreparationAgent.cs`
-- `src/Platform.Engineering.Copilot.Data/Entities/AuditLog.cs`
+- `src/Platform.Engineering.Copilot.Compliance.Agent/Plugins/DocumentGenerationPlugin.cs`
+- `src/Platform.Engineering.Copilot.Compliance.Agent/Services/Agents/AtoPreparationAgent.cs`
+- `src/Platform.Engineering.Copilot.Core/Data/Entities/AuditLogEntity.cs`
 
 **Current ATO Package Generation:**
 

@@ -178,9 +178,6 @@ export AZURE_TENANT_ID=$(az account show --query tenantId -o tsv)
 {
   "AzureAd": {
     "Instance": "https://login.microsoftonline.us/",
-    "TenantId": "your-tenant-id",
-    "ClientId": "your-client-id",
-    "ClientSecret": "your-client-secret",
     "Audience": "api://your-api-id",
     "RequireMfa": true,
     "RequireCac": true,
@@ -248,10 +245,7 @@ vi appsettings.json
     "RequestTimeoutSeconds": 300
   },
   "AzureAd": {
-    "Instance": "https://login.microsoftonline.us/",
-    "TenantId": "your-gov-tenant-id",
-    "ClientId": "your-mcp-app-registration-id",
-    "ClientSecret": "USE_KEY_VAULT_REFERENCE",
+    "Instance": "https://login.microsoftonline.us/",    
     "Audience": "api://platform-engineering-copilot",
     "RequireMfa": false,
     "RequireCac": false,

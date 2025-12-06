@@ -45,7 +45,11 @@ public class ChatService : IChatService
         _httpClientFactory = httpClientFactory;
         _logger = logger;
         _configuration = configuration;
-        _mcpBaseUrl = configuration["McpServer:BaseUrl"] ?? "http://localhost:5100";
+        // Check environment variable first, then config, then default
+        _mcpBaseUrl = System.Environment.GetEnvironmentVariable("MCP_SERVER_URL") 
+            ?? configuration["McpServer:BaseUrl"] 
+            ?? "http://localhost:5100";
+        _logger.LogInformation("MCP Server URL: {McpBaseUrl}", _mcpBaseUrl);
         _uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
         Directory.CreateDirectory(_uploadsPath);
     }

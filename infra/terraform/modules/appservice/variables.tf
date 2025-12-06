@@ -8,6 +8,18 @@ variable "environment" {
   type        = string
 }
 
+variable "deploy_admin_api" {
+  description = "Deploy Admin API app service"
+  type        = bool
+  default     = true
+}
+
+variable "deploy_chat" {
+  description = "Deploy Chat app service"
+  type        = bool
+  default     = true
+}
+
 variable "resource_group_name" {
   description = "The name of the resource group"
   type        = string
@@ -57,6 +69,12 @@ variable "api_app_settings" {
 
 variable "mcp_app_settings" {
   description = "Additional app settings for the MCP app service"
+  type        = map(string)
+  default     = {}
+}
+
+variable "chat_app_settings" {
+  description = "Additional app settings for the Chat app service"
   type        = map(string)
   default     = {}
 }

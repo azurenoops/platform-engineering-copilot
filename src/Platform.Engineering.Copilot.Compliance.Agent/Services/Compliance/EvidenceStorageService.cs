@@ -3,6 +3,7 @@ using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Platform.Engineering.Copilot.Compliance.Core.Configuration;
+using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
 using Platform.Engineering.Copilot.Core.Models.CodeScanning;
 using Platform.Engineering.Copilot.Core.Models.Compliance;
 using System.Text;
@@ -13,7 +14,7 @@ namespace Platform.Engineering.Copilot.Compliance.Agent.Services.Compliance;
 /// <summary>
 /// Service for storing compliance evidence in Azure Blob Storage
 /// </summary>
-public class EvidenceStorageService
+public class EvidenceStorageService : IEvidenceStorageService
 {
     private readonly ILogger<EvidenceStorageService> _logger;
     private readonly EvidenceOptions _options;
@@ -345,18 +346,4 @@ public class EvidenceStorageService
         _logger.LogInformation("Listed {Count} evidence packages", packages.Count);
         return packages;
     }
-}
-
-/// <summary>
-/// Metadata for stored evidence package
-/// </summary>
-public class EvidencePackageMetadata
-{
-    public string PackageId { get; set; } = string.Empty;
-    public string BlobName { get; set; } = string.Empty;
-    public string BlobUri { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
-    public long SizeInBytes { get; set; }
-    public List<string> ComplianceFrameworks { get; set; } = new();
-    public string ProjectPath { get; set; } = string.Empty;
 }

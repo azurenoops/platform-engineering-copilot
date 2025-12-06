@@ -1,0 +1,122 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "projectName": {
+      "value": "platform-engineering"
+    },
+    "environment": {
+      "value": "dev"
+    },
+    "location": {
+      "value": "usgovvirginia"
+    },
+    "containerDeploymentTarget": {
+      "value": "aci"
+    },
+    "deployACR": {
+      "value": true
+    },
+    "deployAKS": {
+      "value": false
+    },
+    "deployACI": {
+      "value": true
+    },
+    "deployAdminApi": {
+      "value": true
+    },
+    "deployChat": {
+      "value": false
+    },
+    "useExistingNetwork": {
+      "value": false
+    },
+    "existingVNetName": {
+      "value": ""
+    },
+    "existingVNetResourceGroup": {
+      "value": ""
+    },
+    "existingAppServiceSubnetName": {
+      "value": ""
+    },
+    "existingPrivateEndpointSubnetName": {
+      "value": ""
+    },
+    "useExistingLogAnalytics": {
+      "value": false
+    },
+    "existingLogAnalyticsWorkspaceName": {
+      "value": ""
+    },
+    "existingLogAnalyticsResourceGroup": {
+      "value": ""
+    },
+    "useExistingKeyVault": {
+      "value": false
+    },
+    "existingKeyVaultName": {
+      "value": ""
+    },
+    "existingKeyVaultResourceGroup": {
+      "value": ""
+    },
+    "acrSku": {
+      "value": "Standard"
+    },
+    "aciMcpCpuCores": {
+      "value": 2
+    },
+    "aciMcpMemoryInGB": {
+      "value": 4
+    },
+    "aciChatCpuCores": {
+      "value": 2
+    },
+    "aciChatMemoryInGB": {
+      "value": 4
+    },
+    "aciAdminApiCpuCores": {
+      "value": 1
+    },
+    "aciAdminApiMemoryInGB": {
+      "value": 2
+    },
+    "aciAdminClientCpuCores": {
+      "value": 1
+    },
+    "aciAdminClientMemoryInGB": {
+      "value": 2
+    },
+    "sqlAdminUsername": {
+      "value": "sqladmin"
+    },
+    "sqlAdminPassword": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/{subscription-id}/resourceGroups/{rg-name}/providers/Microsoft.KeyVault/vaults/{kv-name}"
+        },
+        "secretName": "SqlAdminPassword"
+      }
+    },
+    "allowedIpAddresses": {
+      "value": [
+        "0.0.0.0/0"
+      ]
+    },
+    "enablePublicAccess": {
+      "value": true
+    },
+    "enablePrivateEndpoints": {
+      "value": false
+    },
+    "tags": {
+      "value": {
+        "Project": "Platform Engineering Copilot",
+        "ManagedBy": "Bicep",
+        "DeploymentType": "ACI"
+      }
+    }
+  }
+}

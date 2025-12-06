@@ -33,6 +33,8 @@ public class PlatformEngineeringCopilotContext : DbContext
     // Metrics
     public DbSet<EnvironmentMetrics> EnvironmentMetrics { get; set; }
 
+    // Agent Configuration
+    public DbSet<AgentConfiguration> AgentConfigurations { get; set; }
 
     // Semantic Processing
     public DbSet<SemanticIntent> SemanticIntents { get; set; }
@@ -73,6 +75,7 @@ public class PlatformEngineeringCopilotContext : DbContext
         ConfigureApprovalWorkflows(modelBuilder);
         ConfigureComplianceAssessments(modelBuilder);
         ConfigureAuditLogs(modelBuilder);
+        ConfigureAgentConfigurations(modelBuilder);
         //ConfigureServiceCreationRequests(modelBuilder);
 
         // Configure indexes for performance
@@ -215,6 +218,17 @@ public class PlatformEngineeringCopilotContext : DbContext
             entity.HasIndex(e => new { e.SourceEnvironmentId, e.TargetEnvironmentId });
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.StartedAt);
+
+            // Configure foreign keys to avoid cascade path conflicts in SQL Server
+            entity.HasOne(e => e.SourceEnvironment)
+                .WithMany()
+                .HasForeignKey(e => e.SourceEnvironmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.TargetEnvironment)
+                .WithMany()
+                .HasForeignKey(e => e.TargetEnvironmentId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<EnvironmentSynchronization>(entity =>
@@ -223,6 +237,17 @@ public class PlatformEngineeringCopilotContext : DbContext
             entity.HasIndex(e => e.SyncType);
             entity.HasIndex(e => e.IsActive);
             entity.HasIndex(e => e.NextSyncAt);
+
+            // Configure foreign keys to avoid cascade path conflicts in SQL Server
+            entity.HasOne(e => e.SourceEnvironment)
+                .WithMany()
+                .HasForeignKey(e => e.SourceEnvironmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.TargetEnvironment)
+                .WithMany()
+                .HasForeignKey(e => e.TargetEnvironmentId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 
@@ -258,7 +283,7 @@ public class PlatformEngineeringCopilotContext : DbContext
                 .HasMaxLength(50);
 
             entity.Property(e => e.CreatedAt)
-                .HasDefaultValueSql("datetime('now')");
+                .HasDefaultValueSql("GETUTCDATE()");
 
             entity.Property(e => e.Priority)
                 .HasDefaultValue(1);
@@ -339,10 +364,10 @@ public class PlatformEngineeringCopilotContext : DbContext
                 .IsRequired();
 
             entity.Property(e => e.CreatedAt)
-                .HasDefaultValueSql("datetime('now')");
+                .HasDefaultValueSql("GETUTCDATE()");
 
             entity.Property(e => e.LastUpdatedAt)
-                .HasDefaultValueSql("datetime('now')");
+                .HasDefaultValueSql("GETUTCDATE()");
 
             entity.Property(e => e.Priority)
                 .HasDefaultValue(3);
@@ -416,6 +441,27 @@ public class PlatformEngineeringCopilotContext : DbContext
         });
     }
 
+    private static void ConfigureAgentConfigurations(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<AgentConfiguration>(entity =>
+        {
+            // Unique constraint on AgentName
+            entity.HasIndex(e => e.AgentName).IsUnique();
+            
+            // Indexes for common queries
+            entity.HasIndex(e => e.Category);
+            entity.HasIndex(e => e.IsEnabled);
+            entity.HasIndex(e => new { e.Category, e.IsEnabled, e.DisplayOrder });
+            
+            // Default values
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("GETUTCDATE()");
+            entity.Property(e => e.IsEnabled).HasDefaultValue(true);
+            entity.Property(e => e.DisplayOrder).HasDefaultValue(0);
+            entity.Property(e => e.HealthStatus).HasDefaultValue("Unknown");
+        });
+    }
+
     private static void ConfigureIndexes(ModelBuilder modelBuilder)
     {
         // Additional composite indexes for common query patterns
@@ -471,7 +517,7 @@ public class PlatformEngineeringCopilotContext : DbContext
     {
         var entries = ChangeTracker
             .Entries()
-            .Where(e => e.Entity is EnvironmentTemplate or EnvironmentDeployment or ScalingPolicy or IntentPattern &&
+            .Where(e => e.Entity is EnvironmentTemplate or EnvironmentDeployment or ScalingPolicy or IntentPattern or AgentConfiguration &&
                        (e.State == EntityState.Added || e.State == EntityState.Modified));
 
         foreach (var entityEntry in entries)

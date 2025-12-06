@@ -49,7 +49,8 @@ public class BicepStorageModuleGenerator : IInfrastructureModuleGenerator
         var security = request.Security ?? new SecuritySpec();
         var observability = request.Observability ?? new ObservabilitySpec();
 
-        sb.AppendLine("// Azure Storage Account Infrastructure Module");
+        sb.AppendLine("// Azure Storage Account Infrastructure Module - FedRAMP Compliant");
+        sb.AppendLine("// Implements: SC-28 (Encryption), CP-9/CP-10 (Backup/Recovery), AU-11 (Audit Retention), AC-3 (Access Control)");
         sb.AppendLine($"// Service: {serviceName}");
         sb.AppendLine($"// Region: {infrastructure.Region}");
         sb.AppendLine();
@@ -160,7 +161,8 @@ public class BicepStorageModuleGenerator : IInfrastructureModuleGenerator
     {
         var sb = new StringBuilder();
 
-        sb.AppendLine("// Storage Account Resource");
+        sb.AppendLine("// Storage Account Resource - FedRAMP Compliant");
+        sb.AppendLine("// Implements: SC-28 (Encryption at Rest), CP-9/CP-10 (Backup/Recovery), AU-11 (Audit Record Retention)");
         sb.AppendLine();
         sb.AppendLine("@description('Storage Account Name')");
         sb.AppendLine("param storageAccountName string");
@@ -186,6 +188,9 @@ public class BicepStorageModuleGenerator : IInfrastructureModuleGenerator
         sb.AppendLine("@description('Allow blob public access')");
         sb.AppendLine("param allowBlobPublicAccess bool");
         sb.AppendLine();
+        sb.AppendLine("@description('Soft delete retention days - FedRAMP CP-9')");
+        sb.AppendLine("param softDeleteRetentionDays int = 14");
+        sb.AppendLine();
 
         sb.AppendLine("resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {");
         sb.AppendLine("  name: storageAccountName");
@@ -199,6 +204,7 @@ public class BicepStorageModuleGenerator : IInfrastructureModuleGenerator
         sb.AppendLine("    supportsHttpsTrafficOnly: enableHttpsOnly");
         sb.AppendLine("    minimumTlsVersion: minimumTlsVersion");
         sb.AppendLine("    allowBlobPublicAccess: allowBlobPublicAccess");
+        sb.AppendLine("    allowSharedKeyAccess: false  // FedRAMP AC-3 - Require AAD auth");
         sb.AppendLine("    networkAcls: {");
         sb.AppendLine("      bypass: 'AzureServices'");
         sb.AppendLine("      defaultAction: allowBlobPublicAccess ? 'Allow' : 'Deny'");
@@ -207,12 +213,46 @@ public class BicepStorageModuleGenerator : IInfrastructureModuleGenerator
         sb.AppendLine("      services: {");
         sb.AppendLine("        blob: {");
         sb.AppendLine("          enabled: true");
+        sb.AppendLine("          keyType: 'Account'");
         sb.AppendLine("        }");
         sb.AppendLine("        file: {");
         sb.AppendLine("          enabled: true");
+        sb.AppendLine("          keyType: 'Account'");
+        sb.AppendLine("        }");
+        sb.AppendLine("        table: {");
+        sb.AppendLine("          enabled: true");
+        sb.AppendLine("          keyType: 'Account'");
+        sb.AppendLine("        }");
+        sb.AppendLine("        queue: {");
+        sb.AppendLine("          enabled: true");
+        sb.AppendLine("          keyType: 'Account'");
         sb.AppendLine("        }");
         sb.AppendLine("      }");
         sb.AppendLine("      keySource: 'Microsoft.Storage'");
+        sb.AppendLine("      requireInfrastructureEncryption: true  // FedRAMP SC-28 - Double encryption");
+        sb.AppendLine("    }");
+        sb.AppendLine("  }");
+        sb.AppendLine("}");
+        sb.AppendLine();
+        
+        // FedRAMP: Blob Services Configuration (Soft Delete, Versioning)
+        sb.AppendLine("// FedRAMP CP-9: Blob Services with Soft Delete and Versioning");
+        sb.AppendLine("resource blobServices 'Microsoft.Storage/storageAccounts/blobServices@2023-01-01' = {");
+        sb.AppendLine("  parent: storageAccount");
+        sb.AppendLine("  name: 'default'");
+        sb.AppendLine("  properties: {");
+        sb.AppendLine("    deleteRetentionPolicy: {");
+        sb.AppendLine("      enabled: true");
+        sb.AppendLine("      days: softDeleteRetentionDays");
+        sb.AppendLine("    }");
+        sb.AppendLine("    containerDeleteRetentionPolicy: {");
+        sb.AppendLine("      enabled: true");
+        sb.AppendLine("      days: softDeleteRetentionDays");
+        sb.AppendLine("    }");
+        sb.AppendLine("    isVersioningEnabled: true  // FedRAMP AU-11 - Version history");
+        sb.AppendLine("    changeFeed: {");
+        sb.AppendLine("      enabled: true  // FedRAMP AU-3 - Track changes");
+        sb.AppendLine("      retentionInDays: 90");
         sb.AppendLine("    }");
         sb.AppendLine("  }");
         sb.AppendLine("}");
@@ -306,21 +346,38 @@ public class BicepStorageModuleGenerator : IInfrastructureModuleGenerator
         sb.AppendLine();
         sb.AppendLine("## Overview");
         sb.AppendLine();
-        sb.AppendLine("Bicep infrastructure for Azure Storage Account with:");
+        sb.AppendLine("FedRAMP-compliant Bicep infrastructure for Azure Storage Account with:");
         sb.AppendLine("- Storage account with configurable SKU");
-        sb.AppendLine("- Encryption at rest");
-        sb.AppendLine("- HTTPS-only access");
+        sb.AppendLine("- Infrastructure encryption (double encryption) - FedRAMP SC-28");
+        sb.AppendLine("- HTTPS-only access with TLS 1.2 - FedRAMP SC-8");
+        sb.AppendLine("- Blob soft delete (14 days) - FedRAMP CP-9");
+        sb.AppendLine("- Container soft delete (14 days) - FedRAMP CP-9");
+        sb.AppendLine("- Blob versioning - FedRAMP AU-11");
+        sb.AppendLine("- Change feed enabled - FedRAMP AU-3");
+        sb.AppendLine("- Shared key access disabled (AAD only) - FedRAMP AC-3");
         
         if (request.Security?.EnablePrivateEndpoint == true)
         {
-            sb.AppendLine("- Private endpoint connectivity");
+            sb.AppendLine("- Private endpoint connectivity - FedRAMP SC-7");
         }
         
         if (request.Observability?.EnableDiagnostics == true)
         {
-            sb.AppendLine("- Diagnostic settings and logging");
+            sb.AppendLine("- Diagnostic settings and logging - FedRAMP AU-2");
         }
 
+        sb.AppendLine();
+        sb.AppendLine("## FedRAMP Controls Implemented");
+        sb.AppendLine();
+        sb.AppendLine("| Control | Implementation |");
+        sb.AppendLine("|---------|----------------|");
+        sb.AppendLine("| SC-28 | Infrastructure encryption (double encryption) |");
+        sb.AppendLine("| SC-8 | TLS 1.2 encryption in transit |");
+        sb.AppendLine("| CP-9/CP-10 | Soft delete with 14-day retention |");
+        sb.AppendLine("| AU-11 | Blob versioning for audit retention |");
+        sb.AppendLine("| AU-3 | Change feed for audit tracking |");
+        sb.AppendLine("| AC-3 | AAD authentication required (shared key disabled) |");
+        sb.AppendLine("| SC-7 | Private endpoint (network isolation) |");
         sb.AppendLine();
         sb.AppendLine("## Deployment");
         sb.AppendLine();

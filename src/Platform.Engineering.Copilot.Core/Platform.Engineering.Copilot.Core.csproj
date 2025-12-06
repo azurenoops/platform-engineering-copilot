@@ -14,6 +14,7 @@
     <PackageReference Include="Azure.ResourceManager.PolicyInsights" Version="1.2.0" />
     <PackageReference Include="Azure.ResourceManager.ResourceHealth" Version="1.1.0-beta.5" />
     <PackageReference Include="Microsoft.Azure.Management.ResourceGraph" Version="2.1.0" />
+    <PackageReference Include="Microsoft.Graph" Version="5.62.0" />
     <PackageReference Include="Azure.ResourceManager.Network" Version="1.9.0" />
     <PackageReference Include="Azure.ResourceManager.ContainerService" Version="1.2.2" />
     <PackageReference Include="Azure.ResourceManager.AppService" Version="1.2.0" />

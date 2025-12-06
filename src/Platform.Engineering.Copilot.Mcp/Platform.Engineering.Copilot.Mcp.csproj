@@ -12,6 +12,11 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>appsettings.json</Link>
     </Content>
+    <!-- Include NIST fallback catalog for offline compliance scanning -->
+    <Content Include="../Platform.Engineering.Copilot.Compliance.Agent/Data/nist-800-53-fallback.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Data/nist-800-53-fallback.json</Link>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

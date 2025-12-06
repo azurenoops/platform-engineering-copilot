@@ -26,6 +26,7 @@ using Platform.Engineering.Copilot.Core.Services.Validation.Validators;
 using Platform.Engineering.Copilot.Core.Services.ServiceCreation;
 using Platform.Engineering.Copilot.Core.Interfaces.Validation;
 using Platform.Engineering.Copilot.Core.Configuration;
+using Platform.Engineering.Copilot.Core.Data.Repositories;
 
 namespace Platform.Engineering.Copilot.Core.Extensions;
 
@@ -37,7 +38,7 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Add all Platform.Engineering.Copilot.Core services to the dependency injection container
     /// </summary>
-    public static IServiceCollection AddPlatformEngineeringCopilotCore(this IServiceCollection services)
+    public static IServiceCollection AddPlatformEngineeringCopilotCore(this IServiceCollection services, IConfiguration configuration)
     {
         // Register Azure Gateway configuration options
         services.AddOptions<AzureGatewayOptions>()
@@ -149,6 +150,11 @@ public static class ServiceCollectionExtensions
         
         services.AddScoped<IAzureSecurityConfigurationService, AzureSecurityConfigurationService>();
         
+        // Register Repository services (required by Storage services)
+        services.AddScoped<IEnvironmentTemplateRepository, EnvironmentTemplateRepository>();
+        services.AddScoped<IEnvironmentDeploymentRepository, EnvironmentDeploymentRepository>();
+        services.AddScoped<IComplianceAssessmentRepository, ComplianceAssessmentRepository>();
+        
         // Register Template Storage Service (required by domain services)
         services.AddScoped<ITemplateStorageService, Data.Services.TemplateStorageService>();
         
@@ -188,7 +194,7 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<JobCleanupBackgroundService>();
 
         // Register Azure MCP Client (Microsoft's official Azure MCP Server integration)
-        services.AddSingleton(sp => 
+        services.AddSingleton(sp =>
         {
             var config = sp.GetRequiredService<IConfiguration>();
             var gatewayOptions = new GatewayOptions();
@@ -200,7 +206,7 @@ public static class ServiceCollectionExtensions
                 Debug = config.GetValue("AzureMcp:Debug", false),
                 DisableUserConfirmation = config.GetValue("AzureMcp:DisableUserConfirmation", false),
                 Namespaces = config.GetSection("AzureMcp:Namespaces").Get<string[]>(),
-                
+
                 // Set subscription and tenant from Gateway configuration or environment variables
                 SubscriptionId = gatewayOptions.Azure.SubscriptionId ?? Environment.GetEnvironmentVariable("AZURE_SUBSCRIPTION_ID"),
                 TenantId = gatewayOptions.Azure.TenantId ?? Environment.GetEnvironmentVariable("AZURE_TENANT_ID"),
@@ -209,15 +215,18 @@ public static class ServiceCollectionExtensions
         });
         services.AddSingleton<AzureMcpClient>();
 
+        // Register JIT (Just-In-Time) privilege elevation services
+        services.AddJitServices(configuration);
+
         return services;
     }
 
     /// <summary>
     /// Add semantic processing services with custom configuration
     /// </summary>
-    public static IServiceCollection AddSemanticProcessing(this IServiceCollection services)
+    public static IServiceCollection AddSemanticProcessing(this IServiceCollection services, IConfiguration configuration)
     {
-        return services.AddPlatformEngineeringCopilotCore();
+        return services.AddPlatformEngineeringCopilotCore(configuration);
     }
 
     /// <summary>

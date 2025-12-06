@@ -37,11 +37,6 @@ public class DiscoveryAgentOptions
     public bool EnableDependencyMapping { get; set; } = true;
 
     /// <summary>
-    /// Azure MCP Server configuration
-    /// </summary>
-    public AzureMcpServerOptions AzureMcpServer { get; set; } = new();
-
-    /// <summary>
     /// Discovery-specific settings
     /// </summary>
     public DiscoveryOptions Discovery { get; set; } = new();
@@ -50,24 +45,6 @@ public class DiscoveryAgentOptions
     /// Health monitoring settings
     /// </summary>
     public HealthMonitoringOptions HealthMonitoring { get; set; } = new();
-}
-
-/// <summary>
-/// Azure MCP Server configuration
-/// </summary>
-public class AzureMcpServerOptions
-{
-    /// <summary>
-    /// MCP Server endpoint URL
-    /// </summary>
-    [Required]
-    public string Endpoint { get; set; } = "http://localhost:3000";
-
-    /// <summary>
-    /// Request timeout in seconds
-    /// </summary>
-    [Range(1, 300)]
-    public int Timeout { get; set; } = 30;
 }
 
 /// <summary>

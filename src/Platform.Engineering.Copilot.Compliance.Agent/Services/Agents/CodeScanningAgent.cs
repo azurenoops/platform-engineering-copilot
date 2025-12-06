@@ -7,6 +7,7 @@ using Platform.Engineering.Copilot.Core.Interfaces.Agents;
 using Platform.Engineering.Copilot.Core.Models.Agents;
 using System.Text.RegularExpressions;
 using Platform.Engineering.Copilot.Compliance.Agent.Plugins;
+using Platform.Engineering.Copilot.Compliance.Agent.Plugins.Code;
 using Platform.Engineering.Copilot.Core.Services.Agents;
 
 namespace Platform.Engineering.Copilot.Compliance.Agent.Services.Agents;

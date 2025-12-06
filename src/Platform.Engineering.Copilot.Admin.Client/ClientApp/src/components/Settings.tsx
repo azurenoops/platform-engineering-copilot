@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import './Settings.css';
+import {
+  FeatureFlags,
+  loadFeatureFlags,
+  saveFeatureFlags,
+  resetFeatureFlags,
+  enableAllFeatures,
+  disableAllFeatures,
+  FEATURE_FLAG_LABELS,
+  FEATURE_FLAG_DESCRIPTIONS,
+} from '../utils/featureFlags';
 
 interface AzureSubscription {
   id: string;
@@ -14,7 +24,7 @@ interface DefaultPreferences {
   defaultSku: string;
 }
 
-interface Settings {
+interface SettingsState {
   subscriptions: AzureSubscription[];
   preferences: DefaultPreferences;
   apiEndpoint: string;
@@ -28,8 +38,8 @@ interface SettingsProps {
 }
 
 const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'subscriptions' | 'preferences' | 'api' | 'display'>('subscriptions');
-  const [settings, setSettings] = useState<Settings>({
+  const [activeTab, setActiveTab] = useState<'subscriptions' | 'preferences' | 'api' | 'display' | 'features'>('subscriptions');
+  const [settings, setSettings] = useState<SettingsState>({
     subscriptions: [],
     preferences: {
       defaultRegion: 'eastus',
@@ -40,6 +50,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     theme: 'auto',
     autoSave: true
   });
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(loadFeatureFlags());
 
   const [newSubscription, setNewSubscription] = useState({
     id: '',
@@ -79,7 +90,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
   }, [settings.theme]);
 
   // Save settings to localStorage
-  const saveSettings = (newSettings: Settings) => {
+  const saveSettings = (newSettings: SettingsState) => {
     setSettings(newSettings);
     localStorage.setItem('platformSettings', JSON.stringify(newSettings));
     console.log('💾 Settings saved to localStorage:', {
@@ -171,6 +182,39 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     console.log('Auto-save updated to:', updatedSettings.autoSave);
   };
 
+  const handleFeatureFlagToggle = (flagKey: keyof FeatureFlags) => {
+    const updatedFlags = {
+      ...featureFlags,
+      [flagKey]: !featureFlags[flagKey],
+    };
+    setFeatureFlags(updatedFlags);
+    saveFeatureFlags(updatedFlags);
+    // Dispatch custom event to notify App.tsx
+    window.dispatchEvent(new Event('featureFlagsUpdated'));
+    console.log(`Feature flag '${flagKey}' updated to:`, updatedFlags[flagKey]);
+  };
+
+  const handleEnableAllFeatures = () => {
+    const updatedFlags = enableAllFeatures();
+    setFeatureFlags(updatedFlags);
+    window.dispatchEvent(new Event('featureFlagsUpdated'));
+    console.log('All features enabled');
+  };
+
+  const handleDisableAllFeatures = () => {
+    const updatedFlags = disableAllFeatures();
+    setFeatureFlags(updatedFlags);
+    window.dispatchEvent(new Event('featureFlagsUpdated'));
+    console.log('All features disabled');
+  };
+
+  const handleResetFeatures = () => {
+    const updatedFlags = resetFeatureFlags();
+    setFeatureFlags(updatedFlags);
+    window.dispatchEvent(new Event('featureFlagsUpdated'));
+    console.log('Feature flags reset to defaults');
+  };
+
   const handleExportSettings = () => {
     const dataStr = JSON.stringify(settings, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
@@ -232,6 +276,12 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
             onClick={() => setActiveTab('display')}
           >
             🎨 Display
+          </button>
+          <button 
+            className={`tab ${activeTab === 'features' ? 'active' : ''}`}
+            onClick={() => setActiveTab('features')}
+          >
+            🎛️ Features
           </button>
         </div>
 
@@ -467,6 +517,57 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                 <small className="help-text">
                   Automatically save form data as you type
                 </small>
+              </div>
+            </div>
+          )}
+
+          {/* Features Tab */}
+          {activeTab === 'features' && (
+            <div className="settings-section">
+              <h3>Feature Flags</h3>
+              <p className="section-description">
+                Enable or disable features to customize your workspace. Changes take effect immediately.
+              </p>
+
+              <div className="feature-flags-actions">
+                <button className="feature-action-btn" onClick={handleEnableAllFeatures}>
+                  ✅ Enable All
+                </button>
+                <button className="feature-action-btn" onClick={handleDisableAllFeatures}>
+                  ❌ Disable All
+                </button>
+                <button className="feature-action-btn" onClick={handleResetFeatures}>
+                  🔄 Reset to Defaults
+                </button>
+              </div>
+
+              <div className="feature-flags-list">
+                {(Object.keys(featureFlags) as Array<keyof FeatureFlags>).map((flagKey) => (
+                  <div key={flagKey} className="feature-flag-item">
+                    <div className="feature-flag-info">
+                      <div className="feature-flag-name">
+                        {FEATURE_FLAG_LABELS[flagKey]}
+                      </div>
+                      <div className="feature-flag-description">
+                        {FEATURE_FLAG_DESCRIPTIONS[flagKey]}
+                      </div>
+                    </div>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={featureFlags[flagKey]}
+                        onChange={() => handleFeatureFlagToggle(flagKey)}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
+                ))}
+              </div>
+
+              <div className="feature-flags-info">
+                <p className="info-text">
+                  ℹ️ <strong>Note:</strong> Disabled features will be hidden from the navigation menu and their routes will be inaccessible.
+                </p>
               </div>
             </div>
           )}

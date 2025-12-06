@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
+using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Interfaces.Infrastructure;
 using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
 using Platform.Engineering.Copilot.Core.Models;
@@ -30,7 +31,9 @@ public class InfrastructurePlugin : BaseSupervisorPlugin
     private readonly IPolicyEnforcementService _policyEnforcementService;
     private readonly SharedMemory _sharedMemory;
     private readonly AzureMcpClient _azureMcpClient;
+    private readonly ITemplateStorageService _templateStorageService;
     private string? _currentConversationId; // Set by agent before function calls
+    private string? _lastGeneratedTemplateName; // Track the last generated template for retrieval
 
     public InfrastructurePlugin(
         ILogger<InfrastructurePlugin> logger,
@@ -42,7 +45,8 @@ public class InfrastructurePlugin : BaseSupervisorPlugin
         IComplianceAwareTemplateEnhancer? complianceEnhancer,
         IPolicyEnforcementService policyEnforcementService,
         SharedMemory sharedMemory,
-        AzureMcpClient azureMcpClient)
+        AzureMcpClient azureMcpClient,
+        ITemplateStorageService templateStorageService)
         : base(logger, kernel)
     {
         _infrastructureService = infrastructureService;
@@ -53,6 +57,7 @@ public class InfrastructurePlugin : BaseSupervisorPlugin
         _policyEnforcementService = policyEnforcementService ?? throw new ArgumentNullException(nameof(policyEnforcementService));
         _sharedMemory = sharedMemory;
         _azureMcpClient = azureMcpClient ?? throw new ArgumentNullException(nameof(azureMcpClient));
+        _templateStorageService = templateStorageService ?? throw new ArgumentNullException(nameof(templateStorageService));
     }
 
     /// <summary>
@@ -151,120 +156,224 @@ public class InfrastructurePlugin : BaseSupervisorPlugin
 
     [KernelFunction("get_generated_file")]
     [Description("Retrieve and display a PREVIOUSLY GENERATED template file. IMPORTANT: Use this when user asks to 'show', 'display', or 'view' a specific file that was ALREADY generated. DO NOT call generate_infrastructure_template again. Files must already exist from a prior generation.")]
-    public Task<string> GetGeneratedFileAsync(
+    public async Task<string> GetGeneratedFileAsync(
         [Description("Filename to retrieve. Can be partial (e.g., 'main.bicep') or full path (e.g., 'infra/modules/storage/main.bicep'). System will find the matching file.")]
-        string fileName)
+        string fileName,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            if (string.IsNullOrEmpty(_currentConversationId))
+            _logger.LogInformation("🔍 Attempting to retrieve file: {FileName}", fileName);
+
+            // First try SharedMemory (in-memory cache)
+            if (!string.IsNullOrEmpty(_currentConversationId))
             {
-                _logger.LogWarning("❌ No conversation context available for file retrieval");
-                return Task.FromResult("❌ No conversation context available");
+                var availableFiles = _sharedMemory.GetGeneratedFileNames(_currentConversationId);
+                _logger.LogInformation("📦 Available files in memory: {Count}", availableFiles.Count);
+                
+                if (availableFiles.Any())
+                {
+                    // Try exact match first
+                    var matchingFile = availableFiles.FirstOrDefault(f => f == fileName);
+                    
+                    // If no exact match, try partial match (ends with the requested filename)
+                    if (matchingFile == null)
+                    {
+                        matchingFile = availableFiles.FirstOrDefault(f => f.EndsWith(fileName, StringComparison.OrdinalIgnoreCase));
+                    }
+                    
+                    // If still no match, try case-insensitive contains
+                    if (matchingFile == null)
+                    {
+                        matchingFile = availableFiles.FirstOrDefault(f => f.Contains(fileName, StringComparison.OrdinalIgnoreCase));
+                    }
+
+                    if (matchingFile != null)
+                    {
+                        var content = _sharedMemory.GetGeneratedFile(_currentConversationId, matchingFile);
+                        if (content != null)
+                        {
+                            _logger.LogInformation("✅ Found file in SharedMemory: {MatchingFile}", matchingFile);
+                            return FormatFileResponse(matchingFile, content);
+                        }
+                    }
+                }
             }
 
-            _logger.LogInformation("🔍 Attempting to retrieve file: {FileName} for conversation: {ConversationId}", 
-                fileName, _currentConversationId);
-
-            var availableFiles = _sharedMemory.GetGeneratedFileNames(_currentConversationId);
-            _logger.LogInformation("📦 Available files in memory: {Count}", availableFiles.Count);
+            // Fallback: Try to retrieve from database using last generated template name
+            _logger.LogInformation("📂 SharedMemory miss, checking database...");
             
-            if (!availableFiles.Any())
+            if (!string.IsNullOrEmpty(_lastGeneratedTemplateName))
             {
-                _logger.LogWarning("❌ No generated files found in SharedMemory for conversation {ConversationId}", 
-                    _currentConversationId);
-                return Task.FromResult("❌ No generated files found. Please generate a template first.");
+                var template = await _templateStorageService.GetTemplateByNameAsync(_lastGeneratedTemplateName, cancellationToken);
+                if (template?.Files != null && template.Files.Any())
+                {
+                    var dbFile = template.Files.FirstOrDefault(f => 
+                        f.FileName == fileName || 
+                        f.FileName.EndsWith(fileName, StringComparison.OrdinalIgnoreCase) ||
+                        f.FileName.Contains(fileName, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (dbFile != null)
+                    {
+                        _logger.LogInformation("✅ Found file in database: {FileName}", dbFile.FileName);
+                        return FormatFileResponse(dbFile.FileName, dbFile.Content);
+                    }
+                }
             }
-
-            // Try exact match first
-            var matchingFile = availableFiles.FirstOrDefault(f => f == fileName);
             
-            // If no exact match, try partial match (ends with the requested filename)
-            if (matchingFile == null)
-            {
-                matchingFile = availableFiles.FirstOrDefault(f => f.EndsWith(fileName, StringComparison.OrdinalIgnoreCase));
-            }
+            // List recent templates that might have the file
+            var recentTemplates = await _templateStorageService.ListAllTemplatesAsync(cancellationToken);
+            var templatesWithFile = recentTemplates
+                .Where(t => t.Files?.Any(f => f.FileName.Contains(fileName, StringComparison.OrdinalIgnoreCase)) == true)
+                .OrderByDescending(t => t.CreatedAt)
+                .Take(5)
+                .ToList();
             
-            // If still no match, try case-insensitive contains
-            if (matchingFile == null)
+            if (templatesWithFile.Any())
             {
-                matchingFile = availableFiles.FirstOrDefault(f => f.Contains(fileName, StringComparison.OrdinalIgnoreCase));
+                var firstMatch = templatesWithFile.First();
+                var file = firstMatch.Files?.FirstOrDefault(f => f.FileName.Contains(fileName, StringComparison.OrdinalIgnoreCase));
+                if (file != null)
+                {
+                    _logger.LogInformation("✅ Found file '{FileName}' in template '{TemplateName}'", file.FileName, firstMatch.Name);
+                    return FormatFileResponse(file.FileName, file.Content);
+                }
             }
 
-            if (matchingFile == null)
-            {
-                _logger.LogWarning("❌ File '{FileName}' not found in available files", fileName);
-                return Task.FromResult($"❌ File '{fileName}' not found. Available files:\n" +
-                    string.Join("\n", availableFiles.Select(f => $"- {f}")));
-            }
-
-            _logger.LogInformation("✅ Found matching file: {MatchingFile}", matchingFile);
-
-            var content = _sharedMemory.GetGeneratedFile(_currentConversationId, matchingFile);
-            if (content == null)
-            {
-                _logger.LogWarning("❌ File content is null for: {MatchingFile}", matchingFile);
-                return Task.FromResult($"❌ Unable to retrieve content for file: {matchingFile}");
-            }
-
-            var response = new StringBuilder();
-            response.AppendLine($"### 📁 {matchingFile}");
-            response.AppendLine();
-            response.AppendLine("```bicep");
-            response.AppendLine(content);
-            response.AppendLine("```");
-
-            return Task.FromResult(response.ToString());
+            _logger.LogWarning("❌ File '{FileName}' not found in memory or database", fileName);
+            return $"❌ File '{fileName}' not found. Please generate a template first using 'Generate a Bicep/Terraform template for...'";
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving file: {FileName}", fileName);
-            return Task.FromResult($"❌ Error retrieving file: {ex.Message}");
+            return $"❌ Error retrieving file: {ex.Message}";
         }
+    }
+    
+    private static string FormatFileResponse(string fileName, string content)
+    {
+        var fileExt = Path.GetExtension(fileName).TrimStart('.').ToLowerInvariant();
+        var codeBlockType = fileExt switch
+        {
+            "bicep" => "bicep",
+            "tf" => "hcl",
+            "json" => "json",
+            "yaml" or "yml" => "yaml",
+            _ => fileExt
+        };
+        
+        var response = new StringBuilder();
+        response.AppendLine($"### 📁 {fileName}");
+        response.AppendLine();
+        response.AppendLine($"```{codeBlockType}");
+        response.AppendLine(content);
+        response.AppendLine("```");
+        return response.ToString();
     }
 
     [KernelFunction("get_all_generated_files")]
     [Description("Retrieve and display ALL PREVIOUSLY GENERATED template files at once. IMPORTANT: Use this when user asks to 'show all files', 'display everything', or 'show all generated templates'. DO NOT call generate_infrastructure_template again. Files must already exist from a prior generation. Warning: Response may be very long.")]
-    public Task<string> GetAllGeneratedFilesAsync()
+    public async Task<string> GetAllGeneratedFilesAsync(CancellationToken cancellationToken = default)
     {
         try
         {
-            if (string.IsNullOrEmpty(_currentConversationId))
+            // First try SharedMemory
+            if (!string.IsNullOrEmpty(_currentConversationId))
             {
-                return Task.FromResult("❌ No conversation context available");
-            }
-
-            var fileNames = _sharedMemory.GetGeneratedFileNames(_currentConversationId);
-            if (!fileNames.Any())
-            {
-                return Task.FromResult("❌ No generated files found. Please generate a template first.");
-            }
-
-            var response = new StringBuilder();
-            response.AppendLine($"## 📦 All {fileNames.Count} Generated Files");
-            response.AppendLine();
-
-            foreach (var fileName in fileNames.OrderBy(f => f))
-            {
-                var content = _sharedMemory.GetGeneratedFile(_currentConversationId, fileName);
-                if (content != null)
+                var fileNames = _sharedMemory.GetGeneratedFileNames(_currentConversationId);
+                if (fileNames.Any())
                 {
-                    response.AppendLine($"### 📁 {fileName}");
-                    response.AppendLine();
-                    response.AppendLine("```bicep");
-                    response.AppendLine(content);
-                    response.AppendLine("```");
-                    response.AppendLine();
+                    _logger.LogInformation("📦 Found {Count} files in SharedMemory", fileNames.Count);
+                    return FormatAllFilesFromMemory(fileNames);
                 }
             }
+            
+            // Fallback to database
+            _logger.LogInformation("📂 SharedMemory empty, checking database...");
+            
+            if (!string.IsNullOrEmpty(_lastGeneratedTemplateName))
+            {
+                var template = await _templateStorageService.GetTemplateByNameAsync(_lastGeneratedTemplateName, cancellationToken);
+                if (template?.Files != null && template.Files.Any())
+                {
+                    _logger.LogInformation($"📦 Found {template.Files.Count()} files in database template '{template.Name}'");
+                    return FormatAllFilesFromDatabase(template);
+                }
+            }
+            
+            // Try most recent template
+            var recentTemplates = await _templateStorageService.ListAllTemplatesAsync(cancellationToken);
+            var mostRecent = recentTemplates
+                .Where(t => t.Files?.Any() == true)
+                .OrderByDescending(t => t.CreatedAt)
+                .FirstOrDefault();
+            
+            if (mostRecent?.Files != null)
+            {
+                _logger.LogInformation($"📦 Using most recent template {mostRecent.Name} with {mostRecent.Files.Count()} files");
+                return FormatAllFilesFromDatabase(mostRecent);
+            }
 
-            return Task.FromResult(response.ToString());
+            return "❌ No generated files found. Please generate a template first using 'Generate a Bicep/Terraform template for...'";
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving all files");
-            return Task.FromResult($"❌ Error retrieving files: {ex.Message}");
+            return $"❌ Error retrieving files: {ex.Message}";
         }
+    }
+    
+    private string FormatAllFilesFromMemory(List<string> fileNames)
+    {
+        var response = new StringBuilder();
+        response.AppendLine($"## 📦 All {fileNames.Count} Generated Files");
+        response.AppendLine();
+
+        foreach (var fileName in fileNames.OrderBy(f => f))
+        {
+            var content = _sharedMemory.GetGeneratedFile(_currentConversationId!, fileName);
+            if (content != null)
+            {
+                response.Append(FormatFileResponse(fileName, content));
+                response.AppendLine();
+            }
+        }
+
+        return response.ToString();
+    }
+    
+    private static string FormatAllFilesFromDatabase(EnvironmentTemplate template)
+    {
+        var response = new StringBuilder();
+        response.AppendLine($"## 📦 Template: {template.Name}");
+        response.AppendLine($"**Generated:** {template.CreatedAt:yyyy-MM-dd HH:mm:ss} UTC");
+        response.AppendLine($"**Files:** {template.Files?.Count() ?? 0}");
+        response.AppendLine();
+
+        if (template.Files != null)
+        {
+            foreach (var file in template.Files.OrderBy(f => f.Order))
+            {
+                var fileExt = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
+                var codeBlockType = fileExt switch
+                {
+                    "bicep" => "bicep",
+                    "tf" => "hcl",
+                    "json" => "json",
+                    "yaml" or "yml" => "yaml",
+                    _ => fileExt
+                };
+                
+                response.AppendLine($"### 📁 {file.FileName}");
+                response.AppendLine();
+                response.AppendLine($"```{codeBlockType}");
+                response.AppendLine(file.Content);
+                response.AppendLine("```");
+                response.AppendLine();
+            }
+        }
+
+        return response.ToString();
     }
 
     [KernelFunction("get_module_files")]
@@ -432,7 +541,11 @@ public class InfrastructurePlugin : BaseSupervisorPlugin
 
             _logger.LogInformation("✅ Successfully generated {Count} template files", result.Files.Count);
 
-            // Store files in shared memory for later retrieval
+            // Generate a unique template name based on resource type and timestamp
+            var templateName = $"{resourceType}-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
+            _lastGeneratedTemplateName = templateName;
+
+            // Store files in shared memory for later retrieval (in-memory fallback)
             _logger.LogInformation("💾 About to store files. ConversationId: '{ConversationId}', IsNull: {IsNull}, IsEmpty: {IsEmpty}", 
                 _currentConversationId, _currentConversationId == null, string.IsNullOrEmpty(_currentConversationId));
             
@@ -444,10 +557,41 @@ public class InfrastructurePlugin : BaseSupervisorPlugin
             }
             else
             {
-                _logger.LogWarning("⚠️ SKIPPED storing files because ConversationId is null or empty!");
+                _logger.LogWarning("⚠️ SKIPPED storing files in SharedMemory because ConversationId is null or empty!");
             }
 
-            // Format the response with summary and main file
+            // Also persist to database for durability
+            try
+            {
+                var templateToStore = new
+                {
+                    Name = templateName,
+                    Description = description,
+                    TemplateType = resourceType,
+                    Version = "1.0.0",
+                    Format = infraFormat.ToString().ToLowerInvariant(),
+                    Content = result.Files.FirstOrDefault().Value ?? "",
+                    Files = result.Files,
+                    CreatedBy = "InfrastructureAgent",
+                    AzureService = resourceType,
+                    Tags = new Dictionary<string, string>
+                    {
+                        ["location"] = location,
+                        ["resourceType"] = resourceType,
+                        ["conversationId"] = _currentConversationId ?? "unknown"
+                    }
+                };
+                
+                await _templateStorageService.StoreTemplateAsync(templateName, templateToStore, cancellationToken);
+                _logger.LogInformation("💾 Persisted template '{TemplateName}' to database with {FileCount} files", 
+                    templateName, result.Files.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "⚠️ Failed to persist template to database, but SharedMemory storage succeeded");
+            }
+
+            // Format the response with summary - templates are stored in DB for retrieval
             var response = new StringBuilder();
             response.AppendLine($"✅ Generated {infraFormat} template for {resourceType}");
             response.AppendLine();
@@ -464,7 +608,7 @@ public class InfrastructurePlugin : BaseSupervisorPlugin
             response.AppendLine($"📄 **Generated {result.Files.Count} Files:**");
             response.AppendLine();
 
-            // List files with sizes (don't include full code blocks to avoid token limits)
+            // List files with sizes
             foreach (var file in result.Files.OrderBy(f => f.Key))
             {
                 var lines = file.Value.Split('\n').Length;

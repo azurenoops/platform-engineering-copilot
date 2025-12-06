@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Azure.Identity;
 using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
-using Platform.Engineering.Copilot.Core.Interfaces.KnowledgeBase;
 using Platform.Engineering.Copilot.Core.Interfaces.Cache;
 using Platform.Engineering.Copilot.Core.Services.Cache;
 using Platform.Engineering.Copilot.Compliance.Agent.Services.Compliance;
@@ -19,13 +18,15 @@ using Platform.Engineering.Copilot.Core.Interfaces.Agents;
 using Platform.Engineering.Copilot.Core.Services.Agents;
 using Platform.Engineering.Copilot.Core.Interfaces.Chat;
 using Platform.Engineering.Copilot.Core.Services.Azure;
-using Platform.Engineering.Copilot.Core.Interfaces.Infrastructure;
-using Platform.Engineering.Copilot.Compliance.Agent.Services.Infrastructure;
 using Platform.Engineering.Copilot.Core.Interfaces.Notifications;
 using Platform.Engineering.Copilot.Core.Services.Notifications;
 using Platform.Engineering.Copilot.Core.Interfaces.Jobs;
 using Platform.Engineering.Copilot.Core.Configuration;
-using Platform.Engineering.Copilot.Compliance.Agent.Extensions; // For AddEnhancedAtoCompliance
+using Platform.Engineering.Copilot.Compliance.Agent.Extensions;
+using Platform.Engineering.Copilot.Compliance.Agent.Services.Compliance.Remediation;
+using Platform.Engineering.Copilot.Core.Interfaces.Compliance.Remediation; // For AddEnhancedAtoCompliance
+using Platform.Engineering.Copilot.Compliance.Agent.Plugins.ATO;
+using Platform.Engineering.Copilot.Compliance.Agent.Plugins.Code;
 
 namespace Platform.Engineering.Copilot.Compliance.Core.Extensions;
 
@@ -131,7 +132,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ComplianceMetricsService>();
         
         // Register Governance Engine - Scoped (policy enforcement and approval workflows)
-        services.AddScoped<IGovernanceEngine, Platform.Engineering.Copilot.Compliance.Agent.Services.Governance.GovernanceEngine>();
+        services.AddScoped<IGovernanceEngine, Agent.Services.Governance.GovernanceEngine>();
         
         // Register STIG Validation Service - Scoped (refactored from AtoComplianceEngine)
         services.AddScoped<IStigValidationService, StigValidationService>();
@@ -149,22 +150,22 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAiRemediationPlanGenerator, AiRemediationPlanGenerator>();
         
         // Register ATO Remediation Engine - Scoped (AI-enhanced with optional GPT-4 integration)
-        services.AddScoped<IAtoRemediationEngine, AtoRemediationEngine>();
+        services.AddScoped<IRemediationEngine, AtoRemediationEngine>();
 
         // Register Evidence Storage Service - Scoped (stores compliance evidence to Azure Blob Storage)
-        services.AddScoped<EvidenceStorageService>();
+        services.AddScoped<IEvidenceStorageService, EvidenceStorageService>();
 
         // Register Code Scanning Engine - Scoped (orchestrates security analysis tools)
         services.AddScoped<ICodeScanningEngine, CodeScanningEngine>();
         
         // Register Document Generation Service - Scoped (generates ATO compliance documents: SSP, SAR, POA&M)
-        services.AddScoped<IDocumentGenerationService, Platform.Engineering.Copilot.Compliance.Agent.Services.Documents.DocumentGenerationService>();
+        services.AddScoped<IDocumentGenerationService, Agent.Services.Documents.DocumentGenerationService>();
         
         // Register Document Versioning Service - Scoped (manages document versions and revisions)
-        services.AddScoped<IDocumentVersioningService, Platform.Engineering.Copilot.Compliance.Agent.Services.Documents.DocumentVersioningService>();
+        services.AddScoped<IDocumentVersioningService, Agent.Services.Documents.DocumentVersioningService>();
         
         // Register Collaborative Editing Service - Scoped (manages real-time collaborative editing sessions)
-        services.AddScoped<ICollaborativeEditingService, Platform.Engineering.Copilot.Compliance.Agent.Services.Documents.CollaborativeEditingService>();
+        services.AddScoped<ICollaborativeEditingService, Agent.Services.Documents.CollaborativeEditingService>();
         
         // Register Pull Request Review Services - Scoped (GitHub API integration for IaC compliance)
         services.AddHttpClient("GitHub", client =>
@@ -183,11 +184,11 @@ public static class ServiceCollectionExtensions
                 configuration.GetSection("Gateway:GitHub").Bind(settings);
             });
         
-        // Register Infrastructure Remediation Service - Scoped (requires HttpClient and Azure services)
-        services.AddScoped<IInfrastructureRemediationService, InfrastructureRemediationService>();
+        // Register Compliance Remediation Service - Scoped (requires HttpClient and Azure services)
+        services.AddScoped<IComplianceRemediationService, ComplianceRemediationService>();
         
         // Register Compliance-Aware Template Enhancer - Scoped
-        services.AddScoped<Platform.Engineering.Copilot.Core.Services.IComplianceAwareTemplateEnhancer, Platform.Engineering.Copilot.Core.Services.TemplateGeneration.ComplianceAwareTemplateEnhancer>();
+        services.AddScoped<Copilot.Core.Services.IComplianceAwareTemplateEnhancer, Copilot.Core.Services.TemplateGeneration.ComplianceAwareTemplateEnhancer>();
         
         // Register Notification Services - Singleton (no DbContext dependency)
         services.AddSingleton<IEmailService, EmailService>();

@@ -62,4 +62,11 @@
     <ProjectReference Include="..\Platform.Engineering.Copilot.KnowledgeBase.Agent\Platform.Engineering.Copilot.KnowledgeBase.Agent.csproj" />
   </ItemGroup>
 
+  <!-- Include NIST fallback data files -->
+  <ItemGroup>
+    <Content Include="Data\**\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

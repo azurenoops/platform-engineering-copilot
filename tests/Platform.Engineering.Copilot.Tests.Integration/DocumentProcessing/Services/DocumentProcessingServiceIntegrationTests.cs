@@ -136,7 +136,7 @@ namespace Platform.Engineering.Copilot.Tests.Integration.DocumentProcessing.Serv
                     }
                 });
 
-            var mockRemediationEngine = new Mock<IAtoRemediationEngine>();
+            var mockRemediationEngine = new Mock<IRemediationEngine>();
             mockRemediationEngine
                 .Setup(e => e.GenerateRemediationPlanAsync(
                     It.IsAny<string>(),

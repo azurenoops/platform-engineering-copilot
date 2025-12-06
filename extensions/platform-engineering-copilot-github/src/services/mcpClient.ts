@@ -65,6 +65,28 @@ export interface RepositoryComplianceResponse {
     analyzedAt: string;
 }
 
+export interface TemplateFile {
+    fileName: string;
+    content: string;
+    fileType?: string;
+}
+
+export interface Template {
+    id: string;
+    name: string;
+    description?: string;
+    templateType?: string;
+    createdAt: string;
+    files: TemplateFile[];
+}
+
+export interface TemplateResponse {
+    success: boolean;
+    template?: Template;
+    templates?: Template[];
+    error?: string;
+}
+
 /**
  * MCP Client for VS Code Extension
  * Handles HTTP communication with the Platform Engineering Copilot MCP server
@@ -411,6 +433,48 @@ export class McpClient {
         } catch (error) {
             const errorMessage = this.handleError(error, 'Repository compliance analysis failed');
             throw errorMessage;
+        }
+    }
+
+    /**
+     * Get templates by conversation ID from the database
+     */
+    async getTemplatesByConversationId(conversationId: string): Promise<TemplateResponse> {
+        try {
+            config.log(`→ GET /mcp/templates/${conversationId}`);
+            
+            const response = await this.client.get<TemplateResponse>(`/mcp/templates/${conversationId}`);
+            
+            config.log(`← Found ${response.data.templates?.length || 0} template(s) for conversation`);
+            return response.data;
+
+        } catch (error) {
+            if (error instanceof AxiosError && error.response?.status === 404) {
+                return { success: false, templates: [], error: 'No templates found for this conversation' };
+            }
+            throw this.handleError(error, 'Failed to fetch templates');
+        }
+    }
+
+    /**
+     * Get the most recently generated template from the database
+     */
+    async getLatestTemplate(): Promise<TemplateResponse> {
+        try {
+            config.log(`→ GET /mcp/templates/latest`);
+            
+            const response = await this.client.get<TemplateResponse>('/mcp/templates/latest');
+            
+            if (response.data.template) {
+                config.log(`← Found latest template: ${response.data.template.name}`);
+            }
+            return response.data;
+
+        } catch (error) {
+            if (error instanceof AxiosError && error.response?.status === 404) {
+                return { success: false, error: 'No templates found' };
+            }
+            throw this.handleError(error, 'Failed to fetch latest template');
         }
     }
 }

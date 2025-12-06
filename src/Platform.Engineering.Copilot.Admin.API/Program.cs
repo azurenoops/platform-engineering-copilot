@@ -8,6 +8,7 @@ using Platform.Engineering.Copilot.Core.Services.Validation.Validators;
 using Platform.Engineering.Copilot.Core.Services.Validation;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 using Platform.Engineering.Copilot.Core.Interfaces.Cost;
+using Platform.Engineering.Copilot.Infrastructure.Agent.Services.Deployment;
 using Platform.Engineering.Copilot.Core.Interfaces.Deployment;
 using Platform.Engineering.Copilot.Core.Interfaces.GitHub;
 using Platform.Engineering.Copilot.Core.Interfaces.Notifications;
@@ -84,14 +85,14 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Register database context - use shared database from root
-var sharedDbPath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "../..", "platform_engineering_copilot_management.db"));
-var connectionString = $"Data Source={sharedDbPath}";
+// Register database context - use SQL Server from connection string
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
-Console.WriteLine($"[Admin API] Using database: {sharedDbPath}");
+Console.WriteLine($"[Admin API] Using database connection");
 
 builder.Services.AddDbContext<PlatformEngineeringCopilotContext>(options =>
-    options.UseSqlite(connectionString));
+    options.UseSqlServer(connectionString));
 
 // Register HTTP client (required by several services)
 builder.Services.AddHttpClient();
@@ -141,7 +142,7 @@ builder.Services.AddSingleton<ITeamsNotificationService,
 builder.Services.AddMemoryCache();
 
 // Register Platform.Engineering.Copilot.Core services (includes OrchestratorAgent, SemanticKernelService, etc.)
-builder.Services.AddPlatformEngineeringCopilotCore();
+builder.Services.AddPlatformEngineeringCopilotCore(builder.Configuration);
 
 // Add ComplianceMetricsService (needed by NistControlsService)
 builder.Services.AddScoped<ComplianceMetricsService>();
@@ -170,22 +171,14 @@ builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Services.IDynamicTe
 // Template Storage Service (for saving/loading templates)
 builder.Services.AddScoped<ITemplateStorageService, Platform.Engineering.Copilot.Core.Data.Services.TemplateStorageService>();
 
-// Register Configuration Validators
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, AKSConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, EKSConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, GKEConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, ECSConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, LambdaConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, CloudRunConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, VMConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, AppServiceConfigValidator>();
-builder.Services.AddScoped<Platform.Engineering.Copilot.Core.Interfaces.Validation.IConfigurationValidator, ContainerAppsConfigValidator>();
+// Note: Configuration Validators are already registered by AddPlatformEngineeringCopilotCore()
 
 // Register Configuration Validation Service (orchestrator)
 builder.Services.AddScoped<ConfigurationValidationService>();
 
 // Register Admin services
 builder.Services.AddScoped<ITemplateAdminService, TemplateAdminService>();
+builder.Services.AddScoped<AgentConfigurationService>();
 
 // Register Azure Pricing Service for cost estimates
 builder.Services.AddScoped<IAzurePricingService, AzurePricingService>();
@@ -213,6 +206,25 @@ builder.Services.AddKnowledgeBaseAgent(knowledgeBaseConfig);
 // NOTE: DeploymentPollingService removed - legacy service from Extensions project
 
 var app = builder.Build();
+
+// Initialize database - ensure database is created
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var context = services.GetRequiredService<PlatformEngineeringCopilotContext>();
+        Console.WriteLine("[Admin API] Ensuring database is created...");
+        context.Database.EnsureCreated();
+        Console.WriteLine("[Admin API] Database initialized successfully");
+    }
+    catch (Exception ex)
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "An error occurred while initializing the database");
+        throw;
+    }
+}
 
 // Add middleware to log request bodies for debugging
 app.Use(async (context, next) =>
@@ -245,6 +257,31 @@ app.UseCors();
 app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
+
+// Initialize database and agent configurations on startup
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<PlatformEngineeringCopilotContext>();
+    var agentService = scope.ServiceProvider.GetRequiredService<AgentConfigurationService>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    
+    try
+    {
+        // Ensure database is created and migrations are applied
+        logger.LogInformation("Ensuring database is created and applying migrations...");
+        await dbContext.Database.MigrateAsync();
+        logger.LogInformation("Database migrations completed successfully");
+        
+        // Seed agent configurations
+        logger.LogInformation("Seeding agent configurations from appsettings.json...");
+        await agentService.SeedFromConfigurationAsync();
+        logger.LogInformation("Agent configuration seeding completed");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to initialize database or seed agent configurations on startup");
+    }
+}
 
 // Health check endpoint
 app.MapGet("/health", () => Results.Ok(new 

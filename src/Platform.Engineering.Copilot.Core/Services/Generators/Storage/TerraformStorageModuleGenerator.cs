@@ -38,26 +38,29 @@ public class TerraformStorageModuleGenerator : IInfrastructureModuleGenerator
         var security = request.Security ?? new SecuritySpec();
         var observability = request.Observability ?? new ObservabilitySpec();
 
-        sb.AppendLine("# Azure Storage Account Infrastructure Module");
+        sb.AppendLine("# Azure Storage Account Infrastructure Module - FedRAMP Compliant");
+        sb.AppendLine("# Implements: SC-28 (Encryption at Rest), CP-9/CP-10 (Backup/Recovery), AU-11 (Audit Retention), AC-3 (Access Control)");
         sb.AppendLine($"# Service: {serviceName}");
         sb.AppendLine($"# Region: {infrastructure.Region}");
         sb.AppendLine();
 
-        // Storage Account
+        // Storage Account - FedRAMP Compliant
         sb.AppendLine("resource \"azurerm_storage_account\" \"storage\" {");
-        sb.AppendLine("  name                     = var.storage_account_name");
-        sb.AppendLine("  resource_group_name      = var.resource_group_name");
-        sb.AppendLine("  location                 = var.location");
-        sb.AppendLine("  account_tier             = var.account_tier");
-        sb.AppendLine("  account_replication_type = var.replication_type");
-        sb.AppendLine("  account_kind             = var.account_kind");
-        sb.AppendLine($"  enable_https_traffic_only = {(security.TLS == true ? "true" : "false")}");
-        sb.AppendLine($"  min_tls_version          = \"TLS{(security.TLSVersion ?? "1.2").Replace(".", "_")}\"");
-        sb.AppendLine($"  allow_blob_public_access = {(security.EnablePrivateEndpoint != true ? "true" : "false")}");
+        sb.AppendLine("  name                          = var.storage_account_name");
+        sb.AppendLine("  resource_group_name           = var.resource_group_name");
+        sb.AppendLine("  location                      = var.location");
+        sb.AppendLine("  account_tier                  = var.account_tier");
+        sb.AppendLine("  account_replication_type      = var.replication_type");
+        sb.AppendLine("  account_kind                  = var.account_kind");
+        sb.AppendLine("  enable_https_traffic_only     = true   # FedRAMP SC-8");
+        sb.AppendLine("  min_tls_version               = \"TLS1_2\"  # FedRAMP SC-8");
+        sb.AppendLine("  allow_nested_items_to_be_public = false   # FedRAMP AC-3");
+        sb.AppendLine("  shared_access_key_enabled     = false  # FedRAMP AC-3 - Require AAD auth");
+        sb.AppendLine("  infrastructure_encryption_enabled = true  # FedRAMP SC-28 - Double encryption");
         sb.AppendLine();
 
         sb.AppendLine("  network_rules {");
-        sb.AppendLine("    default_action             = var.default_network_action");
+        sb.AppendLine("    default_action             = \"Deny\"  # FedRAMP SC-7");
         sb.AppendLine("    bypass                     = [\"AzureServices\"]");
         if (security.EnablePrivateEndpoint)
         {
@@ -66,11 +69,18 @@ public class TerraformStorageModuleGenerator : IInfrastructureModuleGenerator
         sb.AppendLine("  }");
         sb.AppendLine();
 
+        sb.AppendLine("  # FedRAMP CP-9/CP-10: Blob soft delete and versioning");
         sb.AppendLine("  blob_properties {");
-        sb.AppendLine("    versioning_enabled = true");
+        sb.AppendLine("    versioning_enabled       = true  # FedRAMP AU-11");
+        sb.AppendLine("    change_feed_enabled      = true  # FedRAMP AU-3");
+        sb.AppendLine("    change_feed_retention_in_days = 90");
         sb.AppendLine("    ");
         sb.AppendLine("    delete_retention_policy {");
-        sb.AppendLine("      days = 7");
+        sb.AppendLine("      days = var.soft_delete_retention_days  # FedRAMP CP-9");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        sb.AppendLine("    container_delete_retention_policy {");
+        sb.AppendLine("      days = var.soft_delete_retention_days  # FedRAMP CP-9");
         sb.AppendLine("    }");
         sb.AppendLine("  }");
         sb.AppendLine();
@@ -132,7 +142,7 @@ public class TerraformStorageModuleGenerator : IInfrastructureModuleGenerator
         var security = request.Security ?? new SecuritySpec();
         var observability = request.Observability ?? new ObservabilitySpec();
 
-        sb.AppendLine("# Storage Account Variables");
+        sb.AppendLine("# Storage Account Variables - FedRAMP Compliant");
         sb.AppendLine();
         sb.AppendLine("variable \"storage_account_name\" {");
         sb.AppendLine("  description = \"Name of the storage account\"");
@@ -156,9 +166,9 @@ public class TerraformStorageModuleGenerator : IInfrastructureModuleGenerator
         sb.AppendLine("}");
         sb.AppendLine();
         sb.AppendLine("variable \"replication_type\" {");
-        sb.AppendLine("  description = \"Storage account replication type\"");
+        sb.AppendLine("  description = \"Storage account replication type (use GRS or RAGRS for FedRAMP CP-9)\"");
         sb.AppendLine("  type        = string");
-        sb.AppendLine("  default     = \"LRS\"");
+        sb.AppendLine("  default     = \"GRS\"  # FedRAMP CP-9 - Geo-redundant storage");
         sb.AppendLine("}");
         sb.AppendLine();
         sb.AppendLine("variable \"account_kind\" {");
@@ -167,10 +177,10 @@ public class TerraformStorageModuleGenerator : IInfrastructureModuleGenerator
         sb.AppendLine("  default     = \"StorageV2\"");
         sb.AppendLine("}");
         sb.AppendLine();
-        sb.AppendLine("variable \"default_network_action\" {");
-        sb.AppendLine("  description = \"Default network action\"");
-        sb.AppendLine("  type        = string");
-        sb.AppendLine($"  default     = \"{(security.EnablePrivateEndpoint ? "Deny" : "Allow")}\"");
+        sb.AppendLine("variable \"soft_delete_retention_days\" {");
+        sb.AppendLine("  description = \"Number of days to retain soft deleted items (FedRAMP CP-9)\"");
+        sb.AppendLine("  type        = number");
+        sb.AppendLine("  default     = 14");
         sb.AppendLine("}");
         sb.AppendLine();
         sb.AppendLine("variable \"tags\" {");
@@ -257,22 +267,39 @@ public class TerraformStorageModuleGenerator : IInfrastructureModuleGenerator
         sb.AppendLine();
         sb.AppendLine("## Overview");
         sb.AppendLine();
-        sb.AppendLine("Terraform module for Azure Storage Account with:");
-        sb.AppendLine("- Storage account with configurable tier and replication");
-        sb.AppendLine("- Encryption at rest");
-        sb.AppendLine("- HTTPS-only access");
-        sb.AppendLine("- Blob versioning and soft delete");
+        sb.AppendLine("FedRAMP-compliant Terraform module for Azure Storage Account with:");
+        sb.AppendLine("- Storage account with geo-redundant replication - FedRAMP CP-9");
+        sb.AppendLine("- Infrastructure encryption (double encryption) - FedRAMP SC-28");
+        sb.AppendLine("- HTTPS-only access with TLS 1.2 - FedRAMP SC-8");
+        sb.AppendLine("- Blob soft delete (14 days) - FedRAMP CP-9");
+        sb.AppendLine("- Container soft delete (14 days) - FedRAMP CP-9");
+        sb.AppendLine("- Blob versioning - FedRAMP AU-11");
+        sb.AppendLine("- Change feed enabled - FedRAMP AU-3");
+        sb.AppendLine("- Shared key access disabled (AAD only) - FedRAMP AC-3");
+        sb.AppendLine("- Network default deny - FedRAMP SC-7");
         
         if (request.Security?.EnablePrivateEndpoint == true)
         {
-            sb.AppendLine("- Private endpoint connectivity");
+            sb.AppendLine("- Private endpoint connectivity - FedRAMP SC-7");
         }
         
         if (request.Observability?.EnableDiagnostics == true)
         {
-            sb.AppendLine("- Diagnostic settings and logging");
+            sb.AppendLine("- Diagnostic settings and logging - FedRAMP AU-2");
         }
 
+        sb.AppendLine();
+        sb.AppendLine("## FedRAMP Controls Implemented");
+        sb.AppendLine();
+        sb.AppendLine("| Control | Implementation |");
+        sb.AppendLine("|---------|----------------|");
+        sb.AppendLine("| SC-28 | Infrastructure encryption (double encryption) |");
+        sb.AppendLine("| SC-8 | TLS 1.2 encryption in transit |");
+        sb.AppendLine("| CP-9/CP-10 | Geo-redundant storage and soft delete |");
+        sb.AppendLine("| AU-11 | Blob versioning for audit retention |");
+        sb.AppendLine("| AU-3 | Change feed for audit tracking |");
+        sb.AppendLine("| AC-3 | AAD authentication required (shared key disabled) |");
+        sb.AppendLine("| SC-7 | Network default deny and private endpoint |");
         sb.AppendLine();
         sb.AppendLine("## Usage");
         sb.AppendLine();
@@ -280,10 +307,12 @@ public class TerraformStorageModuleGenerator : IInfrastructureModuleGenerator
         sb.AppendLine("module \"storage\" {");
         sb.AppendLine("  source = \"./modules/storage\"");
         sb.AppendLine();
-        sb.AppendLine($"  storage_account_name = \"{serviceName}sa\"");
-        sb.AppendLine("  resource_group_name  = azurerm_resource_group.main.name");
-        sb.AppendLine("  location             = azurerm_resource_group.main.location");
-        sb.AppendLine("  tags                 = local.common_tags");
+        sb.AppendLine($"  storage_account_name       = \"{serviceName}sa\"");
+        sb.AppendLine("  resource_group_name        = azurerm_resource_group.main.name");
+        sb.AppendLine("  location                   = azurerm_resource_group.main.location");
+        sb.AppendLine("  replication_type           = \"GRS\"  # Geo-redundant for FedRAMP");
+        sb.AppendLine("  soft_delete_retention_days = 14");
+        sb.AppendLine("  tags                       = local.common_tags");
         sb.AppendLine("}");
         sb.AppendLine("```");
 

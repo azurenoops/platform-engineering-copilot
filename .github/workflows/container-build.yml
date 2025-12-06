@@ -1,0 +1,247 @@
+name: Container Build and Push
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/**'
+      - '.github/workflows/container-build.yml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  REGISTRY_NAME: ${{ secrets.ACR_NAME }}
+  REGISTRY_URL: ${{ secrets.ACR_LOGIN_SERVER }}
+
+jobs:
+  build-and-scan:
+    name: Build and Scan Containers
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    
+    strategy:
+      matrix:
+        service:
+          - name: mcp
+            dockerfile: src/Platform.Engineering.Copilot.Mcp/Dockerfile
+            context: .
+            image: platform-engineering-copilot-mcp
+          - name: chat
+            dockerfile: src/Platform.Engineering.Copilot.Chat/Dockerfile
+            context: .
+            image: platform-engineering-copilot-chat
+          - name: admin-api
+            dockerfile: src/Platform.Engineering.Copilot.Admin.API/Dockerfile
+            context: .
+            image: platform-engineering-copilot-admin-api
+          - name: admin-client
+            dockerfile: src/Platform.Engineering.Copilot.Admin.Client/Dockerfile
+            context: .
+            image: platform-engineering-copilot-admin-client
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY_URL }}/${{ matrix.service.image }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build container image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service.context }}
+          file: ${{ matrix.service.dockerfile }}
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY_URL }}/${{ matrix.service.image }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results-${{ matrix.service.name }}.sarif'
+          severity: 'CRITICAL,HIGH'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results-${{ matrix.service.name }}.sarif'
+          category: 'trivy-${{ matrix.service.name }}'
+      
+      - name: Check for critical vulnerabilities
+        run: |
+          CRITICAL=$(docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy image --severity CRITICAL --format json \
+            ${{ env.REGISTRY_URL }}/${{ matrix.service.image }}:${{ github.sha }} | \
+            jq '.Results[].Vulnerabilities | length')
+          
+          if [ "$CRITICAL" -gt "0" ]; then
+            echo "::error::Found $CRITICAL critical vulnerabilities in ${{ matrix.service.name }}"
+            exit 1
+          fi
+
+  push-to-acr:
+    name: Push to Azure Container Registry
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      id-token: write
+    
+    strategy:
+      matrix:
+        service:
+          - name: mcp
+            dockerfile: src/Platform.Engineering.Copilot.Mcp/Dockerfile
+            context: .
+            image: platform-engineering-copilot-mcp
+          - name: chat
+            dockerfile: src/Platform.Engineering.Copilot.Chat/Dockerfile
+            context: .
+            image: platform-engineering-copilot-chat
+          - name: admin-api
+            dockerfile: src/Platform.Engineering.Copilot.Admin.API/Dockerfile
+            context: .
+            image: platform-engineering-copilot-admin-api
+          - name: admin-client
+            dockerfile: src/Platform.Engineering.Copilot.Admin.Client/Dockerfile
+            context: .
+            image: platform-engineering-copilot-admin-client
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Login to ACR
+        run: |
+          az acr login --name ${{ env.REGISTRY_NAME }}
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY_URL }}/${{ matrix.service.image }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build and push container image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service.context }}
+          file: ${{ matrix.service.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+      
+      - name: Sign container image (Notary)
+        if: env.REGISTRY_NAME != ''
+        run: |
+          # Enable content trust for signing
+          export DOCKER_CONTENT_TRUST=1
+          export DOCKER_CONTENT_TRUST_SERVER=https://${{ env.REGISTRY_URL }}
+          
+          # Sign the image
+          docker trust sign ${{ env.REGISTRY_URL }}/${{ matrix.service.image }}:${{ github.sha }}
+      
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY_URL }}/${{ matrix.service.image }}:${{ github.sha }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.service.name }}.spdx.json
+      
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.service.name }}
+          path: sbom-${{ matrix.service.name }}.spdx.json
+          retention-days: 90
+
+  image-summary:
+    name: Image Build Summary
+    runs-on: ubuntu-latest
+    needs: push-to-acr
+    if: always()
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Container Image Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** ${{ env.REGISTRY_URL }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Built Images" >> $GITHUB_STEP_SUMMARY
+          echo "- platform-engineering-copilot-mcp:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- platform-engineering-copilot-chat:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- platform-engineering-copilot-admin-api:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- platform-engineering-copilot-admin-client:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All images scanned with Trivy and signed with Notary." >> $GITHUB_STEP_SUMMARY

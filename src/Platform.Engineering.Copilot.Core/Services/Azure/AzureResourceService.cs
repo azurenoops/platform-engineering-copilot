@@ -28,68 +28,50 @@ namespace Platform.Engineering.Copilot.Core.Services.Azure;
 public class AzureResourceService : IAzureResourceService
 {
     private readonly ILogger<AzureResourceService> _logger;
+    private readonly IAzureClientFactory _clientFactory;
     private readonly AzureGatewayOptions _options;
-    private readonly ArmClient? _armClient;
-    private readonly TokenCredential? _credential;
 
     /// <summary>
     /// Initializes a new instance of the AzureResourceService with Azure Resource Manager client setup.
     /// </summary>
     /// <param name="logger">Logger for Azure operations and diagnostics</param>
+    /// <param name="clientFactory">Azure client factory for centralized credential management</param>
     /// <param name="options">Gateway configuration options including Azure credentials</param>
     public AzureResourceService(
         ILogger<AzureResourceService> logger,
+        IAzureClientFactory clientFactory,
         IOptions<GatewayOptions> options)
     {
         _logger = logger;
+        _clientFactory = clientFactory;
         _options = options.Value.Azure;
-
-        if (_options.Enabled)
-        {
-            try
-            {
-                // Configure credential for Azure Government
-                var credentialOptions = new DefaultAzureCredentialOptions
-                {
-                    AuthorityHost = AzureAuthorityHosts.AzureGovernment
-                };
-
-                _credential = _options.UseManagedIdentity 
-                    ? new DefaultAzureCredential(credentialOptions)
-                    : new ChainedTokenCredential(
-                        new AzureCliCredential(new AzureCliCredentialOptions { AuthorityHost = AzureAuthorityHosts.AzureGovernment }),
-                        new DefaultAzureCredential(credentialOptions)
-                    );
-
-                // Configure for Azure Government environment
-                var armClientOptions = new ArmClientOptions();
-                armClientOptions.Environment = ArmEnvironment.AzureGovernment;
-                
-                _armClient = new ArmClient(_credential, defaultSubscriptionId: null, armClientOptions);
-                _logger.LogInformation("Azure ARM client initialized successfully for {Environment}", armClientOptions.Environment.ToString());
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to initialize Azure ARM client");
-            }
-        }
+        _logger.LogInformation("Azure Resource Service configured with AzureClientFactory");
     }
 
     /// <summary>
-    /// Ensures ARM client is available, throws if not
+    /// Gets the ARM client from the factory, throws if Azure integration is disabled.
     /// </summary>
     private ArmClient EnsureArmClient()
     {
-        if (_armClient == null)
+        if (!_options.Enabled)
         {
-            throw new InvalidOperationException("ARM client is not available. Ensure Azure Gateway is enabled and configured correctly.");
+            throw new InvalidOperationException("Azure integration is disabled in configuration. Enable Gateway.Azure.Enabled to use Azure resources.");
         }
-        return _armClient;
+
+        return _clientFactory.GetArmClient(_options.SubscriptionId);
     }
 
     // Public API methods for Extension tools to call
-    public ArmClient? GetArmClient() => _armClient;
-    
+    public ArmClient? GetArmClient()
+    {
+        if (!_options.Enabled)
+        {
+            _logger.LogWarning("Azure integration is disabled in configuration");
+            return null;
+        }
+        return _clientFactory.GetArmClient(_options.SubscriptionId);
+    }
+
     public string GetSubscriptionId(string? subscriptionId = null)
     {
         var subId = subscriptionId ?? _options.SubscriptionId;
@@ -99,7 +81,7 @@ public class AzureResourceService : IAzureResourceService
         }
         return subId;
     }
-    
+
     /// <summary>
     /// Gets the currently authenticated Azure user's identity (email/UPN)
     /// </summary>
@@ -108,16 +90,13 @@ public class AzureResourceService : IAzureResourceService
     {
         try
         {
-            if (_credential == null)
-            {
-                _logger.LogWarning("Credential not available, falling back to environment username");
-                return Environment.UserName ?? "unknown";
-            }
+            var credential = _clientFactory.GetCredential();
 
-            // Get a token to extract user identity claims
-            var tokenRequestContext = new TokenRequestContext(new[] { "https://management.usgovcloudapi.net/.default" });
-            var token = await _credential.GetTokenAsync(tokenRequestContext, cancellationToken);
-            
+            // Get a token to extract user identity claims using the factory's management scope
+            var managementScope = _clientFactory.GetManagementScope();
+            var tokenRequestContext = new TokenRequestContext(new[] { managementScope });
+            var token = await credential.GetTokenAsync(tokenRequestContext, cancellationToken);
+
             // Decode the JWT token to extract user identity
             var tokenParts = token.Token.Split('.');
             if (tokenParts.Length >= 2)
@@ -127,10 +106,10 @@ public class AzureResourceService : IAzureResourceService
                 var paddedPayload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
                 var decodedBytes = Convert.FromBase64String(paddedPayload);
                 var decodedPayload = System.Text.Encoding.UTF8.GetString(decodedBytes);
-                
+
                 // Parse JSON to extract user claims
                 var claims = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(decodedPayload);
-                
+
                 if (claims != null)
                 {
                     // Try to get user principal name (email) or unique name
@@ -156,7 +135,7 @@ public class AzureResourceService : IAzureResourceService
                     }
                 }
             }
-            
+
             _logger.LogWarning("Could not extract user identity from token, using environment username");
             return Environment.UserName ?? "unknown";
         }
@@ -186,11 +165,11 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task<IEnumerable<AzureResource>> ListAllResourcesInResourceGroupAsync(string subscriptionId, string resourceGroupName, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
-        var subscription = _armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
+        var armClient = EnsureArmClient();
+
+        var subscription = armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
         var resourceGroup = await subscription.GetResourceGroups().GetAsync(resourceGroupName, cancellationToken);
-        
+
         var resources = new List<AzureResource>();
         await foreach (var resource in resourceGroup.Value.GetGenericResourcesAsync(cancellationToken: cancellationToken))
         {
@@ -210,11 +189,11 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task<IEnumerable<AzureResource>> ListAllResourceGroupsInSubscriptionAsync(string subscriptionId, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
-        var subscription = _armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
+        var armClient = EnsureArmClient();
+
+        var subscription = armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
         var resourceGroups = new List<AzureResource>();
-        
+
         await foreach (var resourceGroup in subscription.GetResourceGroups().GetAllAsync(cancellationToken: cancellationToken))
         {
             resourceGroups.Add(new AzureResource
@@ -233,16 +212,16 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task<IEnumerable<AzureResource>> ListAllResourcesAsync(string subscriptionId, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
-        var subscription = _armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
+        var armClient = EnsureArmClient();
+
+        var subscription = armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
         var resources = new List<AzureResource>();
-        
+
         await foreach (var resource in subscription.GetGenericResourcesAsync(cancellationToken: cancellationToken))
         {
             // Extract resource group name from ID (format: /subscriptions/{sub}/resourceGroups/{rg}/...)
             var resourceGroup = ExtractResourceGroupFromId(resource.Data.Id.ToString());
-            
+
             resources.Add(new AzureResource
             {
                 Name = resource.Data.Name,
@@ -259,13 +238,13 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task<AzureResource?> GetResourceGroupAsync(string resourceGroupName, string? subscriptionId = null, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
+        var armClient = EnsureArmClient();
+
         try
         {
             var subId = GetSubscriptionId(subscriptionId);
             _logger.LogInformation("Getting resource group {ResourceGroup} from subscription {SubscriptionId}", resourceGroupName, subId);
-            
+
             ResourceIdentifier resourceId;
             try
             {
@@ -277,8 +256,8 @@ public class AzureResourceService : IAzureResourceService
                 _logger.LogError(ex, "Failed to create ResourceIdentifier for subscription {SubscriptionId}", subId);
                 throw new InvalidOperationException($"Failed to create resource identifier for subscription '{subId}'. Ensure the subscription ID is a valid GUID.", ex);
             }
-            
-            var subscription = _armClient.GetSubscriptionResource(resourceId);
+
+            var subscription = armClient.GetSubscriptionResource(resourceId);
             var resourceGroup = await subscription.GetResourceGroups().GetAsync(resourceGroupName, cancellationToken);
 
             return new AzureResource
@@ -300,11 +279,11 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task<IEnumerable<AzureResource>> ListResourceGroupsAsync(string? subscriptionId = null, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
-        var subscription = _armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
+        var armClient = EnsureArmClient();
+
+        var subscription = armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
         var resourceGroups = new List<AzureResource>();
-        
+
         await foreach (var resourceGroup in subscription.GetResourceGroups().GetAllAsync(cancellationToken: cancellationToken))
         {
             resourceGroups.Add(new AzureResource
@@ -323,10 +302,10 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task<AzureResource> CreateResourceGroupAsync(string resourceGroupName, string location, string? subscriptionId = null, Dictionary<string, string>? tags = null, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
-        var subscription = _armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
-        
+        var armClient = EnsureArmClient();
+
+        var subscription = armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
+
         var resourceGroupData = new ResourceGroupData(new AzureLocation(location));
         if (tags != null)
         {
@@ -337,9 +316,9 @@ public class AzureResourceService : IAzureResourceService
         }
 
         var resourceGroupResult = await subscription.GetResourceGroups().CreateOrUpdateAsync(
-            WaitUntil.Completed, 
-            resourceGroupName, 
-            resourceGroupData, 
+            WaitUntil.Completed,
+            resourceGroupName,
+            resourceGroupData,
             cancellationToken);
 
         return new AzureResource
@@ -355,20 +334,20 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task DeleteResourceGroupAsync(string resourceGroupName, string? subscriptionId = null, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
-        _logger.LogInformation("Deleting resource group {ResourceGroupName} from subscription {SubscriptionId}", 
+        var armClient = EnsureArmClient();
+
+        _logger.LogInformation("Deleting resource group {ResourceGroupName} from subscription {SubscriptionId}",
             resourceGroupName, GetSubscriptionId(subscriptionId));
 
         try
         {
-            var subscription = _armClient.GetSubscriptionResource(
+            var subscription = armClient.GetSubscriptionResource(
                 SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
-            
+
             var resourceGroup = await subscription.GetResourceGroups().GetAsync(resourceGroupName, cancellationToken);
-            
+
             await resourceGroup.Value.DeleteAsync(WaitUntil.Completed, cancellationToken: cancellationToken);
-            
+
             _logger.LogInformation("Successfully deleted resource group {ResourceGroupName}", resourceGroupName);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
@@ -380,10 +359,10 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task<IEnumerable<AzureSubscription>> ListSubscriptionsAsync(CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
+        var armClient = EnsureArmClient();
+
         var subscriptions = new List<AzureSubscription>();
-        await foreach (var subscription in _armClient.GetSubscriptions().GetAllAsync(cancellationToken: cancellationToken))
+        await foreach (var subscription in armClient.GetSubscriptions().GetAllAsync(cancellationToken: cancellationToken))
         {
             subscriptions.Add(new AzureSubscription
             {
@@ -399,11 +378,11 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task<AzureResource?> GetResourceAsync(string resourceId, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
-        var resource = _armClient?.GetGenericResource(global::Azure.Core.ResourceIdentifier.Parse(resourceId!));
+        var armClient = EnsureArmClient();
+
+        var resource = armClient.GetGenericResource(global::Azure.Core.ResourceIdentifier.Parse(resourceId!));
         if (resource == null) return null;
-        
+
         var resourceData = await resource.GetAsync(cancellationToken);
         var resourceGroup = ExtractResourceGroupFromId(resourceData.Value.Data.Id.ToString());
 
@@ -420,8 +399,8 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task<AzureResource?> GetResourceAsync(string subscriptionId, string resourceGroupName, string resourceType, string resourceName, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
+        var armClient = EnsureArmClient();
+
         try
         {
             var resourceId = $"/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/{resourceType}/{resourceName}";
@@ -429,7 +408,7 @@ public class AzureResourceService : IAzureResourceService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Resource {ResourceType}/{ResourceName} not found in resource group {ResourceGroup}", 
+            _logger.LogWarning(ex, "Resource {ResourceType}/{ResourceName} not found in resource group {ResourceGroup}",
                 resourceType, resourceName, resourceGroupName);
             return null;
         }
@@ -437,9 +416,9 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task<IEnumerable<AzureResource>> ListLocationsAsync(string? subscriptionId = null, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
-        var subscription = _armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
+        var armClient = EnsureArmClient();
+
+        var subscription = armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
         var locations = new List<AzureResource>();
 
         await foreach (var location in subscription.GetLocationsAsync(cancellationToken: cancellationToken))
@@ -483,12 +462,12 @@ public class AzureResourceService : IAzureResourceService
         Dictionary<string, string>? tags = null,
         CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
+        var armClient = EnsureArmClient();
+
         try
         {
-            var subscription = _armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
-            
+            var subscription = armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
+
             // Try to get the resource group, create it if it doesn't exist
             Response<ResourceGroupResource> resourceGroupResponse;
             try
@@ -498,9 +477,9 @@ public class AzureResourceService : IAzureResourceService
             }
             catch (RequestFailedException ex) when (ex.Status == 404)
             {
-                _logger.LogInformation("Resource group {ResourceGroupName} not found, creating it in location {Location}", 
+                _logger.LogInformation("Resource group {ResourceGroupName} not found, creating it in location {Location}",
                     resourceGroupName, location);
-                
+
                 // Create the resource group
                 var resourceGroupData = new ResourceGroupData(new AzureLocation(location));
                 if (tags != null)
@@ -510,17 +489,17 @@ public class AzureResourceService : IAzureResourceService
                         resourceGroupData.Tags.Add(tag.Key, tag.Value);
                     }
                 }
-                
+
                 var resourceGroupOperation = await subscription.GetResourceGroups().CreateOrUpdateAsync(
                     global::Azure.WaitUntil.Completed, resourceGroupName, resourceGroupData, cancellationToken);
-                
+
                 resourceGroupResponse = Response.FromValue(resourceGroupOperation.Value, resourceGroupOperation.GetRawResponse());
                 _logger.LogInformation("Successfully created resource group {ResourceGroupName}", resourceGroupName);
             }
-            
+
             var resourceGroup = resourceGroupResponse.Value;
 
-            _logger.LogInformation("Creating resource {ResourceName} of type {ResourceType} in resource group {ResourceGroupName}", 
+            _logger.LogInformation("Creating resource {ResourceName} of type {ResourceType} in resource group {ResourceGroupName}",
                 resourceName, resourceType, resourceGroupName);
 
             // Handle specific resource types with dedicated methods
@@ -528,13 +507,13 @@ public class AzureResourceService : IAzureResourceService
             {
                 case "microsoft.storage/storageaccounts":
                     return await CreateStorageAccountAsync(resourceGroup, resourceName, properties, location, tags, cancellationToken);
-                
+
                 case "microsoft.keyvault/vaults":
                     return await CreateKeyVaultAsync(resourceGroup, resourceName, properties, location, tags, cancellationToken);
-                
+
                 case "microsoft.web/sites":
                     return await CreateWebAppAsync(resourceGroup, resourceName, properties, location, tags, cancellationToken);
-                
+
                 default:
                     // Use generic ARM template deployment for other resource types
                     return await CreateGenericResourceAsync(resourceGroup, resourceType, resourceName, properties, subscriptionId, location, tags, cancellationToken);
@@ -564,19 +543,19 @@ public class AzureResourceService : IAzureResourceService
         string deploymentName = "mcp-deployment",
         CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
+        var armClient = EnsureArmClient();
+
         try
         {
-            var subscription = _armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
+            var subscription = armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
             var resourceGroup = await subscription.GetResourceGroups().GetAsync(resourceGroupName, cancellationToken);
 
-            _logger.LogInformation("ARM template deployment requested for {DeploymentName} to resource group {ResourceGroupName}", 
+            _logger.LogInformation("ARM template deployment requested for {DeploymentName} to resource group {ResourceGroupName}",
                 deploymentName, resourceGroupName);
 
             // Parse and validate template content
             var templateJson = JsonDocument.Parse(templateContent);
-            _logger.LogInformation("Template parsed successfully with {ResourceCount} resources", 
+            _logger.LogInformation("Template parsed successfully with {ResourceCount} resources",
                 templateJson.RootElement.GetProperty("resources").GetArrayLength());
 
             // For now, return deployment request confirmation
@@ -614,13 +593,13 @@ public class AzureResourceService : IAzureResourceService
         string? subscriptionId = null,
         CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
+        var armClient = EnsureArmClient();
+
         _logger.LogInformation("Creating AKS cluster {ClusterName} in resource group {ResourceGroupName}", clusterName, resourceGroupName);
 
         try
         {
-            var subscription = _armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
+            var subscription = armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
             var resourceGroup = await subscription.GetResourceGroupAsync(resourceGroupName, cancellationToken);
 
             // Configure AKS cluster data
@@ -628,7 +607,7 @@ public class AzureResourceService : IAzureResourceService
             {
                 Identity = new global::Azure.ResourceManager.Models.ManagedServiceIdentity(global::Azure.ResourceManager.Models.ManagedServiceIdentityType.SystemAssigned),
                 DnsPrefix = $"{clusterName}-dns",
-                AgentPoolProfiles = 
+                AgentPoolProfiles =
                 {
                     new ManagedClusterAgentPoolProfile("default")
                     {
@@ -684,13 +663,13 @@ public class AzureResourceService : IAzureResourceService
         string? subscriptionId = null,
         CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
+        var armClient = EnsureArmClient();
+
         _logger.LogInformation("Creating Web App {AppName} in resource group {ResourceGroupName}", appName, resourceGroupName);
 
         try
         {
-            var subscription = _armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
+            var subscription = armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
             var resourceGroup = await subscription.GetResourceGroupAsync(resourceGroupName, cancellationToken);
 
             // Create App Service Plan first
@@ -768,13 +747,13 @@ public class AzureResourceService : IAzureResourceService
         string? subscriptionId = null,
         CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
+        var armClient = EnsureArmClient();
+
         _logger.LogInformation("Creating Storage Account {StorageAccountName} in resource group {ResourceGroupName}", storageAccountName, resourceGroupName);
 
         try
         {
-            var subscription = _armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
+            var subscription = armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
             var resourceGroup = await subscription.GetResourceGroupAsync(resourceGroupName, cancellationToken);
 
             var storageData = new StorageAccountCreateOrUpdateContent(
@@ -818,25 +797,25 @@ public class AzureResourceService : IAzureResourceService
     }
 
     public async Task<object> CreateKeyVaultAsync(
-        string keyVaultName, 
-        string resourceGroupName, 
-        string location, 
-        Dictionary<string, object>? keyVaultSettings = null, 
-        string? subscriptionId = null, 
+        string keyVaultName,
+        string resourceGroupName,
+        string location,
+        Dictionary<string, object>? keyVaultSettings = null,
+        string? subscriptionId = null,
         CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
+        var armClient = EnsureArmClient();
+
         _logger.LogInformation("Creating Key Vault {KeyVaultName} in resource group {ResourceGroupName}", keyVaultName, resourceGroupName);
 
         try
         {
-            var subscription = _armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
+            var subscription = armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
             var resourceGroup = await subscription.GetResourceGroupAsync(resourceGroupName, cancellationToken);
 
             // Get tenant ID from environment variable or use a default
             var tenantId = Environment.GetEnvironmentVariable("AZURE_TENANT_ID");
-            
+
             if (string.IsNullOrEmpty(tenantId))
             {
                 _logger.LogWarning("Tenant ID not available - Key Vault requires tenant configuration");
@@ -912,14 +891,14 @@ public class AzureResourceService : IAzureResourceService
         string? subscriptionId = null,
         CancellationToken cancellationToken = default)
     {
-        if (_armClient == null) throw new InvalidOperationException("Azure ARM client not available");
-        
-        _logger.LogInformation("Creating blob container {ContainerName} in storage account {StorageAccountName}", 
+        var armClient = EnsureArmClient();
+
+        _logger.LogInformation("Creating blob container {ContainerName} in storage account {StorageAccountName}",
             containerName, storageAccountName);
 
         try
         {
-            var subscription = _armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
+            var subscription = armClient.GetSubscriptionResource(SubscriptionResource.CreateResourceIdentifier(GetSubscriptionId(subscriptionId)));
             var resourceGroup = await subscription.GetResourceGroupAsync(resourceGroupName, cancellationToken);
 
             // Get the storage account
@@ -947,9 +926,9 @@ public class AzureResourceService : IAzureResourceService
 
             var containerCollection = blobService.Value.GetBlobContainers();
             var containerOperation = await containerCollection.CreateOrUpdateAsync(
-                WaitUntil.Completed, 
-                containerName, 
-                containerData, 
+                WaitUntil.Completed,
+                containerName,
+                containerData,
                 cancellationToken);
 
             return new
@@ -966,7 +945,7 @@ public class AzureResourceService : IAzureResourceService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create blob container {ContainerName} in storage account {StorageAccountName}", 
+            _logger.LogError(ex, "Failed to create blob container {ContainerName} in storage account {StorageAccountName}",
                 containerName, storageAccountName);
             throw;
         }
@@ -983,7 +962,7 @@ public class AzureResourceService : IAzureResourceService
         try
         {
             _logger.LogInformation("Storage Account creation requested for {StorageAccountName}", storageAccountName);
-            
+
             await Task.CompletedTask;
             return new
             {
@@ -1013,7 +992,7 @@ public class AzureResourceService : IAzureResourceService
         {
             // For now, return a placeholder - KeyVault requires additional setup
             _logger.LogInformation("Key Vault creation requested for {KeyVaultName}", keyVaultName);
-            
+
             return Task.FromResult<object>(new
             {
                 resourceName = keyVaultName,
@@ -1042,7 +1021,7 @@ public class AzureResourceService : IAzureResourceService
         {
             // Web App creation requires an App Service Plan first
             _logger.LogInformation("Web App creation requested for {WebAppName}", webAppName);
-            
+
             return Task.FromResult<object>(new
             {
                 resourceName = webAppName,
@@ -1071,12 +1050,12 @@ public class AzureResourceService : IAzureResourceService
     {
         try
         {
-            _logger.LogInformation("Generic resource creation requested for {ResourceName} of type {ResourceType}", 
+            _logger.LogInformation("Generic resource creation requested for {ResourceName} of type {ResourceType}",
                 resourceName, resourceType);
 
             // For generic resources, we'll use ARM template deployment
             var template = GenerateBasicArmTemplate(resourceType, resourceName, location, properties, tags);
-            return await DeployTemplateAsync(resourceGroup.Data.Name, template, null, subscriptionId, 
+            return await DeployTemplateAsync(resourceGroup.Data.Name, template, null, subscriptionId,
                 $"create-{resourceName}", cancellationToken);
         }
         catch (Exception ex)
@@ -1165,9 +1144,9 @@ public class AzureResourceService : IAzureResourceService
     /// </summary>
     public async Task<IEnumerable<object>> GetResourceHealthEventsAsync(string subscriptionId, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null)
+        if (!_options.Enabled)
         {
-            _logger.LogError("ARM client not initialized - cannot retrieve resource health events");
+            _logger.LogError("Azure integration is disabled - cannot retrieve resource health events");
             return new List<object>();
         }
 
@@ -1176,7 +1155,8 @@ public class AzureResourceService : IAzureResourceService
             var actualSubscriptionId = GetSubscriptionId(subscriptionId);
             _logger.LogInformation("Getting resource health events for subscription {SubscriptionId}", actualSubscriptionId);
 
-            var subscription = await _armClient.GetDefaultSubscriptionAsync(cancellationToken);
+            var armClient = _clientFactory.GetArmClient(actualSubscriptionId);
+            var subscription = await armClient.GetDefaultSubscriptionAsync(cancellationToken);
 
             // Note: Azure Resource Health API requires specialized implementation
             // For now, return a simulated result
@@ -1211,9 +1191,9 @@ public class AzureResourceService : IAzureResourceService
     /// </summary>
     public async Task<object?> GetResourceHealthAsync(string resourceId, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null)
+        if (!_options.Enabled)
         {
-            _logger.LogError("ARM client not initialized - cannot retrieve resource health");
+            _logger.LogError("Azure integration is disabled - cannot retrieve resource health");
             return null;
         }
 
@@ -1250,10 +1230,10 @@ public class AzureResourceService : IAzureResourceService
     /// </summary>
     public async Task<object> CreateAlertRuleAsync(string subscriptionId, string resourceGroupName, string alertRuleName, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null)
+        if (!_options.Enabled)
         {
-            _logger.LogError("ARM client not initialized - cannot create alert rule");
-            throw new InvalidOperationException("Azure ARM client not available for alert rule creation");
+            _logger.LogError("Azure integration is disabled - cannot create alert rule");
+            throw new InvalidOperationException("Azure integration is disabled - enable Gateway.Azure.Enabled to create alert rules");
         }
 
         try
@@ -1292,9 +1272,9 @@ public class AzureResourceService : IAzureResourceService
     /// </summary>
     public async Task<IEnumerable<object>> ListAlertRulesAsync(string subscriptionId, string? resourceGroupName = null, CancellationToken cancellationToken = default)
     {
-        if (_armClient == null)
+        if (!_options.Enabled)
         {
-            _logger.LogError("ARM client not initialized - cannot list alert rules");
+            _logger.LogError("Azure integration is disabled - cannot list alert rules");
             return new List<object>();
         }
 
@@ -1351,9 +1331,9 @@ public class AzureResourceService : IAzureResourceService
     /// </summary>
     public async Task<IEnumerable<object>> GetResourceHealthHistoryAsync(string subscriptionId, string? resourceId = null, string timeRange = "24h", CancellationToken cancellationToken = default)
     {
-        if (_armClient == null)
+        if (!_options.Enabled)
         {
-            _logger.LogError("ARM client not initialized - cannot retrieve resource health history");
+            _logger.LogError("Azure integration is disabled - cannot retrieve resource health history");
             return new List<object>();
         }
 
@@ -1402,21 +1382,16 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task<List<AzureResource>> ListAllResourceGroupsInSubscriptionAsync(string subscriptionId)
     {
-        if (_armClient == null)
-        {
-            _logger.LogWarning("Azure ARM client not available - returning empty resource list");
-            return new List<AzureResource>();
-        }
-
         try
         {
+            var armClient = EnsureArmClient();
             _logger.LogInformation("Listing all resources in subscription {SubscriptionId}", subscriptionId);
-            
-            var subscription = _armClient.GetSubscriptionResource(
+
+            var subscription = armClient.GetSubscriptionResource(
                 SubscriptionResource.CreateResourceIdentifier(subscriptionId));
-            
+
             var resources = new List<AzureResource>();
-            
+
             // List all resources in the subscription using GenericResources
             await foreach (var genericResource in subscription.GetGenericResourcesAsync())
             {
@@ -1431,7 +1406,7 @@ public class AzureResourceService : IAzureResourceService
                         ResourceGroup = genericResource.Id.ResourceGroupName ?? "N/A",
                         SubscriptionId = subscriptionId,
                         Tags = genericResource.Data.Tags?.ToDictionary(
-                            kvp => kvp.Key, 
+                            kvp => kvp.Key,
                             kvp => kvp.Value) ?? new Dictionary<string, string>()
                     };
 
@@ -1460,9 +1435,9 @@ public class AzureResourceService : IAzureResourceService
                 }
             }
 
-            _logger.LogInformation("Found {ResourceCount} resources in subscription {SubscriptionId}", 
+            _logger.LogInformation("Found {ResourceCount} resources in subscription {SubscriptionId}",
                 resources.Count, subscriptionId);
-            
+
             return resources;
         }
         catch (Exception ex)
@@ -1474,20 +1449,16 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task<List<AzureResource>> ListAllResourceGroupsInSubscriptionAsync(string subscriptionId, string resourceGroupName)
     {
-        if (_armClient == null)
-        {
-            _logger.LogWarning("Azure ARM client not available - returning empty resource list");
-            return new List<AzureResource>();
-        }
+        var armClient = EnsureArmClient();
 
         try
         {
-            _logger.LogInformation("Listing all resources in resource group {ResourceGroup} (subscription {SubscriptionId})", 
+            _logger.LogInformation("Listing all resources in resource group {ResourceGroup} (subscription {SubscriptionId})",
                 resourceGroupName, subscriptionId);
-            
-            var subscription = _armClient.GetSubscriptionResource(
+
+            var subscription = armClient.GetSubscriptionResource(
                 SubscriptionResource.CreateResourceIdentifier(subscriptionId));
-            
+
             Response<ResourceGroupResource>? resourceGroupResponse;
             try
             {
@@ -1495,20 +1466,20 @@ public class AzureResourceService : IAzureResourceService
             }
             catch (RequestFailedException ex) when (ex.Status == 404)
             {
-                _logger.LogDebug("Resource group '{ResourceGroup}' not found in subscription {SubscriptionId} (this is expected for planning/guidance queries)", 
+                _logger.LogDebug("Resource group '{ResourceGroup}' not found in subscription {SubscriptionId} (this is expected for planning/guidance queries)",
                     resourceGroupName, subscriptionId);
                 return new List<AzureResource>();
             }
-            
+
             if (resourceGroupResponse?.Value == null)
             {
-                _logger.LogWarning("Resource group {ResourceGroup} not found in subscription {SubscriptionId}", 
+                _logger.LogWarning("Resource group {ResourceGroup} not found in subscription {SubscriptionId}",
                     resourceGroupName, subscriptionId);
                 return new List<AzureResource>();
             }
-            
+
             var resources = new List<AzureResource>();
-            
+
             // List all resources in the resource group using GenericResources
             await foreach (var genericResource in resourceGroupResponse.Value.GetGenericResourcesAsync())
             {
@@ -1523,7 +1494,7 @@ public class AzureResourceService : IAzureResourceService
                         ResourceGroup = resourceGroupName,
                         SubscriptionId = subscriptionId,
                         Tags = genericResource.Data.Tags?.ToDictionary(
-                            kvp => kvp.Key, 
+                            kvp => kvp.Key,
                             kvp => kvp.Value) ?? new Dictionary<string, string>()
                     };
 
@@ -1552,9 +1523,9 @@ public class AzureResourceService : IAzureResourceService
                 }
             }
 
-            _logger.LogInformation("Found {ResourceCount} resources in resource group {ResourceGroup}", 
+            _logger.LogInformation("Found {ResourceCount} resources in resource group {ResourceGroup}",
                 resources.Count, resourceGroupName);
-            
+
             return resources;
         }
         catch (Exception ex)
@@ -1566,18 +1537,26 @@ public class AzureResourceService : IAzureResourceService
 
     public async Task<AzureResource?> GetResourceAsync(string resourceId)
     {
-        if (_armClient == null)
+        if (!_options.Enabled)
         {
-            _logger.LogWarning("Azure ARM client not available");
+            _logger.LogWarning("Azure integration is disabled");
             return null;
         }
 
         try
         {
             _logger.LogDebug("Getting resource {ResourceId}", resourceId);
-            
+
+            var armClient = _clientFactory.GetArmClient();
             var resourceIdentifier = new ResourceIdentifier(resourceId!);
-            var genericResource = _armClient?.GetGenericResource(resourceIdentifier);
+            var genericResource = armClient.GetGenericResource(resourceIdentifier);
+            
+            if (genericResource == null)
+            {
+                _logger.LogWarning("Could not create generic resource reference for {ResourceId}", resourceId);
+                return null;
+            }
+            
             var data = await genericResource.GetAsync();
 
             if (data?.Value == null)
@@ -1595,7 +1574,7 @@ public class AzureResourceService : IAzureResourceService
                 ResourceGroup = data.Value.Id.ResourceGroupName ?? "N/A",
                 SubscriptionId = data.Value.Id.SubscriptionId,
                 Tags = data.Value.Data.Tags?.ToDictionary(
-                    kvp => kvp.Key, 
+                    kvp => kvp.Key,
                     kvp => kvp.Value) ?? new Dictionary<string, string>()
             };
 
@@ -1662,7 +1641,7 @@ public class AzureResourceService : IAzureResourceService
         }
     }
 
-    
+
 
     #endregion
 
@@ -1675,20 +1654,17 @@ public class AzureResourceService : IAzureResourceService
     /// <returns>Subscription information</returns>
     public async Task<AzureSubscription> GetSubscriptionAsync(string subscriptionId)
     {
-        if (_armClient == null)
-        {
-            throw new InvalidOperationException("Azure ARM client not available");
-        }
+        var armClient = EnsureArmClient();
 
         try
         {
             _logger.LogInformation("Getting subscription details for {SubscriptionId}", subscriptionId);
-            
-            var subscription = _armClient.GetSubscriptionResource(
+
+            var subscription = armClient.GetSubscriptionResource(
                 SubscriptionResource.CreateResourceIdentifier(subscriptionId));
-            
+
             var subscriptionData = await subscription.GetAsync();
-            
+
             return new AzureSubscription
             {
                 SubscriptionId = subscriptionData.Value.Data.SubscriptionId ?? subscriptionId,
@@ -1714,18 +1690,15 @@ public class AzureResourceService : IAzureResourceService
     /// <exception cref="InvalidOperationException">Thrown when subscription not found or multiple matches exist</exception>
     public async Task<AzureSubscription> GetSubscriptionByNameAsync(string subscriptionName)
     {
-        if (_armClient == null)
-        {
-            throw new InvalidOperationException("Azure ARM client not available");
-        }
+        var armClient = EnsureArmClient();
 
         try
         {
             _logger.LogInformation("Getting subscription details for name {SubscriptionName}", subscriptionName);
-            
+
             var matchingSubscriptions = new List<SubscriptionResource>();
-            
-            await foreach (var subscription in _armClient.GetSubscriptions().GetAllAsync())
+
+            await foreach (var subscription in armClient.GetSubscriptions().GetAllAsync())
             {
                 if (string.Equals(subscription.Data.DisplayName, subscriptionName, StringComparison.OrdinalIgnoreCase))
                 {
@@ -1768,16 +1741,13 @@ public class AzureResourceService : IAzureResourceService
     /// <returns>True if available</returns>
     public async Task<bool> IsSubscriptionNameAvailableAsync(string subscriptionName)
     {
-        if (_armClient == null)
-        {
-            throw new InvalidOperationException("Azure ARM client not available");
-        }
+        var armClient = EnsureArmClient();
 
         try
         {
             _logger.LogInformation("Checking availability of subscription name {SubscriptionName}", subscriptionName);
-            
-            await foreach (var subscription in _armClient.GetSubscriptions().GetAllAsync())
+
+            await foreach (var subscription in armClient.GetSubscriptions().GetAllAsync())
             {
                 if (string.Equals(subscription.Data.DisplayName, subscriptionName, StringComparison.OrdinalIgnoreCase))
                 {

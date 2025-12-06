@@ -1,0 +1,57 @@
+# Kustomize configuration for managing Kubernetes manifests
+# Usage: kubectl apply -k infra/kubernetes/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: platform-engineering
+
+resources:
+  - namespace.yaml
+  - workload-identity.yaml
+  - configmap.yaml
+  - secret.yaml
+  - mcp-deployment.yaml
+  - chat-deployment.yaml
+  - admin-api-deployment.yaml
+  - admin-client-deployment.yaml
+  - ingress.yaml
+  - network-policy.yaml
+  - pod-security.yaml
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: platform-engineering-copilot
+
+# Common annotations
+commonAnnotations:
+  platform-engineering.io/version: "v0.7.2"
+
+# ConfigMap generator (alternative to configmap.yaml)
+# Uncomment to generate ConfigMaps from files
+# configMapGenerator:
+#   - name: platform-config
+#     envs:
+#       - config.env
+
+# Secret generator (alternative to secret.yaml)
+# secretGenerator:
+#   - name: azure-secrets
+#     envs:
+#       - secrets.env
+
+# Images - can be used to override image tags
+images:
+  - name: ${ACR_LOGIN_SERVER}/platform-engineering-copilot-mcp
+    newTag: ${IMAGE_TAG}
+  - name: ${ACR_LOGIN_SERVER}/platform-engineering-copilot-chat
+    newTag: ${IMAGE_TAG}
+  - name: ${ACR_LOGIN_SERVER}/platform-engineering-copilot-admin-api
+    newTag: ${IMAGE_TAG}
+  - name: ${ACR_LOGIN_SERVER}/platform-engineering-copilot-admin-client
+    newTag: ${IMAGE_TAG}
+
+# Patches for environment-specific changes
+# patchesStrategicMerge:
+#   - overlays/dev/resources.yaml
+#   - overlays/prod/replicas.yaml

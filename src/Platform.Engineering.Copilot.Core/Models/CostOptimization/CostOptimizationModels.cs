@@ -35,6 +35,7 @@ namespace Platform.Engineering.Copilot.Core.Models.CostOptimization.Analysis
         public decimal PotentialAnnualSavings { get; set; }
         public object? ScheduleDetails { get; set; }
         public OptimizationRisk Risk { get; set; }
+        public List<string> AffectedResources { get; set; } = new();
     }
 
     public class OptimizationAction

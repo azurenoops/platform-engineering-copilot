@@ -1,0 +1,108 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "projectName": {
+      "value": "platform-engineering"
+    },
+    "environment": {
+      "value": "prod"
+    },
+    "location": {
+      "value": "eastus"
+    },
+    "containerDeploymentTarget": {
+      "value": "aks"
+    },
+    "deployACR": {
+      "value": true
+    },
+    "deployAKS": {
+      "value": true
+    },
+    "deployACI": {
+      "value": false
+    },
+    "deployAdminApi": {
+      "value": true
+    },
+    "deployChat": {
+      "value": true
+    },
+    "useExistingNetwork": {
+      "value": false
+    },
+    "existingVNetName": {
+      "value": ""
+    },
+    "existingVNetResourceGroup": {
+      "value": ""
+    },
+    "existingAppServiceSubnetName": {
+      "value": ""
+    },
+    "existingPrivateEndpointSubnetName": {
+      "value": ""
+    },
+    "useExistingLogAnalytics": {
+      "value": false
+    },
+    "existingLogAnalyticsWorkspaceName": {
+      "value": ""
+    },
+    "existingLogAnalyticsResourceGroup": {
+      "value": ""
+    },
+    "useExistingKeyVault": {
+      "value": false
+    },
+    "existingKeyVaultName": {
+      "value": ""
+    },
+    "existingKeyVaultResourceGroup": {
+      "value": ""
+    },
+    "acrSku": {
+      "value": "Premium"
+    },
+    "aksKubernetesVersion": {
+      "value": "1.28.3"
+    },
+    "aksSystemNodeCount": {
+      "value": 3
+    },
+    "aksUserNodeMinCount": {
+      "value": 3
+    },
+    "aksUserNodeMaxCount": {
+      "value": 10
+    },
+    "sqlAdminUsername": {
+      "value": "sqladmin"
+    },
+    "sqlAdminPassword": {
+      "reference": {
+        "keyVault": {
+          "id": "/subscriptions/{subscription-id}/resourceGroups/{rg-name}/providers/Microsoft.KeyVault/vaults/{kv-name}"
+        },
+        "secretName": "SqlAdminPassword"
+      }
+    },
+    "allowedIpAddresses": {
+      "value": []
+    },
+    "enablePublicAccess": {
+      "value": false
+    },
+    "enablePrivateEndpoints": {
+      "value": true
+    },
+    "tags": {
+      "value": {
+        "Project": "Platform Engineering Copilot",
+        "ManagedBy": "Bicep",
+        "DeploymentType": "AKS"
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-engineering
+  labels:
+    name: platform-engineering
+    environment: production
+    managed-by: platform-engineering-copilot
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-engineering-system
+  labels:
+    name: platform-engineering-system
+    environment: production
+    managed-by: platform-engineering-copilot
