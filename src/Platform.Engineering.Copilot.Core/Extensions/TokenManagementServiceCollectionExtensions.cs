@@ -39,6 +39,12 @@ public static class TokenManagementServiceCollectionExtensions
         // Register TokenManagementHelper as scoped (uses configuration)
         services.AddScoped<TokenManagementHelper>();
         
+        // Register CostTrackingService as singleton (Phase 4: Cost tracking and metrics)
+        services.AddSingleton<ICostTrackingService, CostTrackingService>();
+        
+        // Register ConversationHistoryOptimizer as singleton (Phase 5: Conversation history optimization)
+        services.AddSingleton<IConversationHistoryOptimizer, ConversationHistoryOptimizer>();
+        
         return services;
     }
 }

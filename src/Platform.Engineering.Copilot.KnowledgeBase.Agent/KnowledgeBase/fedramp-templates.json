@@ -1,0 +1,525 @@
+{
+  "metadata": {
+    "name": "FedRAMP Authorization Templates and Guidance",
+    "description": "Comprehensive templates for FedRAMP and DoD authorization packages including SSP sections, POA&M, SAR, and assessment guidance",
+    "version": "1.0",
+    "lastUpdated": "2025-01-15",
+    "sources": [
+      "FedRAMP Program Management Office",
+      "FedRAMP Authorization Documentation Templates",
+      "DoD Cloud Computing SRG"
+    ]
+  },
+  "authorizationOverview": {
+    "description": "FedRAMP (Federal Risk and Authorization Management Program) provides a standardized approach to security assessment, authorization, and continuous monitoring for cloud products and services.",
+    "authorizationPaths": [
+      {
+        "path": "Agency Authorization",
+        "description": "Direct authorization through a federal agency",
+        "timeline": "3-6 months",
+        "requirements": [
+          "Sponsoring federal agency",
+          "Agency AO willing to issue ATO",
+          "Complete FedRAMP package submission"
+        ]
+      },
+      {
+        "path": "JAB Authorization",
+        "description": "Authorization through the Joint Authorization Board (DHS, DoD, GSA)",
+        "timeline": "6-12 months",
+        "requirements": [
+          "FedRAMP Connect application",
+          "Prioritization by JAB",
+          "3PAO assessment",
+          "JAB review and authorization"
+        ]
+      },
+      {
+        "path": "DoD PA (Provisional Authorization)",
+        "description": "DoD-specific authorization for IL2/IL4/IL5",
+        "timeline": "6-18 months",
+        "requirements": [
+          "FedRAMP Moderate or High baseline",
+          "DoD-specific overlay controls",
+          "DISA assessment",
+          "DoD PA issuance"
+        ]
+      }
+    ]
+  },
+  "systemSecurityPlan": {
+    "description": "The System Security Plan (SSP) is the primary document describing the security architecture, controls, and implementation of a cloud system.",
+    "sections": [
+      {
+        "section": "1",
+        "title": "Information System Name/Title",
+        "description": "Official name and identification of the cloud service offering",
+        "content": {
+          "requiredElements": [
+            "System name",
+            "System abbreviation",
+            "System unique identifier",
+            "Version/release number"
+          ],
+          "exampleContent": "The [System Name] is a [cloud service model] offering that provides [brief description of services]. The system is hosted in [Azure Government/Commercial] and supports [IL2/IL4/IL5] workloads.",
+          "azureMapping": "Azure Resource Group name, Subscription ID, or App Registration name"
+        }
+      },
+      {
+        "section": "2",
+        "title": "Information System Categorization",
+        "description": "FIPS 199 security categorization based on confidentiality, integrity, and availability impact",
+        "content": {
+          "requiredElements": [
+            "Confidentiality impact level",
+            "Integrity impact level",
+            "Availability impact level",
+            "Overall system categorization"
+          ],
+          "exampleContent": {
+            "confidentiality": "Moderate - Unauthorized disclosure of information could have a serious adverse effect on organizational operations.",
+            "integrity": "Moderate - Unauthorized modification or destruction could have a serious adverse effect.",
+            "availability": "Moderate - Disruption of access could have a serious adverse effect.",
+            "overall": "Moderate"
+          },
+          "azureMapping": "Determined by data classification and mission criticality; Azure Policy can enforce tagging"
+        }
+      },
+      {
+        "section": "3",
+        "title": "System Owner",
+        "description": "Organizational official responsible for the procurement, development, integration, modification, or operation of the system",
+        "content": {
+          "requiredElements": [
+            "System owner name",
+            "Title/position",
+            "Organization",
+            "Contact information"
+          ],
+          "azureMapping": "Azure subscription Owner role, documented in Azure tags or resource metadata"
+        }
+      },
+      {
+        "section": "4",
+        "title": "Authorizing Official",
+        "description": "Senior official with authority to formally assume responsibility for operating the system",
+        "content": {
+          "requiredElements": [
+            "AO name",
+            "Title/position",
+            "Organization",
+            "Contact information"
+          ],
+          "azureMapping": "Documented organizational hierarchy; not directly mapped to Azure RBAC"
+        }
+      },
+      {
+        "section": "5",
+        "title": "System Environment",
+        "description": "Description of the technical environment including infrastructure, networks, and data flows",
+        "content": {
+          "requiredElements": [
+            "Service model (IaaS, PaaS, SaaS)",
+            "Deployment model (Public, Private, Government)",
+            "Physical location of data centers",
+            "Network architecture",
+            "Data flow diagrams"
+          ],
+          "azureMapping": {
+            "serviceModel": "IaaS: VMs, VMSS | PaaS: App Service, Functions, SQL DB | SaaS: Microsoft 365",
+            "deploymentModel": "Azure Commercial, Azure Government, Azure Government DoD",
+            "regions": "Get from Azure Resource Manager - resource location property",
+            "networkArchitecture": "Azure Virtual Networks, NSGs, Azure Firewall, ExpressRoute"
+          }
+        }
+      },
+      {
+        "section": "6",
+        "title": "System Interconnections",
+        "description": "Connections to other systems including external interfaces",
+        "content": {
+          "requiredElements": [
+            "Connected system name",
+            "Connection type (dedicated, VPN, API)",
+            "Data exchanged",
+            "ISA/MOU status",
+            "Security controls at boundary"
+          ],
+          "azureMapping": {
+            "discovery": [
+              "Azure Resource Graph: Check for VNet peering",
+              "Azure API Management for API connections",
+              "ExpressRoute/VPN Gateway for hybrid connections",
+              "Private Link endpoints for service connections"
+            ],
+            "query": "resources | where type contains 'virtualnetworkpeering' or type contains 'vpngateway' or type contains 'expressroutecircuit'"
+          }
+        }
+      },
+      {
+        "section": "7",
+        "title": "Security Control Implementation",
+        "description": "Detailed description of how each security control is implemented",
+        "content": {
+          "requiredElements": [
+            "Control identifier (e.g., AC-2)",
+            "Control title",
+            "Implementation status",
+            "Responsible role",
+            "Implementation description"
+          ],
+          "implementationStatuses": [
+            "Implemented - Control is fully implemented",
+            "Partially Implemented - Some aspects implemented",
+            "Planned - Implementation planned with timeline",
+            "Alternative Implementation - Different but equivalent approach",
+            "Not Applicable - Control does not apply"
+          ],
+          "azureMapping": {
+            "discovery": [
+              "Microsoft Defender for Cloud - Regulatory compliance",
+              "Azure Policy compliance state",
+              "Azure Resource Graph for resource configurations"
+            ],
+            "automatedControls": [
+              "AC-2: Entra ID + Azure RBAC + PIM",
+              "AC-3: Azure RBAC + NSG + Azure Policy",
+              "AU-2: Azure Monitor + Log Analytics",
+              "CM-2: Azure Blueprints + ARM templates",
+              "IA-2: Entra ID MFA + Conditional Access"
+            ]
+          }
+        }
+      },
+      {
+        "section": "8",
+        "title": "Personnel Security",
+        "description": "Personnel security policies and procedures",
+        "content": {
+          "requiredElements": [
+            "Personnel screening procedures",
+            "Access agreement requirements",
+            "Separation procedures",
+            "Third-party personnel requirements"
+          ],
+          "azureMapping": "Organizational process; Azure can support with access logging and automated deprovisioning via Identity Governance"
+        }
+      },
+      {
+        "section": "9",
+        "title": "Awareness and Training",
+        "description": "Security awareness and training program",
+        "content": {
+          "requiredElements": [
+            "Training program description",
+            "Training frequency",
+            "Training topics",
+            "Training records"
+          ],
+          "azureMapping": "Microsoft Learn paths for security, organizational LMS integration"
+        }
+      }
+    ]
+  },
+  "controlNarrativeTemplates": {
+    "description": "Ready-to-use narrative templates for common security controls with Azure-specific language",
+    "narratives": [
+      {
+        "controlId": "AC-2",
+        "controlTitle": "Account Management",
+        "narrativeTemplate": "[Organization Name] uses Microsoft Entra ID (formerly Azure Active Directory) as the enterprise identity provider for all user accounts. Account management is implemented as follows:\n\na) The organization identifies authorized users and specifies access authorizations through role-based access control (RBAC) defined in Entra ID.\n\nb) User accounts are provisioned by [HR system/identity governance] with appropriate role assignments based on job function.\n\nc) Conditions for group membership are defined in Entra ID dynamic groups and conditional access policies.\n\nd) Account administrators ([specify roles]) are authorized to create, enable, modify, disable, and remove accounts.\n\ne) [Organization Name] requires approval from [approving authority] before account provisioning.\n\nf) Account creation, modification, and deletion are logged in Azure AD Audit Logs and monitored via [Azure Sentinel/Log Analytics].\n\ng) Accounts are reviewed [quarterly/annually] using Entra ID Access Reviews.\n\nh) Account status changes are communicated via [email notification/ticketing system].\n\ni) Privileged accounts use Azure AD Privileged Identity Management (PIM) with just-in-time activation.\n\nj) Shared/group account use is [prohibited/restricted to specific use cases with documented justification]."
+      },
+      {
+        "controlId": "AC-3",
+        "controlTitle": "Access Enforcement",
+        "narrativeTemplate": "[Organization Name] enforces approved authorizations for logical access using a defense-in-depth approach:\n\n1. **Identity Layer**: Microsoft Entra ID enforces authentication and conditional access policies before granting access.\n\n2. **Management Plane**: Azure RBAC enforces role-based permissions at subscription, resource group, and resource levels. Custom roles are defined for least-privilege access.\n\n3. **Network Layer**: Azure Network Security Groups (NSGs) and Azure Firewall enforce network-level access controls.\n\n4. **Data Layer**: Azure Key Vault enforces access to secrets, keys, and certificates. Azure SQL Database uses row-level security and dynamic data masking.\n\n5. **Application Layer**: Application-specific authorization enforces business logic access controls.\n\nAccess enforcement configurations are defined as code using [Azure Policy/ARM templates/Terraform] and deployed through [CI/CD pipeline]."
+      },
+      {
+        "controlId": "AU-2",
+        "controlTitle": "Audit Events",
+        "narrativeTemplate": "[Organization Name] determines that the following events must be audited in [System Name]:\n\na) **Authentication Events**: All successful and failed authentication attempts logged via Entra ID Sign-in Logs.\n\nb) **Authorization Events**: All access attempts to resources logged via Azure Activity Logs and resource-specific diagnostic logs.\n\nc) **Account Management**: User provisioning, modification, and deprovisioning logged in Entra ID Audit Logs.\n\nd) **Configuration Changes**: All Azure resource configuration changes logged in Activity Logs.\n\ne) **Privileged Functions**: PIM activations, role assignments logged in Entra ID and Azure Activity Logs.\n\nf) **Data Access**: Access to sensitive data logged via [Azure SQL Auditing/Storage Analytics/Cosmos DB audit].\n\nThe organization coordinates the security audit function with [other organizational entities] to ensure comprehensive audit coverage. Audit events are reviewed [specify frequency] for anomalies and potential security incidents.\n\nAzure services configured for auditing:\n- Azure Monitor Diagnostic Settings\n- Log Analytics Workspace\n- Microsoft Sentinel (SIEM)\n- Azure Activity Logs\n- Entra ID Audit Logs"
+      },
+      {
+        "controlId": "CM-2",
+        "controlTitle": "Baseline Configuration",
+        "narrativeTemplate": "[Organization Name] develops, documents, and maintains baseline configurations for [System Name]:\n\na) **Infrastructure Baselines**: Defined using Azure Resource Manager (ARM) templates, Bicep, or Terraform configurations stored in [Azure DevOps/GitHub] repository.\n\nb) **Operating System Baselines**: Windows Server configurations aligned with CIS Benchmarks, enforced via Azure Policy Guest Configuration.\n\nc) **Container Baselines**: Container images based on approved base images, scanned via [Microsoft Defender for Containers/Azure Container Registry].\n\nd) **Network Baselines**: NSG rules, Azure Firewall policies, and routing tables defined as code.\n\nBaseline configurations include:\n- Hardware inventory documented in Azure Resource Graph\n- Software inventory tracked via Azure Arc and Change Tracking\n- Configuration settings enforced via Azure Policy\n- Network topology documented in Azure Network Watcher\n\nBaseline reviews occur [annually/when significant changes occur] with approvals tracked in [change management system]."
+      },
+      {
+        "controlId": "IA-2",
+        "controlTitle": "Identification and Authentication (Organizational Users)",
+        "narrativeTemplate": "[Organization Name] uniquely identifies and authenticates organizational users accessing [System Name]:\n\na) **Unique Identification**: Each user has a unique identity in Microsoft Entra ID with a globally unique Object ID.\n\nb) **Authentication Methods**:\n   - Primary: [CAC/PIV via federated authentication / Entra ID credentials]\n   - Multi-factor: Microsoft Authenticator app, hardware FIDO2 keys, or PKI certificates\n   - Conditional Access policies enforce MFA requirements\n\nc) **Privileged Access**: Requires phishing-resistant MFA (FIDO2 or certificate-based) via PIM.\n\nd) **Service Accounts**: Managed Identities eliminate credential management for Azure service-to-service authentication.\n\ne) **Federation**: [If applicable] Federated with [ICAM provider] for CAC/PIV authentication via SAML/OIDC.\n\nEntra ID Conditional Access policies enforce:\n- MFA for all users\n- Device compliance checks\n- Location-based restrictions\n- Risk-based authentication"
+      },
+      {
+        "controlId": "SC-7",
+        "controlTitle": "Boundary Protection",
+        "narrativeTemplate": "[Organization Name] implements boundary protection for [System Name] using a defense-in-depth network architecture:\n\na) **External Boundary**:\n   - Azure Front Door / Application Gateway with WAF provides external entry point\n   - Azure DDoS Protection Standard protects against volumetric attacks\n   - Azure Firewall Premium enforces network rules at the perimeter\n\nb) **Internal Boundaries**:\n   - Hub-and-spoke VNet architecture with Azure Firewall in the hub\n   - Network Security Groups (NSGs) on all subnets with deny-all default\n   - Azure Private Link for PaaS service access without public endpoints\n\nc) **Communication Monitoring**:\n   - Azure Network Watcher for network diagnostics\n   - NSG Flow Logs for traffic analysis\n   - Azure Firewall logs forwarded to Microsoft Sentinel\n\nd) **Managed Interfaces**:\n   - Azure Bastion for secure administrative access\n   - Jump server architecture for legacy protocols\n   - ExpressRoute for hybrid connectivity [if applicable]\n\ne) **Fail-Secure Design**:\n   - NSG and Azure Firewall configured to deny traffic if policy evaluation fails\n   - Azure Policy prevents deployment of resources without required network controls"
+      },
+      {
+        "controlId": "SC-28",
+        "controlTitle": "Protection of Information at Rest",
+        "narrativeTemplate": "[Organization Name] protects the confidentiality and integrity of information at rest in [System Name]:\n\na) **Storage Encryption**:\n   - Azure Storage: Service-side encryption with [Microsoft-managed keys / Customer-managed keys in Key Vault]\n   - Azure SQL Database: Transparent Data Encryption (TDE) with [service-managed / customer-managed keys]\n   - Azure Cosmos DB: Encryption at rest with AES-256\n\nb) **Key Management**:\n   - Azure Key Vault [Standard / Premium with HSM] for key storage\n   - Key rotation [automated / manual] per [rotation schedule]\n   - Soft delete and purge protection enabled\n\nc) **Disk Encryption**:\n   - Azure Disk Encryption using [BitLocker / dm-crypt]\n   - OS and data disks encrypted\n   - Encryption at host enabled for compute resources\n\nd) **Encryption Standards**:\n   - AES-256 for symmetric encryption\n   - FIPS 140-2 [Level 1 / Level 2 / Level 3] validated modules\n\ne) **Verification**:\n   - Azure Policy enforces encryption requirements\n   - Microsoft Defender for Cloud monitors encryption compliance"
+      }
+    ]
+  },
+  "poamTemplate": {
+    "description": "Plan of Action and Milestones (POA&M) template for tracking remediation of identified weaknesses",
+    "fields": [
+      {
+        "field": "POA&M ID",
+        "description": "Unique identifier for the POA&M item",
+        "example": "POAM-2025-001"
+      },
+      {
+        "field": "Weakness/Finding",
+        "description": "Description of the identified weakness",
+        "example": "AC-2: User account reviews not performed quarterly as required"
+      },
+      {
+        "field": "Point of Contact",
+        "description": "Individual responsible for remediation",
+        "example": "John Smith, Security Administrator"
+      },
+      {
+        "field": "Resource Required",
+        "description": "Resources needed for remediation",
+        "example": "$5,000 for identity governance tooling; 40 staff hours"
+      },
+      {
+        "field": "Scheduled Completion Date",
+        "description": "Target date for remediation",
+        "example": "2025-03-31"
+      },
+      {
+        "field": "Milestones",
+        "description": "Intermediate steps toward remediation",
+        "example": "1) Configure Entra ID Access Reviews (2025-02-15)\n2) Define review scope and reviewers (2025-02-28)\n3) Complete first review cycle (2025-03-31)"
+      },
+      {
+        "field": "Status",
+        "description": "Current status of remediation",
+        "values": ["Open", "In Progress", "Completed", "Delayed", "Risk Accepted"]
+      },
+      {
+        "field": "Risk Rating",
+        "description": "Severity of the weakness",
+        "values": ["Critical", "High", "Moderate", "Low"]
+      }
+    ],
+    "azureIntegration": {
+      "discovery": [
+        "Microsoft Defender for Cloud recommendations",
+        "Azure Policy non-compliant resources",
+        "Azure Advisor security recommendations"
+      ],
+      "tracking": [
+        "Azure DevOps Work Items for POA&M tracking",
+        "Power BI dashboards for POA&M status",
+        "ServiceNow integration for enterprise tracking"
+      ]
+    }
+  },
+  "securityAssessmentReport": {
+    "description": "Security Assessment Report (SAR) structure for documenting assessment findings",
+    "sections": [
+      {
+        "section": "Executive Summary",
+        "content": [
+          "Assessment scope and objectives",
+          "Overall security posture",
+          "Key findings summary",
+          "Recommendation summary"
+        ]
+      },
+      {
+        "section": "System Description",
+        "content": [
+          "System overview",
+          "Scope of assessment",
+          "Assessment methodology"
+        ]
+      },
+      {
+        "section": "Assessment Results",
+        "content": [
+          "Controls tested",
+          "Testing methods used",
+          "Finding details",
+          "Evidence collected"
+        ]
+      },
+      {
+        "section": "Risk Analysis",
+        "content": [
+          "Risk methodology",
+          "Threat analysis",
+          "Vulnerability analysis",
+          "Risk determination"
+        ]
+      },
+      {
+        "section": "Recommendations",
+        "content": [
+          "Remediation recommendations",
+          "Prioritization",
+          "Resource requirements"
+        ]
+      }
+    ],
+    "azureAssessmentTools": [
+      {
+        "tool": "Microsoft Defender for Cloud",
+        "purpose": "Continuous security assessment and recommendations",
+        "outputs": [
+          "Secure Score",
+          "Regulatory compliance dashboard",
+          "Security recommendations"
+        ]
+      },
+      {
+        "tool": "Azure Policy",
+        "purpose": "Compliance state assessment",
+        "outputs": [
+          "Compliance percentage",
+          "Non-compliant resources",
+          "Policy evaluation results"
+        ]
+      },
+      {
+        "tool": "Azure Resource Graph",
+        "purpose": "Resource inventory and configuration queries",
+        "outputs": [
+          "Resource inventory",
+          "Configuration baselines",
+          "Security configurations"
+        ]
+      }
+    ]
+  },
+  "continuousMonitoring": {
+    "description": "FedRAMP Continuous Monitoring requirements and Azure implementation",
+    "requirements": [
+      {
+        "requirement": "Vulnerability Scanning",
+        "frequency": "Monthly (OS), Daily (Web Apps)",
+        "azureImplementation": [
+          "Microsoft Defender for Cloud vulnerability assessment",
+          "Microsoft Defender for Servers",
+          "Qualys/Rapid7 integration"
+        ]
+      },
+      {
+        "requirement": "Security Control Assessment",
+        "frequency": "Annual (full) / Monthly (subset)",
+        "azureImplementation": [
+          "Azure Policy compliance evaluation",
+          "Defender for Cloud regulatory compliance",
+          "Automated control testing"
+        ]
+      },
+      {
+        "requirement": "Security Event Monitoring",
+        "frequency": "Continuous",
+        "azureImplementation": [
+          "Microsoft Sentinel SIEM",
+          "Log Analytics alerting",
+          "Azure Monitor action groups"
+        ]
+      },
+      {
+        "requirement": "Incident Response",
+        "frequency": "As needed",
+        "azureImplementation": [
+          "Microsoft Sentinel SOAR playbooks",
+          "Azure Logic Apps for automation",
+          "Integration with ticketing systems"
+        ]
+      },
+      {
+        "requirement": "POA&M Updates",
+        "frequency": "Monthly",
+        "azureImplementation": [
+          "Azure DevOps for tracking",
+          "Power BI reporting",
+          "Automated status updates"
+        ]
+      }
+    ],
+    "deliverables": [
+      {
+        "deliverable": "Monthly Continuous Monitoring Report",
+        "contents": [
+          "Vulnerability scan results",
+          "POA&M status",
+          "Security incidents",
+          "Control assessment results"
+        ],
+        "azureSource": "Power BI report pulling from Defender for Cloud, Sentinel, Policy"
+      },
+      {
+        "deliverable": "Annual Security Assessment",
+        "contents": [
+          "Full control assessment",
+          "Penetration test results",
+          "Updated SSP",
+          "Updated SAR"
+        ],
+        "azureSource": "3PAO assessment with Azure artifacts"
+      }
+    ]
+  },
+  "authorizationPackageChecklist": {
+    "description": "Complete checklist for FedRAMP authorization package submission",
+    "documents": [
+      {
+        "document": "System Security Plan (SSP)",
+        "required": true,
+        "description": "Complete security plan with control implementations"
+      },
+      {
+        "document": "Security Assessment Plan (SAP)",
+        "required": true,
+        "description": "Assessment methodology and scope"
+      },
+      {
+        "document": "Security Assessment Report (SAR)",
+        "required": true,
+        "description": "Assessment findings and recommendations"
+      },
+      {
+        "document": "Plan of Action and Milestones (POA&M)",
+        "required": true,
+        "description": "Remediation plan for findings"
+      },
+      {
+        "document": "Continuous Monitoring Plan",
+        "required": true,
+        "description": "Ongoing security monitoring approach"
+      },
+      {
+        "document": "Incident Response Plan",
+        "required": true,
+        "description": "Security incident handling procedures"
+      },
+      {
+        "document": "Configuration Management Plan",
+        "required": true,
+        "description": "Change management and baseline maintenance"
+      },
+      {
+        "document": "Contingency Plan",
+        "required": true,
+        "description": "Business continuity and disaster recovery"
+      },
+      {
+        "document": "Privacy Impact Assessment",
+        "required": "If PII is processed",
+        "description": "Privacy risk assessment"
+      },
+      {
+        "document": "Rules of Behavior",
+        "required": true,
+        "description": "User responsibilities and acceptable use"
+      }
+    ]
+  }
+}

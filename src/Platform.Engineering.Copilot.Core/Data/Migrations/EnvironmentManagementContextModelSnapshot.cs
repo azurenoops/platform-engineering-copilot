@@ -1121,6 +1121,9 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("HighAvailabilitySupported")
                         .HasColumnType("INTEGER");
 
@@ -1172,6 +1175,8 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("ExpiresAt");
 
                     b.HasIndex("IsActive");
 

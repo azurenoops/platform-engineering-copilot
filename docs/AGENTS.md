@@ -36,16 +36,54 @@ User Query → Orchestrator Agent → Specialized Agents → Response
 
 ## 🤖 Available Agents
 
-| Agent | Icon | Primary Purpose | AgentType Enum |
-|-------|------|----------------|----------------|
-| [Infrastructure](#-infrastructure-agent) | 🏗️ | Azure resource provisioning, IaC generation | `Infrastructure` |
-| [Compliance](#️-compliance-agent) | 🛡️ | NIST 800-53 scanning, security assessments | `Compliance` |
-| [Cost Management](#-cost-management-agent) | 💰 | Cost analysis, budget tracking, optimization | `CostManagement` |
-| [Environment](#-environment-agent) | 🌍 | Environment lifecycle, cloning, scaling | `Environment` |
-| [Discovery](#-discovery-agent) | 🔍 | Resource discovery, inventory, health monitoring | `Discovery` |
-| [Knowledge Base](#-knowledge-base-agent) | 📚 | NIST/DoD compliance knowledge retrieval | `KnowledgeBase` |
-| [Document](#-document-agent) | 📄 | ATO documentation (SSP, SAR, POA&M) | `Compliance` |
-| [ATO Preparation](#-ato-preparation-agent) | 🔐 | ATO package orchestration | `Compliance` |
+| Agent | Icon | Primary Purpose | AgentType Enum | Azure Arc |
+|-------|------|----------------|----------------|-----------|
+| [Infrastructure](#-infrastructure-agent) | 🏗️ | Azure resource provisioning, IaC generation | `Infrastructure` | ✅ |
+| [Compliance](#️-compliance-agent) | 🛡️ | NIST 800-53 scanning, security assessments | `Compliance` | ✅ |
+| [Cost Management](#-cost-management-agent) | 💰 | Cost analysis, budget tracking, optimization | `CostManagement` | |
+| [Environment](#-environment-agent) | 🌍 | Environment lifecycle, cloning, scaling | `Environment` | |
+| [Discovery](#-discovery-agent) | 🔍 | Resource discovery, inventory, health monitoring | `Discovery` | ✅ |
+| [Security](#-security-agent) | 🔒 | Security posture, Defender, recommendations | `Security` | ✅ |
+| [Knowledge Base](#-knowledge-base-agent) | 📚 | NIST/DoD compliance knowledge retrieval | `KnowledgeBase` | |
+| [Document](#-document-agent) | 📄 | ATO documentation (SSP, SAR, POA&M) | `Compliance` | |
+| [ATO Preparation](#-ato-preparation-agent) | 🔐 | ATO package orchestration | `Compliance` | |
+
+---
+
+## 🌐 Azure Arc Support
+
+Four agents now include **Azure Arc capabilities** for hybrid infrastructure management. This enables the copilot to manage on-premises servers, multi-cloud resources, and edge infrastructure through a unified Azure control plane.
+
+📖 **[Azure Arc Documentation](AZURE-ARC.md)** - Complete guide to Arc capabilities
+
+### Arc-Enabled Agents
+
+| Agent | Arc Functions | Key Capabilities |
+|-------|---------------|------------------|
+| **Discovery** | 4 functions | List Arc machines, get details, extensions, connection health |
+| **Compliance** | 3 functions | STIG/CIS/Azure baseline scanning, guest configuration, compliance summary |
+| **Infrastructure** | 3 functions | Generate onboarding scripts, deploy extensions, track onboarding status |
+| **Security** | 3 functions | Security posture assessment, Defender status, recommendations |
+
+### Quick Arc Examples
+
+```
+# Discovery
+"List all Arc-enabled servers"
+"Which Arc machines are disconnected?"
+
+# Compliance
+"Run STIG compliance scan on Arc servers"
+"Check guest configuration status for hybrid machines"
+
+# Infrastructure
+"Generate Arc onboarding script for Linux servers"
+"Deploy monitoring extension to Arc machines"
+
+# Security
+"Check security posture of Arc-enabled servers"
+"Which Arc servers don't have Defender?"
+```
 
 ---
 
@@ -73,6 +111,14 @@ User Query → Orchestrator Agent → Specialized Agents → Response
   - FedRAMP High: 10 controls (AC, AU, SC, IA families)
   - DoD IL5: 15 controls (PE, RA, CA, SI families)
   - PCI-DSS: 8 controls (access control, encryption)
+
+**Azure Arc Support:** 🌐
+- **Onboarding Scripts**: Generate PowerShell/Bash scripts for Arc agent installation
+- **Extension Deployment**: Deploy monitoring, security, and automation extensions to Arc machines
+- **Onboarding Tracking**: Monitor Arc adoption and identify servers pending onboarding
+- **Service Principal Auth**: Support for automated at-scale onboarding
+
+📖 See [Infrastructure Agent Arc Documentation](Infrastructure%20Agent/AZURE-ARC.md) for full details
 
 **Plugins:**
 - `InfrastructurePlugin`: Main provisioning and template generation
@@ -152,6 +198,14 @@ Infrastructure Agent **generates Infrastructure-as-Code templates** (Bicep/Terra
 - Create Bicep/Terraform templates with compliance fixes
 - Deploy remediation scripts (PowerShell, Azure CLI)
 - Track remediation status and evidence collection
+
+**Azure Arc Compliance:** 🌐
+- **Baseline Scanning**: STIG, CIS, and Azure Security Baseline for Arc machines
+- **Guest Configuration**: Azure Policy guest configuration compliance tracking
+- **Compliance Summary**: Aggregate compliance scores across hybrid fleet
+- **NIST 800-53 Mapping**: Map Arc findings to federal control families
+
+📖 See [Compliance Agent Arc Documentation](Compliance%20Agent/AZURE-ARC.md) for full details
 
 **Evidence Collection:**
 - Automated evidence gathering for controls (screenshots, configs, logs)
@@ -381,6 +435,14 @@ Compliance Agent handles **low-to-medium risk configuration changes** (property 
 - **Tag-based Search**: Discover by tags (environment, owner, cost-center)
 - **Location-based Search**: Resources in specific regions
 
+**Azure Arc Support:** 🌐
+- **Arc Machine Discovery**: List all Arc-enabled servers across subscriptions
+- **Connection Health**: Monitor Arc agent connectivity and identify disconnected machines
+- **Extension Inventory**: Track installed extensions (monitoring, security, automation)
+- **Hybrid Infrastructure**: Unified view of cloud and on-premises resources
+
+📖 See [Discovery Agent Arc Documentation](Discovery%20Agent/AZURE-ARC.md) for full details
+
 **Inventory Management:**
 - **Comprehensive Inventory**: All resource properties and metadata
 - **Resource Tagging Analysis**: Identify untagged/improperly tagged resources
@@ -447,6 +509,85 @@ Compliance Agent handles **low-to-medium risk configuration changes** (property 
 {
   "AgentType": "Discovery",
   "Temperature": 0.3,
+  "MaxTokens": 4000
+}
+```
+
+---
+
+## 🔒 Security Agent
+
+**Purpose**: Security posture assessment, threat protection, and security recommendations
+
+### Capabilities
+
+**Security Posture Assessment:**
+- **Security Scoring**: Calculate overall security posture (0-100)
+- **Risk Analysis**: Identify at-risk and unassessed resources
+- **Agent Health Monitoring**: Track security agent status across resources
+- **Findings Aggregation**: Consolidate security findings by severity
+
+**Microsoft Defender Integration:**
+- **Defender for Servers**: Monitor enrollment and protection status
+- **Extension Verification**: Check MDE extension deployment
+- **Coverage Analysis**: Identify resources without Defender protection
+- **Protection Tier Tracking**: P1/P2 enrollment status
+
+**Security Recommendations:**
+- **Prioritized Actions**: Severity-based recommendation ordering
+- **Remediation Guidance**: Step-by-step fix instructions
+- **Effort Estimation**: Quick wins vs. complex remediation
+- **Affected Resource Tracking**: Impact analysis
+
+**Azure Arc Support:** 🌐
+- **Arc Security Posture**: Assess hybrid infrastructure security
+- **Defender for Arc**: Track MDE enrollment on Arc-enabled servers
+- **Arc Recommendations**: Prioritized security improvements for hybrid servers
+- **Coverage Gaps**: Identify Arc machines without security protection
+
+📖 See [Security Agent Arc Documentation](Security%20Agent/AZURE-ARC.md) for full details
+
+### Example Prompts
+
+```
+# Security Posture
+"What's the security status of my Azure environment?"
+"Check security posture for resource group rg-prod"
+"Show at-risk resources in my subscription"
+
+# Defender
+"Which resources don't have Defender enabled?"
+"Check Defender enrollment status"
+"Enable Defender on my VMs"
+
+# Recommendations
+"What security improvements should I make?"
+"Show high-priority security recommendations"
+"What are the quick security wins?"
+
+# Azure Arc
+"Check security posture of Arc-enabled servers"
+"Which Arc machines don't have Defender?"
+"Get security recommendations for hybrid infrastructure"
+```
+
+### Key Services
+
+- `SecurityPostureService`: Security scoring and assessment
+- `DefenderIntegrationService`: Microsoft Defender API integration
+- `SecurityRecommendationService`: Prioritized recommendations
+
+### Plugins
+
+- `SecurityPlugin`: Main security operations
+- `ConfigurationPlugin`: Azure subscription management
+
+### Configuration
+
+```json
+{
+  "AgentType": "Security",
+  "Temperature": 0.2,
   "MaxTokens": 4000
 }
 ```
@@ -878,6 +1019,7 @@ az account show
 
 ## References
 
+- **[Azure Arc Capabilities](AZURE-ARC.md)** - Complete guide to hybrid infrastructure management
 - **[Agent Coordination Workflows](AGENT-COORDINATION-WORKFLOWS.md)** - Mermaid diagrams showing agent orchestration patterns
 - **[Agent Remediation Boundaries](AGENT-REMEDIATION-BOUNDARIES.md)** - Decision matrix for Compliance vs. Infrastructure remediation
 - **[Agent Orchestration & Configuration](AGENT-ORCHESTRATION.md)** - Configuration guide and enabling/disabling agents
@@ -891,5 +1033,5 @@ az account show
 
 ---
 
-**Last Updated**: November 2025  
-**Version**: 0.6.35
+**Last Updated**: December 2025  
+**Version**: 0.8.0

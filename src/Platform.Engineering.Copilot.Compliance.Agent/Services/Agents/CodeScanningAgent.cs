@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
-using Platform.Engineering.Copilot.Core.Interfaces.Agents;
 using Platform.Engineering.Copilot.Core.Models.Agents;
 using System.Text.RegularExpressions;
 using Platform.Engineering.Copilot.Compliance.Agent.Plugins;
@@ -16,11 +15,10 @@ namespace Platform.Engineering.Copilot.Compliance.Agent.Services.Agents;
 /// Specialized agent for code security scanning, vulnerability detection, and static code analysis.
 /// Uses AI-driven analysis to interpret complex scanning requests and automatically invoke appropriate tools.
 /// Provides intelligent code quality assessment, security vulnerability detection, and compliance analysis.
+/// Sub-agent orchestrated internally by ComplianceAgent (not a top-level ISpecializedAgent)
 /// </summary>
-public class CodeScanningAgent : ISpecializedAgent
+public class CodeScanningAgent
 {
-    public AgentType AgentType => AgentType.Compliance;
-
     private readonly Kernel _kernel;
     private readonly IChatCompletionService? _chatCompletion;
     private readonly ILogger<CodeScanningAgent> _logger;

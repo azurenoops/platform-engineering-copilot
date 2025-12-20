@@ -10,7 +10,6 @@ using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
 using Platform.Engineering.Copilot.Core.Models.Azure;
 using Platform.Engineering.Copilot.Core.Interfaces.KnowledgeBase;
 using Azure.Core;
-using Platform.Engineering.Copilot.Compliance.Core.Data.Entities;
 using Platform.Engineering.Copilot.Core.Helpers;
 using Platform.Engineering.Copilot.Core.Constants;
 using CF = Platform.Engineering.Copilot.Core.Constants.ComplianceConstants.ControlFamilies;

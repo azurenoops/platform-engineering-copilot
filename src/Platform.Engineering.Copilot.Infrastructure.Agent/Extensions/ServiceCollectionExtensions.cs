@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Interfaces.Agents;
 using Platform.Engineering.Copilot.Core.Interfaces.Infrastructure;
 using Platform.Engineering.Copilot.Core.Interfaces.Deployment;
@@ -7,6 +8,7 @@ using Platform.Engineering.Copilot.Infrastructure.Core.Services;
 using Platform.Engineering.Copilot.Core.Services;
 using Platform.Engineering.Copilot.Core.Services.ServiceCreation;
 using Platform.Engineering.Copilot.Core.Services.Generators.Documentation;
+using Platform.Engineering.Copilot.Core.Services.Generators.Composite;
 using Platform.Engineering.Copilot.Infrastructure.Agent.Configuration;
 using Platform.Engineering.Copilot.Infrastructure.Agent.Plugins;
 using Platform.Engineering.Copilot.Infrastructure.Agent.Services.Deployment;
@@ -18,6 +20,9 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddInfrastructureAgent(this IServiceCollection services)
     {
         // Note: Configuration is registered in Program.cs from AgentConfiguration:InfrastructureAgent section
+        
+        // Required for IMemoryCache subscription caching
+        services.AddMemoryCache();
         
         // Register Infrastructure Agent and Plugin
         services.AddScoped<InfrastructureAgent>();
@@ -40,6 +45,9 @@ public static class ServiceCollectionExtensions
         // Register Template Generation Services
         services.AddScoped<DynamicTemplateGeneratorService>();
         services.AddScoped<IDynamicTemplateGenerator, DynamicTemplateGeneratorService>();
+        
+        // Register Composite Infrastructure Generator for multi-resource orchestration
+        services.AddScoped<ICompositeInfrastructureGenerator, CompositeInfrastructureGenerator>();
         
         // Register Service Wizard Services
         services.AddScoped<ServiceWizardStateManager>();

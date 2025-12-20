@@ -2,6 +2,13 @@ using System.Text;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Services.Generators.Adapters;
+using Platform.Engineering.Copilot.Core.Services.Generators.Storage;
+using Platform.Engineering.Copilot.Core.Services.Generators.Database;
+using Platform.Engineering.Copilot.Core.Services.Generators.Kubernetes;
+using Platform.Engineering.Copilot.Core.Services.Generators.Infrastructure;
+using Platform.Engineering.Copilot.Core.Services.Generators.KeyVault;
+using Platform.Engineering.Copilot.Core.Services.Generators.AppService;
+using Platform.Engineering.Copilot.Core.Services.Generators.Containers;
 using Microsoft.Extensions.Logging;
 
 namespace Platform.Engineering.Copilot.Core.Services.Generators.Base;
@@ -26,43 +33,36 @@ public class UnifiedInfrastructureOrchestrator : IInfrastructureGenerator
 
     /// <summary>
     /// Registers all available module generators
+    /// Uses IResourceModuleGenerator implementations directly (they implement IModuleGenerator)
     /// </summary>
     private void RegisterModuleGenerators()
     {
-        // Register Terraform module generators
+        // Register Terraform non-Azure generators (AWS/GCP) - still use adapters
         _moduleGenerators.Add(new TerraformECSModuleAdapter());
         _moduleGenerators.Add(new TerraformLambdaModuleAdapter());
         _moduleGenerators.Add(new TerraformCloudRunModuleAdapter());
         _moduleGenerators.Add(new TerraformEKSModuleAdapter());
         _moduleGenerators.Add(new TerraformGKEModuleAdapter());
-        _moduleGenerators.Add(new TerraformAKSModuleAdapter());
 
-        // Register Bicep module generators
-        _moduleGenerators.Add(new BicepAKSModuleAdapter());
-        _moduleGenerators.Add(new BicepAppServiceModuleAdapter());
-        _moduleGenerators.Add(new BicepContainerAppsModuleAdapter());
+        // Register Terraform Azure generators - use IResourceModuleGenerator implementations directly
+        _moduleGenerators.Add(new TerraformAKSResourceModuleGenerator());
+        _moduleGenerators.Add(new TerraformAppServiceResourceModuleGenerator());
+        _moduleGenerators.Add(new TerraformContainerInstancesResourceModuleGenerator());
+        _moduleGenerators.Add(new TerraformNetworkResourceModuleGenerator());
+        _moduleGenerators.Add(new TerraformStorageResourceModuleGenerator());
+        _moduleGenerators.Add(new TerraformSQLResourceModuleGenerator());
+        _moduleGenerators.Add(new TerraformKeyVaultResourceModuleGenerator());
 
-        // Register Terraform Azure web/container generators (2)
-        _moduleGenerators.Add(new TerraformAppServiceModuleAdapter());
-        _moduleGenerators.Add(new TerraformContainerInstancesModuleAdapter());
+        // Register Bicep Azure generators - use IResourceModuleGenerator implementations directly
+        _moduleGenerators.Add(new BicepAKSResourceModuleGenerator());
+        _moduleGenerators.Add(new BicepAppServiceResourceModuleGenerator());
+        _moduleGenerators.Add(new BicepContainerAppsResourceModuleGenerator());
+        _moduleGenerators.Add(new BicepNetworkResourceModuleGenerator());
+        _moduleGenerators.Add(new BicepStorageAccountModuleGenerator());
+        _moduleGenerators.Add(new BicepSQLModuleGenerator());
+        _moduleGenerators.Add(new BicepKeyVaultModuleGenerator());
 
-        // Register Network-Only generators (2)
-        _moduleGenerators.Add(new TerraformNetworkModuleAdapter());
-        _moduleGenerators.Add(new BicepNetworkModuleAdapter());
-
-        // Register Storage generators (2)
-        _moduleGenerators.Add(new BicepStorageModuleAdapter());
-        _moduleGenerators.Add(new TerraformStorageModuleAdapter());
-
-        // Register Database generators (2)
-        _moduleGenerators.Add(new BicepSQLDatabaseModuleAdapter());
-        _moduleGenerators.Add(new TerraformSQLDatabaseModuleAdapter());
-
-        // Register Security generators (2) - Key Vault
-        _moduleGenerators.Add(new BicepKeyVaultModuleAdapter());
-        _moduleGenerators.Add(new TerraformKeyVaultModuleAdapter());
-
-        _logger.LogInformation("Registered {Count} module generators (13 Terraform, 8 Bicep)", _moduleGenerators.Count);
+        _logger.LogInformation("Registered {Count} module generators", _moduleGenerators.Count);
     }
 
     public async Task<Dictionary<string, string>> GenerateAsync(

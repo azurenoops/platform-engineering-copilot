@@ -66,6 +66,20 @@ Each service gets:
    cd /Users/johnspinella/repos/platform-engineering-copilot
    ```
 
+4. **⭐ Azure OpenAI Instance** (CRITICAL)
+   ```bash
+   # Verify you have Azure OpenAI in Azure Government
+   az cognitiveservices account list \
+     --query "[?kind=='OpenAI'].{name:name, endpoint:properties.endpoint}"
+   
+   # You need:
+   # - Azure OpenAI endpoint (e.g., https://your-instance.openai.azure.us/)
+   # - Deployment name (e.g., gpt-4o)
+   # - API key OR Managed Identity access
+   ```
+   
+   **Without Azure OpenAI, the MCP server will return HTTP 500 (blank responses).**
+
 ### One-Command Deployment
 
 ```bash
@@ -219,7 +233,80 @@ export ACR_USERNAME=$(az acr credential show --name $ACR_NAME --query username -
 export ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query passwords[0].value -o tsv)
 ```
 
-### 7. Deploy Admin API Container
+### 6.5. **⭐ Set Azure OpenAI Configuration (CRITICAL)**
+
+Before deploying MCP container, set these environment variables:
+
+```bash
+# Replace with YOUR Azure OpenAI details
+export AOAI_ENDPOINT="https://your-instance.openai.azure.us/"
+export AOAI_DEPLOYMENT="gpt-4o"
+export AOAI_USE_MANAGED_IDENTITY="true"  # or "false" if using API key
+
+# If using API key instead of Managed Identity:
+export AOAI_API_KEY="your-api-key-here"  # Leave blank if using Managed Identity
+```
+
+**Get these values:**
+```bash
+# Find your Azure OpenAI instance
+az cognitiveservices account list --query "[?kind=='OpenAI'].name" -o tsv
+
+# Get the endpoint
+az cognitiveservices account show \
+  --name your-openai-instance \
+  --query properties.endpoint -o tsv
+
+# Get the deployment name
+az cognitiveservices account deployment list \
+  --name your-openai-instance \
+  --query "[0].name" -o tsv
+
+# Get API key (if not using Managed Identity)
+az cognitiveservices account keys list \
+  --name your-openai-instance \
+  --query key1 -o tsv
+```
+
+### 7. Deploy MCP Container (with Azure OpenAI config)
+
+```bash
+az container create \
+  --resource-group $RESOURCE_GROUP \
+  --name platform-mcp-aci \
+  --image ${ACR_LOGIN_SERVER}/platform-mcp:latest \
+  --registry-login-server $ACR_LOGIN_SERVER \
+  --registry-username $ACR_USERNAME \
+  --registry-password $ACR_PASSWORD \
+  --cpu 2 \
+  --memory 4 \
+  --ports 5100 \
+  --dns-name-label ${PROJECT_NAME}-${ENVIRONMENT}-platform-mcp \
+  --location $LOCATION \
+  --environment-variables \
+    ASPNETCORE_ENVIRONMENT=Production \
+    ASPNETCORE_URLS=http://+:5100 \
+    Gateway__AzureOpenAI__Endpoint=$AOAI_ENDPOINT \
+    Gateway__AzureOpenAI__DeploymentName=$AOAI_DEPLOYMENT \
+    Gateway__AzureOpenAI__UseManagedIdentity=$AOAI_USE_MANAGED_IDENTITY
+
+# If using API key authentication instead:
+# Add this to the --environment-variables above:
+#   Gateway__AzureOpenAI__ApiKey=$AOAI_API_KEY
+
+# Get the URL
+echo "MCP Server URL:"
+az container show \
+  --resource-group $RESOURCE_GROUP \
+  --name platform-mcp-aci \
+  --query ipAddress.fqdn -o tsv
+
+# Test it
+MCP_URL=$(az container show --resource-group $RESOURCE_GROUP --name platform-mcp-aci --query ipAddress.fqdn -o tsv)
+curl -s http://${MCP_URL}:5100/health | jq .
+```
+
+### 7.5. Deploy Admin API Container
 
 ```bash
 az container create \
@@ -247,7 +334,7 @@ az container show \
 
 ### 8. Repeat for Other Services
 
-Deploy Admin Client (port 5003), Chat (port 5001), and MCP (port 5100) using the same pattern.
+Deploy Admin Client (port 5003), Chat (port 5001) using the same pattern.
 
 ## 🔍 Managing Your Deployment
 
@@ -351,6 +438,37 @@ Plus:
    - Use IP whitelisting
 
 ## 🔧 Troubleshooting
+
+### ❌ MCP Server Returns Blank Responses (HTTP 500)
+
+**Cause**: Azure OpenAI configuration missing
+
+**Solution**:
+```bash
+# 1. Check environment variables
+az container show \
+  --resource-group $RESOURCE_GROUP \
+  --name platform-mcp-aci \
+  --query "containers[0].environmentVariables[?contains(name, 'Gateway')]"
+
+# 2. Update if missing
+az container update \
+  --resource-group $RESOURCE_GROUP \
+  --name platform-mcp-aci \
+  --environment-variables \
+    Gateway__AzureOpenAI__Endpoint="https://your-instance.openai.azure.us/" \
+    Gateway__AzureOpenAI__DeploymentName="gpt-4o" \
+    Gateway__AzureOpenAI__UseManagedIdentity="true"
+
+# 3. Restart
+az container restart \
+  --resource-group $RESOURCE_GROUP \
+  --name platform-mcp-aci
+
+# 4. Wait and test
+sleep 45
+curl -s http://${MCP_URL}:5100/health | jq .
+```
 
 ### Container Won't Start
 

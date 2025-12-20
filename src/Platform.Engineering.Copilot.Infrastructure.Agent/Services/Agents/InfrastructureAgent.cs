@@ -1,19 +1,22 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Interfaces.Agents;
 using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
+using Platform.Engineering.Copilot.Core.Interfaces.Azure;
+using Platform.Engineering.Copilot.Core.Interfaces.Chat;
+using Platform.Engineering.Copilot.Core.Interfaces.TokenManagement;
 using Platform.Engineering.Copilot.Core.Models.Agents;
-using Platform.Engineering.Copilot.Core.Plugins;
+using Platform.Engineering.Copilot.Core.Models.TokenManagement;
 using Platform.Engineering.Copilot.Core.Services.Azure;
 using Platform.Engineering.Copilot.Core.Services.Agents;
 using Platform.Engineering.Copilot.Core.Services;
 using Platform.Engineering.Copilot.Core.Configuration;
 using Platform.Engineering.Copilot.Infrastructure.Core.Services;
-using Platform.Engineering.Copilot.Core.Interfaces.Chat;
 using Platform.Engineering.Copilot.Core.Interfaces.Infrastructure;
 using Platform.Engineering.Copilot.Core.Interfaces.Deployment;
 using Platform.Engineering.Copilot.Infrastructure.Agent.Configuration;
@@ -28,7 +31,7 @@ public class InfrastructureAgent : ISpecializedAgent
     public AgentType AgentType => AgentType.Infrastructure;
 
     private readonly Kernel _kernel;
-    private readonly IChatCompletionService _chatCompletion;
+    private readonly IChatCompletionService? _chatCompletion;
     private readonly ILogger<InfrastructureAgent> _logger;
     private readonly InfrastructurePlugin _infrastructurePlugin;
     private readonly string? _defaultSubscriptionId;
@@ -37,6 +40,10 @@ public class InfrastructureAgent : ISpecializedAgent
     private readonly IPredictiveScalingEngine? _scalingEngine;
     private readonly IComplianceAwareTemplateEnhancer? _complianceEnhancer;
     private readonly ITemplateStorageService _templateStorageService;
+    private readonly ITokenCounter _tokenCounter;
+    private readonly IPromptOptimizer _promptOptimizer;
+    private readonly IRagContextOptimizer _ragContextOptimizer;
+    private readonly IConversationHistoryOptimizer _conversationHistoryOptimizer;
 
     public InfrastructureAgent(
         ISemanticKernelService semanticKernelService,
@@ -49,9 +56,16 @@ public class InfrastructureAgent : ISpecializedAgent
         SharedMemory sharedMemory,
         AzureMcpClient azureMcpClient,
         ITemplateStorageService templateStorageService,
+        ConfigService configService,
+        IAzureResourceService azureResourceService,
+        IMemoryCache cache,
         IOptions<AzureGatewayOptions> azureOptions,
         IOptions<InfrastructureAgentOptions> options,
         Platform.Engineering.Copilot.Core.Plugins.ConfigurationPlugin configurationPlugin,
+        ITokenCounter tokenCounter,
+        IPromptOptimizer promptOptimizer,
+        IRagContextOptimizer ragContextOptimizer,
+        IConversationHistoryOptimizer conversationHistoryOptimizer,
         INetworkTopologyDesignService? networkDesignService = null,
         IPredictiveScalingEngine? scalingEngine = null,
         IComplianceAwareTemplateEnhancer? complianceEnhancer = null)
@@ -60,6 +74,10 @@ public class InfrastructureAgent : ISpecializedAgent
         _options = options.Value;
         _defaultSubscriptionId = azureOptions.Value.SubscriptionId;
         _templateStorageService = templateStorageService;
+        _tokenCounter = tokenCounter ?? throw new ArgumentNullException(nameof(tokenCounter));
+        _promptOptimizer = promptOptimizer ?? throw new ArgumentNullException(nameof(promptOptimizer));
+        _ragContextOptimizer = ragContextOptimizer ?? throw new ArgumentNullException(nameof(ragContextOptimizer));
+        _conversationHistoryOptimizer = conversationHistoryOptimizer ?? throw new ArgumentNullException(nameof(conversationHistoryOptimizer));
         
         // Store optional services based on configuration
         _networkDesignService = _options.EnableNetworkDesign ? networkDesignService : null;
@@ -81,7 +99,10 @@ public class InfrastructureAgent : ISpecializedAgent
             policyEnforcementService,
             sharedMemory,
             azureMcpClient,
-            templateStorageService);
+            templateStorageService,
+            configService,
+            azureResourceService,
+            cache);
 
         // Register shared configuration plugin (set_azure_subscription, get_azure_subscription, etc.)
         try
@@ -106,7 +127,17 @@ public class InfrastructureAgent : ISpecializedAgent
             _logger.LogWarning(ex, "Failed to register InfrastructurePlugin");
         }
 
-        _chatCompletion = _kernel.GetRequiredService<IChatCompletionService>();
+        // Try to get chat completion service - make it optional for basic functionality
+        try
+        {
+            _chatCompletion = _kernel.GetRequiredService<IChatCompletionService>();
+            _logger.LogInformation("✅ Infrastructure Agent initialized with AI chat completion service");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "⚠️ Infrastructure Agent initialized without AI chat completion service. AI features will be limited.");
+            _chatCompletion = null;
+        }
     }
 
     public async Task<AgentResponse> ProcessAsync(AgentTask task, SharedMemory memory)
@@ -117,6 +148,22 @@ public class InfrastructureAgent : ISpecializedAgent
 
         try
         {
+            // Check if AI services are available
+            if (_chatCompletion == null)
+            {
+                _logger.LogWarning("⚠️ AI chat completion service not available. Returning basic response for task: {TaskId}", task.TaskId);
+                
+                return new AgentResponse
+                {
+                    TaskId = task.TaskId,
+                    AgentType = AgentType.Infrastructure,
+                    Success = true,
+                    Content = "AI services not configured. Basic infrastructure functionality available through database operations only. " +
+                             "Configure Azure OpenAI to enable full AI-powered infrastructure provisioning.",
+                    ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds
+                };
+            }
+
             var chatHistory = new ChatHistory();
 
             // Build subscription info if available
@@ -543,12 +590,59 @@ End your responses immediately after providing the technical information. No sig
             {
                 var context = memory.GetContext(task.ConversationId);
                 
-                // Add previous USER messages from this conversation (most important!)
+                // Phase 5: Evaluate conversation health and optimize if needed
                 if (context.MessageHistory != null && context.MessageHistory.Any())
                 {
-                    var recentHistory = context.MessageHistory
+                    var conversationMessages = context.MessageHistory
+                        .Select(m => new ConversationMessage
+                        {
+                            Role = m.Role,
+                            Content = m.Content,
+                            Timestamp = m.Timestamp
+                        })
+                        .ToList();
+
+                    // Evaluate conversation health
+                    var health = await EvaluateConversationHealthAsync(
+                        conversationMessages, 
+                        _conversationHistoryOptimizer, 
+                        conversationMessages.Sum(m => _tokenCounter.CountTokens(m.Content)), 
+                        8000);
+
+                    if (health.NeedsOptimization)
+                    {
+                        _logger.LogInformation(
+                            "Infrastructure Agent - Conversation optimization needed: {HealthStatus}", 
+                            health.GetHealthSummary());
+
+                        // Manage context window by getting focused message range
+                        var managedMessages = await ManageContextWindowAsync(
+                            conversationMessages, 
+                            _conversationHistoryOptimizer, 
+                            conversationMessages.Count - 1,
+                            4000);
+                        
+                        conversationMessages = managedMessages;
+                    }
+                }                
+                // Phase 5: Optimize conversation history before using it
+                if (context.MessageHistory != null && context.MessageHistory.Any())
+                {
+                    var conversationMessages = context.MessageHistory
+                        .Select(m => new ConversationMessage
+                        {
+                            Role = m.Role,
+                            Content = m.Content,
+                            Timestamp = m.Timestamp
+                        })
+                        .ToList();
+
+                    var optimizedHistory = await OptimizeConversationHistoryAsync(conversationMessages, _conversationHistoryOptimizer, 4000);
+                    
+                    // Use optimized messages for context
+                    var recentHistory = optimizedHistory.Messages
                         .OrderBy(m => m.Timestamp)
-                        .TakeLast(5) // Last 5 messages for context
+                        .TakeLast(Math.Min(5, optimizedHistory.Messages.Count))
                         .ToList();
 
                     if (recentHistory.Any())
@@ -557,6 +651,33 @@ End your responses immediately after providing the technical information. No sig
                             $"{h.Role}: {h.Content}"));
                         
                         chatHistory.AddUserMessage($@"
+**IMPORTANT: Previous conversation context (optimized for this conversation):**
+{historyText}
+
+**The current message is a continuation of this conversation. User has ALREADY provided:**
+- Original request details (AKS, location, node count, subscription, etc.)
+- Answers to your follow-up questions (environment type, security needs, monitoring preferences, integrations)
+
+**DO NOT ask for information the user already provided above. Instead, USE the information to call the appropriate function NOW!**
+");
+                    }
+                }
+                else
+                {
+                    // Fallback: Add previous USER messages from this conversation (if no optimized history)
+                    if (context.MessageHistory != null && context.MessageHistory.Any())
+                    {
+                        var recentHistory = context.MessageHistory
+                            .OrderBy(m => m.Timestamp)
+                            .TakeLast(5) // Last 5 messages for context
+                            .ToList();
+
+                        if (recentHistory.Any())
+                        {
+                            var historyText = string.Join("\n", recentHistory.Select(h => 
+                                $"{h.Role}: {h.Content}"));
+                            
+                            chatHistory.AddUserMessage($@"
 **IMPORTANT: Previous conversation context (this is the SAME conversation):**
 {historyText}
 
@@ -566,6 +687,7 @@ End your responses immediately after providing the technical information. No sig
 
 **DO NOT ask for information the user already provided above. Instead, USE the information to call the appropriate function NOW!**
 ");
+                        }
                     }
                 }
                 
@@ -600,6 +722,20 @@ Available functions you MUST use:
 If the task asks to 'generate template' or 'create infrastructure code', call generate_infrastructure_template NOW.
 Do NOT write a text response with manual code - CALL THE FUNCTION!
 ");
+
+            // Phase 5: Optimize prompt to fit token budget before sending to LLM
+            var systemPromptText = chatHistory.FirstOrDefault(m => m.Role == Microsoft.SemanticKernel.ChatCompletion.AuthorRole.System)?.Content ?? "";
+            var userMessageText = task.Description;
+            if (!string.IsNullOrEmpty(systemPromptText) && !string.IsNullOrEmpty(userMessageText))
+            {
+                var optimizedPrompt = FitPromptInTokenBudget(systemPromptText, userMessageText);
+                if (optimizedPrompt.WasOptimized)
+                {
+                    _logger.LogInformation(
+                        "Infrastructure Agent - Prompt optimized before LLM call: {Strategy}, Tokens saved: {Saved}",
+                        optimizedPrompt.OptimizationStrategy, optimizedPrompt.TokensSaved);
+                }
+            }
 
             // Invoke chat completion with plugin auto-invocation
             _logger.LogInformation("InfrastructureAgent: Starting OpenAI chat completion for conversation {ConversationId}", task.ConversationId);
@@ -665,6 +801,24 @@ Do NOT write a text response with manual code - CALL THE FUNCTION!
             var metadata = ExtractMetadata(result);
             metadata["ExecutionTime"] = executionTime;
 
+            // Phase 5: Record agent cost metrics for this operation
+            try
+            {
+                var completionTokens = _tokenCounter.CountTokens(result.Content ?? "");
+                // Create a minimal OptimizedPrompt for cost tracking
+                var costPrompt = new OptimizedPrompt
+                {
+                    WasOptimized = false,
+                    RagContext = new List<string>(),
+                    ConversationHistory = new List<string>()
+                };
+                await RecordAgentCostAsync(costPrompt, completionTokens, task.TaskId, task.ConversationId ?? "default");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to record cost metrics for task {TaskId}", task.TaskId);
+            }
+
             // Use configuration function result if available, otherwise use LLM response
             var responseContent = configurationFunctionResult ?? result.Content ?? "No content generated";
             
@@ -675,7 +829,7 @@ Do NOT write a text response with manual code - CALL THE FUNCTION!
 
             // Store result in shared memory for other agents
             memory.AddAgentCommunication(
-                task.ConversationId,
+                task.ConversationId ?? "default",
                 AgentType.Infrastructure,
                 null, // broadcast to all agents
                 "Infrastructure provisioning completed",
@@ -833,5 +987,274 @@ Do NOT write a text response with manual code - CALL THE FUNCTION!
         cleaned = cleaned.TrimEnd();
 
         return cleaned;
+    }
+
+    /// <summary>
+    /// Helper method to rank and optimize search results for RAG context
+    /// </summary>
+    protected OptimizedRagContext OptimizeSearchResults(
+        List<string> searchResults,
+        string query,
+        int maxTokens = 1500)
+    {
+        if (searchResults == null || searchResults.Count == 0)
+        {
+            return new OptimizedRagContext
+            {
+                Results = new List<RankedSearchResult>(),
+                TotalTokens = 0,
+                OriginalResultCount = 0,
+                WasOptimized = false,
+                OptimizationStrategy = "No results to optimize"
+            };
+        }
+
+        // Create ranked results from search strings
+        var rankedResults = new List<RankedSearchResult>();
+        foreach (var result in searchResults)
+        {
+            var relevanceScore = CalculateRelevanceScore(query, result);
+            rankedResults.Add(new RankedSearchResult
+            {
+                Content = result,
+                RelevanceScore = relevanceScore,
+                Source = $"Infrastructure KB",
+                TokenCount = 0
+            });
+        }
+
+        // Apply RAG context optimization
+        var options = new RagOptimizationOptions
+        {
+            MaxRagTokens = maxTokens,
+            MinRelevanceScore = 0.3,
+            MaxResults = 10,
+            TrimLargeResults = true
+        };
+
+        var optimized = _ragContextOptimizer.OptimizeContext(rankedResults, options);
+        
+        _logger.LogInformation(
+            "RAG optimization completed: {ResultsIncluded} results ({TokensUsed} tokens), " +
+            "filtered: {Filtered}, trimmed: {Trimmed}, excluded: {Excluded}",
+            optimized.Results.Count, optimized.TotalTokens,
+            optimized.OriginalResultCount - optimized.Results.Count - optimized.ResultsRemoved,
+            optimized.ResultsTrimmed, optimized.ResultsRemoved);
+
+        return optimized;
+    }
+
+    /// <summary>
+    /// Calculate relevance score for a search result based on query
+    /// </summary>
+    private double CalculateRelevanceScore(string query, string content)
+    {
+        if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(content))
+            return 0.0;
+
+        var queryWords = query.ToLower()
+            .Split(new[] { ' ', ',', '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 3)
+            .ToList();
+
+        if (queryWords.Count == 0)
+            return 0.0;
+
+        var contentLower = content.ToLower();
+        int matches = queryWords.Count(w => contentLower.Contains(w));
+        
+        // Score based on proportion of keywords found
+        double score = (double)matches / queryWords.Count;
+        return Math.Min(1.0, Math.Max(0.0, score));
+    }
+
+    /// <summary>
+    /// Helper method to fit a prompt within token budget using optimization
+    /// </summary>
+    private OptimizedPrompt FitPromptInTokenBudget(
+        string systemPrompt,
+        string userMessage,
+        List<string>? ragContext = null,
+        List<string>? conversationHistory = null)
+    {
+        ragContext ??= new List<string>();
+        conversationHistory ??= new List<string>();
+
+        var options = BuildPromptOptimizationOptions();
+        var optimized = _promptOptimizer.OptimizePrompt(
+            systemPrompt,
+            userMessage,
+            ragContext,
+            conversationHistory,
+            options);
+
+        if (optimized.WasOptimized)
+        {
+            _logger.LogInformation("Prompt optimization applied: {Strategy}", optimized.OptimizationStrategy);
+            _logger.LogInformation("Tokens saved: {TokensSaved}", optimized.TokensSaved);
+        }
+
+        return optimized;
+    }
+
+    /// <summary>
+    /// Helper method to build prompt optimization options
+    /// </summary>
+    private PromptOptimizationOptions BuildPromptOptimizationOptions()
+    {
+        return new PromptOptimizationOptions
+        {
+            ModelName = "gpt-4o",
+            MaxContextWindow = 128000,
+            TargetTokenCount = 0,
+            ReservedCompletionTokens = 4000,
+            SystemPromptPriority = 100,
+            UserMessagePriority = 100,
+            RagContextPriority = 80,
+            ConversationHistoryPriority = 60,
+            MinRagContextItems = 3,
+            MinConversationHistoryMessages = 2,
+            SafetyBufferPercentage = 10,
+            UseSummarization = false
+        };
+    }
+
+    /// <summary>
+    /// Helper method to calculate and record agent cost metrics
+    /// </summary>
+    private async Task RecordAgentCostAsync(
+        OptimizedPrompt optimizedPrompt,
+        int completionTokens,
+        string taskId,
+        string conversationId)
+    {
+        try
+        {
+            var metrics = new AgentCostMetrics
+            {
+                AgentType = AgentType.Infrastructure.ToString(),
+                TaskId = taskId,
+                ConversationId = conversationId,
+                Timestamp = DateTime.UtcNow,
+                OriginalPromptTokens = optimizedPrompt.OriginalEstimate?.TotalInputTokens ?? 0,
+                OptimizedPromptTokens = optimizedPrompt.OptimizedEstimate?.TotalInputTokens ?? 0,
+                TokensSaved = optimizedPrompt.TokensSaved,
+                OptimizationPercentage = optimizedPrompt.OriginalEstimate?.TotalInputTokens > 0
+                    ? (optimizedPrompt.TokensSaved * 100.0 / optimizedPrompt.OriginalEstimate.TotalInputTokens)
+                    : 0,
+                CompletionTokens = completionTokens,
+                TotalTokens = (optimizedPrompt.OptimizedEstimate?.TotalInputTokens ?? 0) + completionTokens,
+                Model = "gpt-4o",
+                WasOptimized = optimizedPrompt.WasOptimized,
+                OptimizationStrategy = optimizedPrompt.OptimizationStrategy,
+                RagContextItems = optimizedPrompt.OriginalEstimate?.RagContextItemTokens.Count ?? 0,
+                RagContextItemsAfterOptimization = optimizedPrompt.RagContext.Count,
+                ConversationHistoryMessages = optimizedPrompt.ConversationHistory.Count
+            };
+
+            // Calculate cost (GPT-4o pricing: ~$0.03 per 1K prompt tokens, ~$0.06 per 1K completion tokens)
+            var promptCost = (metrics.OptimizedPromptTokens / 1000.0) * 0.03;
+            var completionCost = (completionTokens / 1000.0) * 0.06;
+            metrics.EstimatedCost = promptCost + completionCost;
+
+            // Calculate original cost for comparison
+            var originalPromptCost = (metrics.OriginalPromptTokens / 1000.0) * 0.03;
+            metrics.CostSaved = originalPromptCost - promptCost;
+
+            _logger.LogInformation("Infrastructure Agent - Cost metrics recorded: {Summary}", metrics.GetSummary());
+
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to record agent cost metrics");
+        }
+    }
+
+    /// <summary>
+    /// Helper method to optimize conversation history for context window management
+    /// </summary>
+    private async Task<OptimizedConversationHistory> OptimizeConversationHistoryAsync(
+        List<ConversationMessage> messages,
+        IConversationHistoryOptimizer historyOptimizer,
+        int tokenBudget = 4000)
+    {
+        try
+        {
+            var options = historyOptimizer.GetRecommendedOptionsForAgent("Infrastructure");
+            options.MaxTokens = Math.Min(tokenBudget, options.MaxTokens);
+
+            var optimized = await historyOptimizer.OptimizeHistoryAsync(messages, options);
+            
+            _logger.LogInformation("Infrastructure Agent - Conversation history optimized:\n{Summary}", 
+                optimized.GetSummary());
+
+            return optimized;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to optimize conversation history");
+            return new OptimizedConversationHistory 
+            { 
+                Messages = messages,
+                OriginalMessageCount = messages.Count
+            };
+        }
+    }
+
+    /// <summary>
+    /// Helper method to evaluate conversation health and determine if pruning is needed
+    /// </summary>
+    private async Task<ConversationHealthMetrics> EvaluateConversationHealthAsync(
+        List<ConversationMessage> messages,
+        IConversationHistoryOptimizer historyOptimizer,
+        int currentTokenCount,
+        int tokenBudget = 8000)
+    {
+        try
+        {
+            var health = await historyOptimizer.EvaluateConversationHealthAsync(
+                messages, 
+                currentTokenCount, 
+                tokenBudget);
+
+            _logger.LogDebug("Infrastructure Agent - Conversation health evaluated:\n{Summary}", 
+                health.GetHealthSummary());
+
+            return health;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to evaluate conversation health");
+            return new ConversationHealthMetrics { TotalMessages = messages.Count };
+        }
+    }
+
+    /// <summary>
+    /// Helper method to manage context window for long-running conversations
+    /// </summary>
+    private async Task<List<ConversationMessage>> ManageContextWindowAsync(
+        List<ConversationMessage> messages,
+        IConversationHistoryOptimizer historyOptimizer,
+        int targetMessageIndex,
+        int maxTokens = 4000)
+    {
+        try
+        {
+            var contextWindow = await historyOptimizer.GetContextWindowAsync(
+                messages,
+                maxTokens,
+                targetMessageIndex);
+
+            _logger.LogDebug("Infrastructure Agent - Context window managed: {TargetIndex} → {WindowSize} messages", 
+                targetMessageIndex, contextWindow.Count);
+
+            return contextWindow;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to manage context window");
+            return messages;
+        }
     }
 }

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
@@ -21,6 +22,8 @@ public class KnowledgeBasePlugin : BaseSupervisorPlugin
     private readonly IDoDWorkflowService _workflowService;
     private readonly AzureMcpClient _azureMcpClient;
     private readonly INistControlsService _nistControlsService;
+    private readonly IImpactLevelService _impactLevelService;
+    private readonly IFedRampTemplateService _fedRampTemplateService;
     
 
     public KnowledgeBasePlugin(
@@ -30,6 +33,8 @@ public class KnowledgeBasePlugin : BaseSupervisorPlugin
         IDoDWorkflowService workflowService,
         AzureMcpClient azureMcpClient,
         INistControlsService nistControlsService,
+        IImpactLevelService impactLevelService,
+        IFedRampTemplateService fedRampTemplateService,
         ILogger<KnowledgeBasePlugin> logger,
         Kernel kernel) : base(logger, kernel)
     {
@@ -39,6 +44,8 @@ public class KnowledgeBasePlugin : BaseSupervisorPlugin
         _workflowService = workflowService ?? throw new ArgumentNullException(nameof(workflowService));
         _azureMcpClient = azureMcpClient ?? throw new ArgumentNullException(nameof(azureMcpClient));
         _nistControlsService = nistControlsService ?? throw new ArgumentNullException(nameof(nistControlsService));
+        _impactLevelService = impactLevelService ?? throw new ArgumentNullException(nameof(impactLevelService));
+        _fedRampTemplateService = fedRampTemplateService ?? throw new ArgumentNullException(nameof(fedRampTemplateService));
     }
 
     #region NIST Control Explanations
@@ -831,95 +838,347 @@ Use 'explain_dod_instruction' for complete details.
     {
         _logger.LogInformation("Explaining Impact Level {Level}", impactLevel);
         
-        // This will be expanded with actual IL data from dod-instructions.json
-        return impactLevel.ToUpper() switch
+        try
         {
-            "IL5" => @"# Impact Level 5 (IL5)
-
-**Classification:** DoD CUI High / Secret
-
-## Description
-Systems processing high-sensitivity CUI or classified information up to Secret.
-
-## Requirements
-- NIST 800-53 High baseline
-- FedRAMP High compliance
-- Complete network isolation
-- Dedicated infrastructure
-- FIPS 140-2 cryptography
-
-## Azure Configurations
-
-**Encryption:** Customer-managed keys REQUIRED (FIPS 140-2)
-**Networking:** No public endpoints, dedicated ExpressRoute
-**Identity:** CAC/PIV authentication mandatory
-**Logging:** 365 days minimum retention, immutable logs
-**Region:** USGov Virginia, USGov Arizona only
-**Isolation:** Dedicated tenants, no multi-tenancy
-
-## Mandatory NIST Controls
-All IL4 controls PLUS:
-- SC-7(3): Access Points
-- SC-7(5): Deny by Default / Allow by Exception
-- SC-28(1): Cryptographic Protection
-- AU-9: Protection of Audit Information
-- IA-2(1): Network Access to Privileged Accounts - MFA
-- IA-2(12): PIV Credential
-
-## Boundary Protection
-- No public IP addresses on VMs
-- Private endpoints for ALL PaaS services
-- Dedicated ExpressRoute with private peering
-- Network Security Groups with default deny
-- Azure Firewall for egress filtering
-- No direct internet connectivity
-
-For complete IL5 guidance, consult CNSSI 1253 and your organization's security team.",
-
-            "IL6" => @"# Impact Level 6 (IL6)
-
-**Classification:** Classified Secret / Top Secret
-
-## Description
-Systems processing classified information at Secret or Top Secret levels.
-
-## Requirements
-- NIST 800-53 High + classified overlays
-- CNSSI 1253 controls
-- Complete air-gapped infrastructure
-- NSA-approved cryptography (Suite B)
-- Continuous monitoring and logging
-
-## Azure Configurations
-
-**Encryption:** NSA Suite B cryptography REQUIRED
-**Networking:** Dedicated isolated network, no internet connectivity
-**Identity:** CAC/PIV with hardware token mandatory
-**Logging:** Indefinite retention, air-gapped SIEM
-**Region:** Secret/Top Secret regions only (Azure Government Secret)
-**Isolation:** Physically separated infrastructure
-**Personnel:** Cleared personnel only (Secret/TS/SCI)
-
-## Mandatory Controls
-All IL5 controls PLUS:
-- SC-8(1): Cryptographic Protection for transmission
-- MA-4(6): Remote Maintenance - Cryptographic Protection
-- PE-3: Physical Access Control
-- PE-6: Monitoring Physical Access
-- PS-3: Personnel Screening
-
-## Network Isolation
-- Physically isolated infrastructure
-- No connection to internet or commercial networks
-- Dedicated cross-domain solutions for controlled transfers
-- All communications through approved gateways
-- Continuous monitoring of all network flows
-
-For IL6 systems, engagement with NSA and Defense Security Service is required.",
-
-            _ => $"Impact Level {impactLevel} not found. Valid levels are IL2, IL4, IL5, and IL6."
-        };
+            return await _impactLevelService.ExplainImpactLevelAsync(impactLevel, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error explaining impact level {Level}", impactLevel);
+            return $"Error retrieving Impact Level information for {impactLevel}.";
+        }
     }
+
+    [KernelFunction("compare_impact_levels")]
+    [Description("Compare all DoD Impact Levels (IL2, IL4, IL5, IL6) side by side. " +
+                 "Shows differences in data types, encryption, network, personnel requirements. " +
+                 "Use when users ask 'Compare IL4 and IL5' or 'What are the differences between impact levels?'")]
+    public async Task<string> CompareImpactLevelsAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting Impact Level comparison");
+        
+        try
+        {
+            return await _impactLevelService.GetImpactLevelComparisonAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting impact level comparison");
+            return "Error retrieving Impact Level comparison.";
+        }
+    }
+
+    [KernelFunction("get_migration_guidance")]
+    [Description("Get guidance for migrating between DoD Impact Levels. " +
+                 "Covers IL2 to IL4, IL4 to IL5 migration steps and requirements. " +
+                 "Use when users ask 'How do I migrate from IL4 to IL5?' or 'Steps to upgrade to IL5'")]
+    public async Task<string> GetMigrationGuidanceAsync(
+        [Description("Source Impact Level (e.g., IL2, IL4)")] string fromLevel,
+        [Description("Target Impact Level (e.g., IL4, IL5)")] string toLevel,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting migration guidance from {From} to {To}", fromLevel, toLevel);
+        
+        try
+        {
+            return await _impactLevelService.GetMigrationGuidanceAsync(fromLevel, toLevel, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting migration guidance");
+            return $"Error retrieving migration guidance from {fromLevel} to {toLevel}.";
+        }
+    }
+
+    [KernelFunction("get_azure_implementation_for_il")]
+    [Description("Get Azure-specific implementation guidance for a DoD Impact Level. " +
+                 "Shows required regions, services, encryption, and compliance checklist. " +
+                 "Use when users ask 'How do I configure Azure for IL5?' or 'Azure requirements for IL4'")]
+    public async Task<string> GetAzureImplementationForILAsync(
+        [Description("Impact Level (IL2, IL4, IL5, or IL6)")] string impactLevel,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting Azure implementation for {Level}", impactLevel);
+        
+        try
+        {
+            return await _impactLevelService.GetAzureImplementationAsync(impactLevel, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting Azure implementation for {Level}", impactLevel);
+            return $"Error retrieving Azure implementation for {impactLevel}.";
+        }
+    }
+
+    #endregion
+
+    #region FedRAMP Templates
+
+    [KernelFunction("get_ssp_section_template")]
+    [Description("Get a System Security Plan (SSP) section template with Azure mapping. " +
+                 "Returns required elements, example content, and Azure data sources for the section. " +
+                 "Use when users ask 'SSP section 5 template' or 'What goes in SSP system environment section?'")]
+    public async Task<string> GetSspSectionTemplateAsync(
+        [Description("SSP section number (1-9)")] string sectionNumber,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting SSP section template for section {Section}", sectionNumber);
+        
+        try
+        {
+            return await _fedRampTemplateService.GetSspSectionTemplateAsync(sectionNumber, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting SSP section template");
+            return $"Error retrieving SSP section {sectionNumber} template.";
+        }
+    }
+
+    [KernelFunction("get_control_narrative_template")]
+    [Description("Get an Azure-specific SSP control narrative template. " +
+                 "Returns a ready-to-use narrative with Azure service references. " +
+                 "Use when users ask 'Give me AC-2 narrative for SSP' or 'Control narrative template for SC-7'")]
+    public async Task<string> GetControlNarrativeTemplateAsync(
+        [Description("NIST 800-53 control ID (e.g., AC-2, SC-7, IA-2)")] string controlId,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting control narrative template for {ControlId}", controlId);
+        
+        try
+        {
+            return await _fedRampTemplateService.GetControlNarrativeAsync(controlId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting control narrative template");
+            return $"Error retrieving control narrative for {controlId}.";
+        }
+    }
+
+    [KernelFunction("get_poam_template")]
+    [Description("Get POA&M (Plan of Action and Milestones) template with Azure integration guidance. " +
+                 "Shows required fields, examples, and how to integrate with Azure DevOps/Defender for Cloud. " +
+                 "Use when users ask 'POA&M template' or 'How do I track findings?'")]
+    public async Task<string> GetPoamTemplateAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting POA&M template");
+        
+        try
+        {
+            return await _fedRampTemplateService.GetPoamTemplateAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting POA&M template");
+            return "Error retrieving POA&M template.";
+        }
+    }
+
+    [KernelFunction("get_continuous_monitoring_requirements")]
+    [Description("Get FedRAMP continuous monitoring requirements with Azure implementation. " +
+                 "Shows required activities, frequencies, and Azure services to use. " +
+                 "Use when users ask 'What is required for continuous monitoring?' or 'ConMon requirements'")]
+    public async Task<string> GetContinuousMonitoringRequirementsAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting continuous monitoring requirements");
+        
+        try
+        {
+            return await _fedRampTemplateService.GetContinuousMonitoringRequirementsAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting continuous monitoring requirements");
+            return "Error retrieving continuous monitoring requirements.";
+        }
+    }
+
+    [KernelFunction("get_authorization_package_checklist")]
+    [Description("Get FedRAMP/DoD authorization package document checklist. " +
+                 "Lists all required and optional documents for ATO package. " +
+                 "Use when users ask 'What documents do I need for ATO?' or 'Authorization package checklist'")]
+    public async Task<string> GetAuthorizationPackageChecklistAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting authorization package checklist");
+        
+        try
+        {
+            var checklist = await _fedRampTemplateService.GetAuthorizationPackageChecklistAsync(cancellationToken);
+            return "# Authorization Package Checklist\n\n" + string.Join("\n", checklist.Select(c => $"- {c}"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting authorization package checklist");
+            return "Error retrieving authorization package checklist.";
+        }
+    }
+
+    [KernelFunction("explain_authorization_path")]
+    [Description("Explain a FedRAMP authorization path (Agency, JAB, or DoD PA). " +
+                 "Shows timeline, requirements, and process for the authorization type. " +
+                 "Use when users ask 'How does JAB authorization work?' or 'Agency vs JAB authorization'")]
+    public async Task<string> ExplainAuthorizationPathAsync(
+        [Description("Authorization path (Agency, JAB, or DoD PA)")] string path,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Explaining authorization path {Path}", path);
+        
+        try
+        {
+            return await _fedRampTemplateService.ExplainAuthorizationPathAsync(path, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error explaining authorization path");
+            return $"Error retrieving authorization path information for {path}.";
+        }
+    }
+
+    #endregion
+
+    #region Enhanced RMF
+
+    [KernelFunction("get_service_rmf_guidance")]
+    [Description("Get service-specific RMF guidance for Navy, Army, Air Force, or DISA. " +
+                 "Shows authorizing organization, contacts, tools, and workflows. " +
+                 "Use when users ask 'Navy RMF process' or 'How does Army do ATO?'")]
+    public async Task<string> GetServiceRmfGuidanceAsync(
+        [Description("Military service (Navy, Army, Air Force, or DISA)")] string service,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting RMF guidance for {Service}", service);
+        
+        try
+        {
+            return await _rmfService.GetServiceSpecificGuidanceAsync(service, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting service RMF guidance");
+            return $"Error retrieving RMF guidance for {service}.";
+        }
+    }
+
+    [KernelFunction("get_rmf_timeline")]
+    [Description("Get typical RMF authorization timelines for different scenarios. " +
+                 "Shows phases and durations for new systems, cloud migrations, or reciprocity. " +
+                 "Use when users ask 'How long does ATO take?' or 'RMF timeline for cloud'")]
+    public async Task<string> GetRmfTimelineAsync(
+        [Description("Authorization type (new system, cloud migration, or reciprocity)")] string authorizationType,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting RMF timeline for {Type}", authorizationType);
+        
+        try
+        {
+            return await _rmfService.GetRmfTimelineAsync(authorizationType, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting RMF timeline");
+            return $"Error retrieving RMF timeline for {authorizationType}.";
+        }
+    }
+
+    [KernelFunction("get_rmf_artifacts")]
+    [Description("Get list of required and supporting RMF artifacts. " +
+                 "Shows documents needed for authorization package. " +
+                 "Use when users ask 'What artifacts do I need for RMF?' or 'List RMF documents'")]
+    public async Task<string> GetRmfArtifactsAsync(
+        [Description("Only show required artifacts (true/false)")] bool requiredOnly = false,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting RMF artifacts (required only: {Required})", requiredOnly);
+        
+        try
+        {
+            var artifacts = await _rmfService.GetRmfArtifactsAsync(requiredOnly, cancellationToken);
+            return "# RMF Artifacts\n\n" + string.Join("\n", artifacts.Select(a => $"- {a}"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting RMF artifacts");
+            return "Error retrieving RMF artifacts.";
+        }
+    }
+
+    #endregion
+
+    #region Windows Server STIGs
+
+    [KernelFunction("get_windows_stig_guidance")]
+    [Description("Get Windows Server STIG guidance with Azure Guest Configuration mapping. " +
+                 "Shows registry/GPO settings and Azure Policy enforcement options. " +
+                 "Use when users ask 'Windows Server STIG V-254239' or 'How to implement Windows STIG in Azure?'")]
+    public async Task<string> GetWindowsStigGuidanceAsync(
+        [Description("Windows Server STIG ID (e.g., V-254239)")] string stigId,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting Windows Server STIG guidance for {StigId}", stigId);
+        
+        try
+        {
+            return await _stigService.GetWindowsServerStigGuidanceAsync(stigId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting Windows Server STIG guidance");
+            return $"Error retrieving Windows Server STIG guidance for {stigId}.";
+        }
+    }
+
+    [KernelFunction("search_windows_stigs")]
+    [Description("Search Windows Server STIGs by keyword. " +
+                 "Finds STIGs related to passwords, audit, RDP, SMB, etc. " +
+                 "Use when users ask 'Find Windows STIGs about passwords' or 'Search Windows STIG audit'")]
+    public async Task<string> SearchWindowsStigsAsync(
+        [Description("Search term (e.g., password, audit, RDP, SMB)")] string searchTerm,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Searching Windows Server STIGs for {Term}", searchTerm);
+        
+        try
+        {
+            var results = await _stigService.SearchWindowsStigsAsync(searchTerm, cancellationToken);
+            if (!results.Any())
+                return $"No Windows Server STIGs found matching '{searchTerm}'.";
+            
+            return $"# Windows Server STIGs matching '{searchTerm}'\n\n" + 
+                   string.Join("\n", results.Select(r => $"- {r}"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching Windows Server STIGs");
+            return $"Error searching Windows Server STIGs for '{searchTerm}'.";
+        }
+    }
+
+    [KernelFunction("get_guest_configuration_policy")]
+    [Description("Get Azure Guest Configuration policy guidance for Windows Server STIGs. " +
+                 "Shows available policy initiatives and implementation steps. " +
+                 "Use when users ask 'How to enforce Windows STIGs in Azure?' or 'Guest Configuration for STIGs'")]
+    public async Task<string> GetGuestConfigurationPolicyAsync(
+        [Description("STIG category (optional, for filtering)")] string? stigCategory = null,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Getting Guest Configuration policy guidance");
+        
+        try
+        {
+            return await _stigService.GetGuestConfigurationPolicyAsync(stigCategory ?? "", cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting Guest Configuration policy guidance");
+            return "Error retrieving Guest Configuration policy guidance.";
+        }
+    }
+
+    #endregion
+
+    #region STIG Cross-Reference
 
     [KernelFunction("get_stig_cross_reference")]
     [Description("Get comprehensive STIG cross-reference with NIST controls, CCIs, and DoD instructions. " +
@@ -1236,6 +1495,397 @@ Found {stigs.Count} STIG control(s):
                 resourceType = resourceType
             }, new JsonSerializerOptions { WriteIndented = true });
         }
+    }
+
+    #endregion
+
+    #region Azure Documentation Search (Enhanced)
+
+    [KernelFunction("get_azure_documentation_guidance")]
+    [Description("Provide Azure documentation guidance, best practices, and direct links to official Microsoft Learn documentation. " +
+                 "Use this when users ask to 'search Azure docs', 'find Azure documentation', or need Azure-specific technical information. " +
+                 "Examples: 'Search Azure docs for AKS private cluster', 'Find documentation on Azure Storage encryption', 'How to configure Azure Firewall rules'")]
+    public async Task<string> GetAzureDocumentationGuidanceAsync(
+        [Description("Search query or topic (e.g., 'AKS private cluster networking', 'Storage account encryption', 'App Service custom domains')")]
+        string searchQuery,
+        [Description("Optional: Specific Azure service to focus on (e.g., 'AKS', 'Storage', 'App Service', 'Key Vault')")]
+        string? azureService = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("🔍 Generating Azure documentation guidance for: {Query}", searchQuery);
+
+            // Initialize Azure MCP client for live resource queries
+            await _azureMcpClient.InitializeAsync(cancellationToken);
+
+            // Build comprehensive documentation response
+            var response = new StringBuilder();
+            response.AppendLine($"# 📚 Azure Documentation - {searchQuery}");
+            response.AppendLine();
+
+            // Determine the service and provide specific documentation
+            var serviceLower = azureService?.ToLowerInvariant() ?? "";
+            var queryLower = searchQuery.ToLowerInvariant();
+
+            // Detect service from query if not explicitly provided
+            if (string.IsNullOrEmpty(serviceLower))
+            {
+                if (queryLower.Contains("aks") || queryLower.Contains("kubernetes"))
+                    serviceLower = "aks";
+                else if (queryLower.Contains("storage") || queryLower.Contains("blob"))
+                    serviceLower = "storage";
+                else if (queryLower.Contains("app service") || queryLower.Contains("web app"))
+                    serviceLower = "app service";
+                else if (queryLower.Contains("key vault") || queryLower.Contains("keyvault"))
+                    serviceLower = "key vault";
+                else if (queryLower.Contains("sql") || queryLower.Contains("database"))
+                    serviceLower = "sql";
+                else if (queryLower.Contains("functions") || queryLower.Contains("function app"))
+                    serviceLower = "functions";
+                else if (queryLower.Contains("cosmos"))
+                    serviceLower = "cosmos";
+                else if (queryLower.Contains("firewall"))
+                    serviceLower = "firewall";
+                else if (queryLower.Contains("virtual network") || queryLower.Contains("vnet"))
+                    serviceLower = "vnet";
+            }
+
+            // Query live Azure resources using service-specific MCP tools
+            string? liveResourceInfo = null;
+            try
+            {
+                liveResourceInfo = await GetLiveResourceInfoAsync(serviceLower, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not retrieve live Azure resource information for {Service}", serviceLower);
+            }
+
+            // Provide service-specific documentation
+            switch (serviceLower)
+            {
+                case "aks":
+                case "kubernetes":
+                    response.AppendLine("## Azure Kubernetes Service (AKS)");
+                    response.AppendLine();
+                    
+                    // Add live resource information if available
+                    if (!string.IsNullOrEmpty(liveResourceInfo))
+                    {
+                        response.AppendLine("### 🔴 Your AKS Clusters");
+                        response.AppendLine();
+                        response.AppendLine(liveResourceInfo);
+                        response.AppendLine();
+                    }
+                    
+                    if (queryLower.Contains("private") || queryLower.Contains("networking") || queryLower.Contains("network"))
+                    {
+                        response.AppendLine("### Private Cluster Networking");
+                        response.AppendLine();
+                        response.AppendLine("**Private AKS clusters** restrict API server access to private IP addresses for enhanced security.");
+                        response.AppendLine();
+                        response.AppendLine("**Key Concepts:**");
+                        response.AppendLine("- API server endpoint is only accessible from private network");
+                        response.AppendLine("- Requires Azure Private Link for connectivity");
+                        response.AppendLine("- DNS resolution through private DNS zones");
+                        response.AppendLine("- Compatible with Azure CNI or kubenet networking");
+                        response.AppendLine();
+                        response.AppendLine("**Network Configuration:**");
+                        response.AppendLine("- **Azure CNI**: Pods get IPs from VNet subnet");
+                        response.AppendLine("- **Kubenet**: Pods use NAT, nodes get VNet IPs");
+                        response.AppendLine("- **Network Policies**: Calico or Azure Network Policies");
+                        response.AppendLine("- **Ingress**: Application Gateway, NGINX, or Traefik");
+                        response.AppendLine();
+                        response.AppendLine("**Private Cluster Setup:**");
+                        response.AppendLine("```bash");
+                        response.AppendLine("# Create private AKS cluster");
+                        response.AppendLine("az aks create \\");
+                        response.AppendLine("  --resource-group myResourceGroup \\");
+                        response.AppendLine("  --name myPrivateCluster \\");
+                        response.AppendLine("  --enable-private-cluster \\");
+                        response.AppendLine("  --network-plugin azure \\");
+                        response.AppendLine("  --vnet-subnet-id <subnet-id>");
+                        response.AppendLine("```");
+                        response.AppendLine();
+                    }
+                    
+                    response.AppendLine("### Official Documentation");
+                    response.AppendLine("- [AKS Documentation](https://learn.microsoft.com/en-us/azure/aks/)");
+                    response.AppendLine("- [AKS Networking Concepts](https://learn.microsoft.com/en-us/azure/aks/concepts-network)");
+                    response.AppendLine("- [Private AKS Clusters](https://learn.microsoft.com/en-us/azure/aks/private-clusters)");
+                    response.AppendLine("- [Azure CNI Networking](https://learn.microsoft.com/en-us/azure/aks/configure-azure-cni)");
+                    response.AppendLine("- [AKS Best Practices](https://learn.microsoft.com/en-us/azure/aks/best-practices)");
+                    break;
+
+                case "storage":
+                    response.AppendLine("## Azure Storage");
+                    response.AppendLine();
+                    
+                    // Add live resource information if available
+                    if (!string.IsNullOrEmpty(liveResourceInfo))
+                    {
+                        response.AppendLine("### 💾 Your Storage Accounts");
+                        response.AppendLine();
+                        response.AppendLine(liveResourceInfo);
+                        response.AppendLine();
+                    }
+                    
+                    response.AppendLine("### Official Documentation");
+                    response.AppendLine("- [Azure Storage Documentation](https://learn.microsoft.com/en-us/azure/storage/)");
+                    response.AppendLine("- [Storage Security Guide](https://learn.microsoft.com/en-us/azure/storage/common/storage-security-guide)");
+                    response.AppendLine("- [Blob Storage](https://learn.microsoft.com/en-us/azure/storage/blobs/)");
+                    response.AppendLine("- [Storage Encryption](https://learn.microsoft.com/en-us/azure/storage/common/storage-service-encryption)");
+                    break;
+
+                case "app service":
+                    response.AppendLine("## Azure App Service");
+                    response.AppendLine();
+                    
+                    // Add live resource information if available
+                    if (!string.IsNullOrEmpty(liveResourceInfo))
+                    {
+                        response.AppendLine("### 🕸️ Your App Services");
+                        response.AppendLine();
+                        response.AppendLine(liveResourceInfo);
+                        response.AppendLine();
+                    }
+                    
+                    response.AppendLine("### Official Documentation");
+                    response.AppendLine("- [App Service Documentation](https://learn.microsoft.com/en-us/azure/app-service/)");
+                    response.AppendLine("- [App Service Best Practices](https://learn.microsoft.com/en-us/azure/app-service/app-service-best-practices)");
+                    response.AppendLine("- [Custom Domains](https://learn.microsoft.com/en-us/azure/app-service/app-service-web-tutorial-custom-domain)");
+                    break;
+
+                case "key vault":
+                    response.AppendLine("## Azure Key Vault");
+                    response.AppendLine();
+                    
+                    // Add live resource information if available
+                    if (!string.IsNullOrEmpty(liveResourceInfo))
+                    {
+                        response.AppendLine("### 🔑 Your Key Vaults");
+                        response.AppendLine();
+                        response.AppendLine(liveResourceInfo);
+                        response.AppendLine();
+                    }
+                    
+                    response.AppendLine("### Official Documentation");
+                    response.AppendLine("- [Key Vault Documentation](https://learn.microsoft.com/en-us/azure/key-vault/)");
+                    response.AppendLine("- [Key Vault Security](https://learn.microsoft.com/en-us/azure/key-vault/general/security-features)");
+                    response.AppendLine("- [Managed Identities](https://learn.microsoft.com/en-us/azure/key-vault/general/managed-identity)");
+                    break;
+
+                case "sql":
+                    response.AppendLine("## Azure SQL Database");
+                    response.AppendLine();
+                    
+                    // Add live resource information if available
+                    if (!string.IsNullOrEmpty(liveResourceInfo))
+                    {
+                        response.AppendLine("### 🗄️ Your SQL Servers");
+                        response.AppendLine();
+                        response.AppendLine(liveResourceInfo);
+                        response.AppendLine();
+                    }
+                    
+                    response.AppendLine("### Official Documentation");
+                    response.AppendLine("- [Azure SQL Documentation](https://learn.microsoft.com/en-us/azure/azure-sql/)");
+                    response.AppendLine("- [SQL Security](https://learn.microsoft.com/en-us/azure/azure-sql/database/security-overview)");
+                    break;
+
+                case "cosmos":
+                    response.AppendLine("## Azure Cosmos DB");
+                    response.AppendLine();
+                    
+                    // Add live resource information if available
+                    if (!string.IsNullOrEmpty(liveResourceInfo))
+                    {
+                        response.AppendLine("### 📊 Your Cosmos DB Accounts");
+                        response.AppendLine();
+                        response.AppendLine(liveResourceInfo);
+                        response.AppendLine();
+                    }
+                    
+                    response.AppendLine("### Official Documentation");
+                    response.AppendLine("- [Cosmos DB Documentation](https://learn.microsoft.com/en-us/azure/cosmos-db/)");
+                    response.AppendLine("- [Cosmos DB Best Practices](https://learn.microsoft.com/en-us/azure/cosmos-db/best-practice-guide)");
+                    break;
+
+                default:
+                    response.AppendLine("## Azure Documentation Resources");
+                    response.AppendLine();
+                    
+                    // Show general subscription info if available
+                    if (!string.IsNullOrEmpty(liveResourceInfo))
+                    {
+                        response.AppendLine("### Your Azure Resources");
+                        response.AppendLine();
+                        response.AppendLine(liveResourceInfo);
+                        response.AppendLine();
+                    }
+                    
+                    response.AppendLine("### General Resources");
+                    response.AppendLine("- [Azure Documentation Home](https://learn.microsoft.com/en-us/azure/)");
+                    response.AppendLine("- [Azure Architecture Center](https://learn.microsoft.com/en-us/azure/architecture/)");
+                    response.AppendLine("- [Well-Architected Framework](https://learn.microsoft.com/en-us/azure/well-architected/)");
+                    response.AppendLine("- [Azure QuickStart Templates](https://github.com/Azure/azure-quickstart-templates)");
+                    break;
+            }
+
+            response.AppendLine();
+            response.AppendLine("---");
+            response.AppendLine();
+            response.AppendLine("💡 **Need more specific guidance?** Ask about:");
+            response.AppendLine("- Configuration steps for your scenario");
+            response.AppendLine("- Best practices and security recommendations");
+            response.AppendLine("- Code examples and implementation details");
+            response.AppendLine("- Architecture patterns and design decisions");
+
+            _logger.LogInformation("✅ Azure documentation guidance generated successfully");
+            return response.ToString();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating Azure documentation guidance");
+            return $@"❌ **Error Accessing Azure Documentation**
+
+An error occurred while generating documentation guidance for: {searchQuery}
+
+**Error:** {ex.Message}
+
+**Please try:**
+1. Visit [Azure Documentation](https://learn.microsoft.com/en-us/azure/) directly
+2. Search [Microsoft Learn](https://learn.microsoft.com/) for your topic
+3. Ask me for more specific configuration guidance
+
+If you need help with a specific Azure service, let me know!";
+        }
+    }
+
+    /// <summary>
+    /// Get live Azure resource information using service-specific MCP tools
+    /// </summary>
+    private async Task<string?> GetLiveResourceInfoAsync(string service, CancellationToken cancellationToken)
+    {
+        try
+        {
+            _logger.LogInformation("Querying live Azure resources for service: {Service}", service);
+            
+            var result = service switch
+            {
+                "aks" or "kubernetes" => await GetAksResourcesAsync(cancellationToken),
+                "storage" => await GetStorageResourcesAsync(cancellationToken),
+                "app service" => await GetAppServiceResourcesAsync(cancellationToken),
+                "key vault" => await GetKeyVaultResourcesAsync(cancellationToken),
+                "sql" => await GetSqlResourcesAsync(cancellationToken),
+                "cosmos" => await GetCosmosResourcesAsync(cancellationToken),
+                _ => null
+            };
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not retrieve live resources for {Service}", service);
+            return null;
+        }
+    }
+
+    private async Task<string?> GetAksResourcesAsync(CancellationToken cancellationToken)
+    {
+        var result = await _azureMcpClient.CallToolAsync("aks", new Dictionary<string, object?>(), cancellationToken);
+        
+        if (result.Success && result.Result != null)
+        {
+            var response = new StringBuilder();
+            response.AppendLine("```");
+            response.AppendLine(result.Result.ToString());
+            response.AppendLine("```");
+            return response.ToString();
+        }
+        
+        return null;
+    }
+
+    private async Task<string?> GetStorageResourcesAsync(CancellationToken cancellationToken)
+    {
+        var result = await _azureMcpClient.CallToolAsync("storage", new Dictionary<string, object?>(), cancellationToken);
+        
+        if (result.Success && result.Result != null)
+        {
+            var response = new StringBuilder();
+            response.AppendLine("```");
+            response.AppendLine(result.Result.ToString());
+            response.AppendLine("```");
+            return response.ToString();
+        }
+        
+        return null;
+    }
+
+    private async Task<string?> GetAppServiceResourcesAsync(CancellationToken cancellationToken)
+    {
+        var result = await _azureMcpClient.CallToolAsync("appservice", new Dictionary<string, object?>(), cancellationToken);
+        
+        if (result.Success && result.Result != null)
+        {
+            var response = new StringBuilder();
+            response.AppendLine("```");
+            response.AppendLine(result.Result.ToString());
+            response.AppendLine("```");
+            return response.ToString();
+        }
+        
+        return null;
+    }
+
+    private async Task<string?> GetKeyVaultResourcesAsync(CancellationToken cancellationToken)
+    {
+        var result = await _azureMcpClient.CallToolAsync("keyvault", new Dictionary<string, object?>(), cancellationToken);
+        
+        if (result.Success && result.Result != null)
+        {
+            var response = new StringBuilder();
+            response.AppendLine("```");
+            response.AppendLine(result.Result.ToString());
+            response.AppendLine("```");
+            return response.ToString();
+        }
+        
+        return null;
+    }
+
+    private async Task<string?> GetSqlResourcesAsync(CancellationToken cancellationToken)
+    {
+        var result = await _azureMcpClient.CallToolAsync("sql", new Dictionary<string, object?>(), cancellationToken);
+        
+        if (result.Success && result.Result != null)
+        {
+            var response = new StringBuilder();
+            response.AppendLine("```");
+            response.AppendLine(result.Result.ToString());
+            response.AppendLine("```");
+            return response.ToString();
+        }
+        
+        return null;
+    }
+
+    private async Task<string?> GetCosmosResourcesAsync(CancellationToken cancellationToken)
+    {
+        var result = await _azureMcpClient.CallToolAsync("cosmos", new Dictionary<string, object?>(), cancellationToken);
+        
+        if (result.Success && result.Result != null)
+        {
+            var response = new StringBuilder();
+            response.AppendLine("```");
+            response.AppendLine(result.Result.ToString());
+            response.AppendLine("```");
+            return response.ToString();
+        }
+        
+        return null;
     }
 
     #endregion

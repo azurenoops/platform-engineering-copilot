@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using Platform.Engineering.Copilot.Core.Data.Repositories;
@@ -17,13 +18,16 @@ public class TemplateStorageService : ITemplateStorageService
 {
     private readonly IEnvironmentTemplateRepository _templateRepository;
     private readonly ILogger<TemplateStorageService> _logger;
+    private readonly int _expirationMinutes;
 
     public TemplateStorageService(
         IEnvironmentTemplateRepository templateRepository,
+        IConfiguration configuration,
         ILogger<TemplateStorageService> logger)
     {
         _templateRepository = templateRepository;
         _logger = logger;
+        _expirationMinutes = configuration.GetValue("TemplateExpiration:ExpirationMinutes", 30);
     }
 
     public async Task<CoreModels.EnvironmentTemplate> StoreTemplateAsync(string name, object template, CancellationToken cancellationToken = default)
@@ -63,6 +67,7 @@ public class TemplateStorageService : ITemplateStorageService
             CreatedBy = templateData.CreatedBy,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(_expirationMinutes),
             IsActive = true,
             IsPublic = templateData.IsPublic,
             AzureService = templateData.AzureService,
@@ -390,27 +395,43 @@ public class TemplateStorageService : ITemplateStorageService
         var files = new Dictionary<string, string>();
         var templateData = new TemplateData();
 
-        // Check if template is an anonymous object with template and files properties
-        var templateType = template.GetType();
-        var templateProp = templateType.GetProperty("template");
-        // Try both "files" and "Files" for case-insensitive matching
-        var filesProp = templateType.GetProperty("files") ?? templateType.GetProperty("Files");
-
-        object actualTemplate = template;
-
-        if (filesProp != null)
+        // First check if template is a Dictionary<string, object> (from Infrastructure Plugin)
+        if (template is Dictionary<string, object> dictTemplate)
         {
-            var filesValue = filesProp.GetValue(template);
-            if (filesValue is Dictionary<string, string> fileDict)
+            // Extract files from dictionary
+            if (dictTemplate.TryGetValue("files", out var filesObj) || dictTemplate.TryGetValue("Files", out filesObj))
             {
-                files = fileDict;
+                if (filesObj is Dictionary<string, string> fileDict)
+                {
+                    files = fileDict;
+                }
             }
-            
-            if (templateProp != null)
+            // The rest of templateData extraction will happen below
+        }
+        else
+        {
+            // Check if template is an anonymous object with template and files properties
+            var templateType = template.GetType();
+            var templateProp = templateType.GetProperty("template");
+            // Try both "files" and "Files" for case-insensitive matching
+            var filesProp = templateType.GetProperty("files") ?? templateType.GetProperty("Files");
+
+            if (filesProp != null)
             {
-                actualTemplate = templateProp.GetValue(template) ?? template;
+                var filesValue = filesProp.GetValue(template);
+                if (filesValue is Dictionary<string, string> fileDict)
+                {
+                    files = fileDict;
+                }
+                
+                if (templateProp != null)
+                {
+                    template = templateProp.GetValue(template) ?? template;
+                }
             }
         }
+        
+        object actualTemplate = template;
 
         // Extract template data from the actual template object
         if (actualTemplate is CoreModels.EnvironmentTemplate envTemplate)

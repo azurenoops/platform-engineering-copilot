@@ -4,11 +4,13 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.SemanticKernel;
 using Platform.Engineering.Copilot.Core.Models;
 using Platform.Engineering.Copilot.Core.Models.CostOptimization;
 using Platform.Engineering.Copilot.Core.Models.CostOptimization.Analysis;
 using Platform.Engineering.Copilot.Core.Services.Azure;
+using Platform.Engineering.Copilot.Core.Services;
 using Platform.Engineering.Copilot.Core.Plugins;
 using DetailedCostOptimizationRecommendation = Platform.Engineering.Copilot.Core.Models.CostOptimization.Analysis.CostOptimizationRecommendation;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
@@ -25,7 +27,11 @@ public class CostManagementPlugin : BaseSupervisorPlugin
     private readonly ICostOptimizationEngine _costOptimizationEngine;
     private readonly IAzureCostManagementService _costService;
     private readonly AzureMcpClient _azureMcpClient;
+    private readonly ConfigService _configService;
+    private readonly IMemoryCache _subscriptionCache;
     private readonly CostManagementAgentOptions _options;
+    
+    private const string LAST_SUBSCRIPTION_CACHE_KEY = "cost_last_subscription";
 
     public CostManagementPlugin(
         ILogger<CostManagementPlugin> logger,
@@ -33,12 +39,64 @@ public class CostManagementPlugin : BaseSupervisorPlugin
         ICostOptimizationEngine costOptimizationEngine,
         IAzureCostManagementService costService,
         AzureMcpClient azureMcpClient,
+        ConfigService configService,
+        IMemoryCache subscriptionCache,
         IOptions<CostManagementAgentOptions> options) : base(logger, kernel)
     {
         _costOptimizationEngine = costOptimizationEngine ?? throw new ArgumentNullException(nameof(costOptimizationEngine));
         _costService = costService ?? throw new ArgumentNullException(nameof(costService));
         _azureMcpClient = azureMcpClient ?? throw new ArgumentNullException(nameof(azureMcpClient));
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
+        _subscriptionCache = subscriptionCache ?? throw new ArgumentNullException(nameof(subscriptionCache));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+    }
+    
+    // ========== SUBSCRIPTION LOOKUP HELPERS ==========
+    
+    /// <summary>
+    /// Stores the last used subscription ID in cache AND persistent config file for session continuity
+    /// </summary>
+    private void SetLastUsedSubscription(string subscriptionId)
+    {
+        _subscriptionCache.Set(LAST_SUBSCRIPTION_CACHE_KEY, subscriptionId, TimeSpan.FromHours(24));
+        try
+        {
+            _configService.SetDefaultSubscription(subscriptionId);
+            _logger.LogInformation("Stored subscription in persistent config: {SubscriptionId}", subscriptionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist subscription to config file, will only use cache");
+        }
+    }
+    
+    /// <summary>
+    /// Gets the last used subscription ID from cache, or persistent config file if cache is empty
+    /// </summary>
+    private string? GetLastUsedSubscription()
+    {
+        if (_subscriptionCache.TryGetValue<string>(LAST_SUBSCRIPTION_CACHE_KEY, out var subscriptionId))
+        {
+            _logger.LogDebug("Retrieved last used subscription from cache: {SubscriptionId}", subscriptionId);
+            return subscriptionId;
+        }
+        
+        try
+        {
+            subscriptionId = _configService.GetDefaultSubscription();
+            if (!string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                _logger.LogInformation("Retrieved subscription from persistent config: {SubscriptionId}", subscriptionId);
+                _subscriptionCache.Set(LAST_SUBSCRIPTION_CACHE_KEY, subscriptionId, TimeSpan.FromHours(24));
+                return subscriptionId;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read subscription from config file");
+        }
+        
+        return null;
     }
 
     [KernelFunction("process_cost_management_query")]
@@ -53,13 +111,35 @@ public class CostManagementPlugin : BaseSupervisorPlugin
             _logger.LogInformation("Processing cost management query: {Query}", query);
 
             var normalizedQuery = query.ToLowerInvariant();
+            
+            // Try to get subscription from: 1) parameter, 2) query text, 3) cached/config default
             subscriptionId ??= ExtractSubscriptionId(query);
+            
+            if (string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                // Fall back to last used subscription from cache or config
+                subscriptionId = GetLastUsedSubscription();
+                if (!string.IsNullOrWhiteSpace(subscriptionId))
+                {
+                    _logger.LogInformation("Using last used subscription from session: {SubscriptionId}", subscriptionId);
+                }
+            }
 
             if (string.IsNullOrWhiteSpace(subscriptionId))
             {
-                return "Unable to identify the subscription to analyze. Please specify the Azure subscription ID in the query or as a parameter.";
-            }
+                return @"⚠️ **No Subscription Configured**
 
+I couldn't identify which Azure subscription to analyze. 
+
+**To fix this, you can:**
+1. **Set a default subscription:** `Set my subscription to <subscription-id>`
+2. **Include it in your query:** `What's the cost for subscription 453c2549-...`
+
+💡 Once you set a default subscription, it will be used for all future cost queries automatically.";
+            }
+            
+            // Persist the subscription for future calls
+            SetLastUsedSubscription(subscriptionId);
             var intent = DetermineIntent(normalizedQuery);
             return intent switch
             {
@@ -79,9 +159,24 @@ public class CostManagementPlugin : BaseSupervisorPlugin
     private async Task<string> HandleDashboardAsync(string subscriptionId, string query, CancellationToken cancellationToken)
     {
         var endDate = DateTimeOffset.UtcNow;
-        var startDate = endDate.AddDays(-DetermineLookbackWindow(query));
+        var lookbackDays = DetermineLookbackWindow(query);
+        var startDate = endDate.AddDays(-lookbackDays);
 
-        var dashboard = await _costService.GetCostDashboardAsync(subscriptionId, startDate, endDate, cancellationToken);
+        // Use caching with configured RefreshIntervalMinutes
+        var cacheKey = $"cost_dashboard_{subscriptionId}_{lookbackDays}";
+        if (!_subscriptionCache.TryGetValue<CostMonitoringDashboard>(cacheKey, out var dashboard) || dashboard == null)
+        {
+            dashboard = await _costService.GetCostDashboardAsync(subscriptionId, startDate, endDate, cancellationToken);
+            
+            // Cache for the configured refresh interval
+            var cacheExpiration = TimeSpan.FromMinutes(_options.CostManagement.RefreshIntervalMinutes);
+            _subscriptionCache.Set(cacheKey, dashboard, cacheExpiration);
+            _logger.LogDebug("Cached cost dashboard for {Minutes} minutes", _options.CostManagement.RefreshIntervalMinutes);
+        }
+        else
+        {
+            _logger.LogDebug("Using cached cost dashboard for subscription {SubscriptionId}", subscriptionId);
+        }
 
         var sb = new StringBuilder();
         
@@ -685,13 +780,28 @@ public class CostManagementPlugin : BaseSupervisorPlugin
         return match.Success ? match.Groups[1].Value : null;
     }
 
-    private static int DetermineLookbackWindow(string query)
+    /// <summary>
+    /// Determines lookback window from query, falling back to DefaultTimeframe config
+    /// </summary>
+    private int DetermineLookbackWindow(string query)
     {
+        // Check query for explicit time references
         if (query.Contains("quarter")) return 90;
         if (query.Contains("year")) return 365;
-        if (query.Contains("month")) return 30;
         if (query.Contains("week")) return 7;
-        return 30;
+        if (query.Contains("month") || query.Contains("last month")) return 30;
+        
+        // Fall back to configured DefaultTimeframe
+        return _options.DefaultTimeframe.ToLowerInvariant() switch
+        {
+            "monthttodate" or "monthtodate" => (DateTime.UtcNow.Day), // Days into current month
+            "lastmonth" => 30,
+            "last7days" => 7,
+            "last30days" => 30,
+            "last90days" or "quarter" => 90,
+            "yeartodate" => DateTime.UtcNow.DayOfYear,
+            _ => 30 // Default fallback
+        };
     }
 
     private static int DetermineForecastWindow(string query)

@@ -18,6 +18,8 @@ using Platform.Engineering.Copilot.Core.Interfaces.Agents;
 using Platform.Engineering.Copilot.Core.Services.Agents;
 using Platform.Engineering.Copilot.Core.Interfaces.Chat;
 using Platform.Engineering.Copilot.Core.Services.Azure;
+using Platform.Engineering.Copilot.Compliance.Core.Configuration;
+using CoreConfiguration = Platform.Engineering.Copilot.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Interfaces.Notifications;
 using Platform.Engineering.Copilot.Core.Services.Notifications;
 using Platform.Engineering.Copilot.Core.Interfaces.Jobs;
@@ -25,7 +27,6 @@ using Platform.Engineering.Copilot.Core.Configuration;
 using Platform.Engineering.Copilot.Compliance.Agent.Extensions;
 using Platform.Engineering.Copilot.Compliance.Agent.Services.Compliance.Remediation;
 using Platform.Engineering.Copilot.Core.Interfaces.Compliance.Remediation; // For AddEnhancedAtoCompliance
-using Platform.Engineering.Copilot.Compliance.Agent.Plugins.ATO;
 using Platform.Engineering.Copilot.Compliance.Agent.Plugins.Code;
 
 namespace Platform.Engineering.Copilot.Compliance.Core.Extensions;
@@ -138,6 +139,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IStigValidationService, StigValidationService>();
         
         // Register ATO Compliance Engine - Scoped (requires DbContext)
+        // First register its dependency: IAssessmentService
+        services.AddScoped<IAssessmentService, Platform.Engineering.Copilot.Compliance.Agent.Services.Data.AssessmentService>();
         services.AddScoped<IAtoComplianceEngine, AtoComplianceEngine>();
         
         // Register Script Sanitization Service - Scoped (validates and sanitizes remediation scripts)
@@ -159,6 +162,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICodeScanningEngine, CodeScanningEngine>();
         
         // Register Document Generation Service - Scoped (generates ATO compliance documents: SSP, SAR, POA&M)
+        // Configure Document Agent options from appsettings.json
+        services.Configure<DocumentAgentOptions>(
+            configuration.GetSection(DocumentAgentOptions.SectionName));
         services.AddScoped<IDocumentGenerationService, Agent.Services.Documents.DocumentGenerationService>();
         
         // Register Document Versioning Service - Scoped (manages document versions and revisions)
@@ -177,12 +183,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GitHubPullRequestService>();
         services.AddScoped<PullRequestReviewService>();
         
-        // Configure GitHub settings (for PR reviews)
-        services.AddOptions<GitHubConfiguration>()
-            .Configure<IConfiguration>((settings, configuration) =>
-            {
-                configuration.GetSection("Gateway:GitHub").Bind(settings);
-            });
+        // Configure GitHub settings (for PR reviews) - unified configuration via GatewayOptions
+        // No longer registering separate GitHubConfiguration - now using GitHubGatewayOptions from GatewayOptions
+        // GitHub settings support: AccessToken, ApiBaseUrl, DefaultOwner, Enabled, WebhookSecret, 
+        // EnablePrReviews, AutoApproveOnSuccess, MaxFileSizeKb
         
         // Register Compliance Remediation Service - Scoped (requires HttpClient and Azure services)
         services.AddScoped<IComplianceRemediationService, ComplianceRemediationService>();
@@ -203,9 +207,11 @@ public static class ServiceCollectionExtensions
         // Register plugins (required by specialized agents) - Scoped to allow DbContext injection
         services.AddScoped<CompliancePlugin>();
         services.AddScoped<CodeScanningPlugin>();
-        services.AddScoped<AtoPreparationPlugin>();
-        services.AddScoped<DocumentGenerationPlugin>();
         services.AddScoped<PullRequestReviewPlugin>();
+        
+        // Note: AtoPreparationPlugin and DocumentGenerationPlugin have been merged into CompliancePlugin.AtoPreparation.cs
+        // DocumentPlugin remains separate as it handles document INPUT/analysis (not OUTPUT generation)
+        // This consolidates all compliance domain assessment and ATO functions in a single plugin per Semantic Kernel best practices
         
         // Register SharedMemory as singleton (shared across all agents for context)
         services.AddSingleton<SharedMemory>();
@@ -235,8 +241,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(sp => 
         {
             var config = sp.GetRequiredService<IConfiguration>();
-            var gatewayOptions = new GatewayOptions();
-            config.GetSection(GatewayOptions.SectionName).Bind(gatewayOptions);
+            var gatewayOptions = new CoreConfiguration.GatewayOptions();
+            config.GetSection(CoreConfiguration.GatewayOptions.SectionName).Bind(gatewayOptions);
 
             return new AzureMcpConfiguration
             {

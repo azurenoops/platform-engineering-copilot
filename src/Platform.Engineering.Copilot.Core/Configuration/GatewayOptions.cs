@@ -78,22 +78,22 @@ public class AzureGatewayOptions
 }
 
 /// <summary>
-/// GitHub gateway configuration
+/// GitHub gateway configuration (unified for both API and PR operations)
 /// </summary>
 public class GitHubGatewayOptions
 {
     /// <summary>
-    /// GitHub personal access token
+    /// GitHub personal access token for API authentication
     /// </summary>
     public string? AccessToken { get; set; }
 
     /// <summary>
-    /// GitHub API base URL
+    /// GitHub API base URL (e.g., https://api.github.com or https://github.enterprise.com/api/v3)
     /// </summary>
     public string ApiBaseUrl { get; set; } = "https://api.github.com";
 
     /// <summary>
-    /// Default organization/user
+    /// Default organization/user for repository operations
     /// </summary>
     public string? DefaultOwner { get; set; }
 
@@ -101,4 +101,24 @@ public class GitHubGatewayOptions
     /// Whether GitHub integration is enabled
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Webhook secret for securing GitHub webhooks
+    /// </summary>
+    public string? WebhookSecret { get; set; }
+
+    /// <summary>
+    /// Enable pull request review operations
+    /// </summary>
+    public bool EnablePrReviews { get; set; } = true;
+
+    /// <summary>
+    /// Automatically approve pull requests when tests pass
+    /// </summary>
+    public bool AutoApproveOnSuccess { get; set; } = false;
+
+    /// <summary>
+    /// Maximum file size in KB for GitHub operations (default 1MB)
+    /// </summary>
+    public int MaxFileSizeKb { get; set; } = 1024;
 }

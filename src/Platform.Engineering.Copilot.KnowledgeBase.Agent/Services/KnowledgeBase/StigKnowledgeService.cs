@@ -21,7 +21,9 @@ public class StigKnowledgeService : IStigKnowledgeService
     private readonly ILogger<StigKnowledgeService> _logger;
     private readonly IDoDInstructionService _dodInstructionService;
     private const string CACHE_KEY = "stig_controls_data";
+    private const string WINDOWS_STIG_CACHE_KEY = "windows_stig_data";
     private const string STIG_FILE = "KnowledgeBase/stig-controls.json";
+    private const string WINDOWS_STIG_FILE = "KnowledgeBase/windows-server-stig-azure.json";
 
     public StigKnowledgeService(
         IMemoryCache cache, 
@@ -309,5 +311,226 @@ public class StigKnowledgeService : IStigKnowledgeService
         public string Description { get; set; } = string.Empty;
         public string Scope { get; set; } = string.Empty;
         public string Url { get; set; } = string.Empty;
+    }
+
+    // Windows Server STIG methods
+    public async Task<string> GetWindowsServerStigGuidanceAsync(string stigId, CancellationToken cancellationToken = default)
+    {
+        var data = await LoadWindowsStigDataAsync(cancellationToken);
+        if (data?.StigCategories == null)
+            return $"Windows Server STIG {stigId} not found.";
+
+        foreach (var category in data.StigCategories)
+        {
+            var control = category.StigControls?.FirstOrDefault(c => 
+                c.StigId?.Equals(stigId, StringComparison.OrdinalIgnoreCase) == true);
+            
+            if (control != null)
+            {
+                return $@"# Windows Server STIG: {control.StigId}
+
+**Title:** {control.Title}
+**Severity:** {control.Severity}
+**Category:** {category.Category}
+
+## Description
+{category.Description}
+
+## NIST Mapping
+{string.Join(", ", control.NistMapping ?? new List<string>())}
+
+## Configuration
+
+{(control.RegistryPath != null ? $@"### Registry Setting
+- **Path:** `{control.RegistryPath}`
+- **Value:** `{control.RegistryValue}`
+- **Required:** `{control.RequiredValue}`" : "")}
+
+{(control.GpoPath != null ? $@"### Group Policy Setting
+- **Path:** `{control.GpoPath}`
+- **Setting:** `{control.SettingName}`
+- **Required Value:** `{control.RequiredValue}`" : "")}
+
+## Azure Guest Configuration
+{(control.AzureGuestConfiguration != null ? $@"- **Policy:** {control.AzureGuestConfiguration.PolicyName}
+- **Status:** {control.AzureGuestConfiguration.ComplianceStatus}
+- **Remediation:** {control.AzureGuestConfiguration.Remediation}" : "Not available")}
+
+{(control.AzureMonitorIntegration != null ? $@"
+## Azure Monitor Integration
+- **Event ID:** {control.AzureMonitorIntegration.EventId}
+- **Log Analytics Table:** {control.AzureMonitorIntegration.LogAnalyticsTable}
+- **Sentinel Detection:** {control.AzureMonitorIntegration.SentinelDetection}" : "")}
+";
+            }
+        }
+
+        return $"Windows Server STIG '{stigId}' not found. Try searching with 'search windows stigs [term]'.";
+    }
+
+    public async Task<IReadOnlyList<string>> SearchWindowsStigsAsync(string searchTerm, CancellationToken cancellationToken = default)
+    {
+        var data = await LoadWindowsStigDataAsync(cancellationToken);
+        if (data?.StigCategories == null)
+            return Array.Empty<string>();
+
+        var results = new List<string>();
+        var term = searchTerm.ToLowerInvariant();
+
+        foreach (var category in data.StigCategories)
+        {
+            if (category.StigControls == null) continue;
+
+            foreach (var control in category.StigControls)
+            {
+                if (control.StigId?.Contains(term, StringComparison.OrdinalIgnoreCase) == true ||
+                    control.Title?.Contains(term, StringComparison.OrdinalIgnoreCase) == true ||
+                    category.Category?.Contains(term, StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    results.Add($"{control.StigId}: {control.Title} [{control.Severity}]");
+                }
+            }
+        }
+
+        return results.AsReadOnly();
+    }
+
+    public async Task<string> GetGuestConfigurationPolicyAsync(string stigCategory, CancellationToken cancellationToken = default)
+    {
+        var data = await LoadWindowsStigDataAsync(cancellationToken);
+        if (data?.AzurePolicyInitiatives?.Initiatives == null)
+            return "Guest Configuration policy information not available.";
+
+        var output = $@"# Azure Guest Configuration for Windows Server STIG
+
+## Available Policy Initiatives
+
+";
+        foreach (var initiative in data.AzurePolicyInitiatives.Initiatives)
+        {
+            output += $@"### {initiative.Name}
+- **Policy ID:** `{initiative.PolicyDefinitionId}`
+- **Description:** {initiative.Description}
+{(initiative.ControlsCovered != null ? $"- **Controls Covered:** {initiative.ControlsCovered}" : "")}
+
+";
+        }
+
+        if (data.ImplementationGuidance?.Steps != null)
+        {
+            output += "## Implementation Steps\n\n";
+            foreach (var step in data.ImplementationGuidance.Steps)
+            {
+                output += $@"### Step {step.Step}: {step.Title}
+{string.Join("\n", step.Actions?.Select(a => $"- {a}") ?? Array.Empty<string>())}
+{(step.AzureCliExample != null ? $"\n**Azure CLI:**\n```bash\n{step.AzureCliExample}\n```" : "")}
+
+";
+            }
+        }
+
+        return output;
+    }
+
+    private async Task<WindowsStigData?> LoadWindowsStigDataAsync(CancellationToken cancellationToken)
+    {
+        if (_cache.TryGetValue(WINDOWS_STIG_CACHE_KEY, out WindowsStigData? cachedData))
+            return cachedData;
+
+        try
+        {
+            var filePath = Path.Combine(AppContext.BaseDirectory, WINDOWS_STIG_FILE);
+            if (!File.Exists(filePath))
+            {
+                _logger.LogWarning("Windows STIG file not found: {FilePath}", filePath);
+                return null;
+            }
+
+            var json = await File.ReadAllTextAsync(filePath, cancellationToken);
+            var data = JsonSerializer.Deserialize<WindowsStigData>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            _cache.Set(WINDOWS_STIG_CACHE_KEY, data, TimeSpan.FromHours(24));
+            _logger.LogInformation("Loaded Windows Server STIG data");
+
+            return data;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading Windows Server STIG data");
+            return null;
+        }
+    }
+
+    // Windows STIG data models
+    private class WindowsStigData
+    {
+        public List<WindowsStigCategory>? StigCategories { get; set; }
+        public AzurePolicyInitiatives? AzurePolicyInitiatives { get; set; }
+        public ImplementationGuidance? ImplementationGuidance { get; set; }
+    }
+
+    private class WindowsStigCategory
+    {
+        public string? Category { get; set; }
+        public string? Description { get; set; }
+        public List<WindowsStigControl>? StigControls { get; set; }
+    }
+
+    private class WindowsStigControl
+    {
+        public string? StigId { get; set; }
+        public string? Title { get; set; }
+        public string? Severity { get; set; }
+        public List<string>? NistMapping { get; set; }
+        public string? RegistryPath { get; set; }
+        public string? RegistryValue { get; set; }
+        public string? RequiredValue { get; set; }
+        public string? GpoPath { get; set; }
+        public string? SettingName { get; set; }
+        public GuestConfigurationInfo? AzureGuestConfiguration { get; set; }
+        public AzureMonitorInfo? AzureMonitorIntegration { get; set; }
+    }
+
+    private class GuestConfigurationInfo
+    {
+        public string? PolicyName { get; set; }
+        public string? ComplianceStatus { get; set; }
+        public string? Remediation { get; set; }
+    }
+
+    private class AzureMonitorInfo
+    {
+        public string? EventId { get; set; }
+        public string? LogAnalyticsTable { get; set; }
+        public string? SentinelDetection { get; set; }
+    }
+
+    private class AzurePolicyInitiatives
+    {
+        public List<PolicyInitiative>? Initiatives { get; set; }
+    }
+
+    private class PolicyInitiative
+    {
+        public string? Name { get; set; }
+        public string? PolicyDefinitionId { get; set; }
+        public string? Description { get; set; }
+        public string? ControlsCovered { get; set; }
+    }
+
+    private class ImplementationGuidance
+    {
+        public List<ImplementationStep>? Steps { get; set; }
+    }
+
+    private class ImplementationStep
+    {
+        public int Step { get; set; }
+        public string? Title { get; set; }
+        public List<string>? Actions { get; set; }
+        public string? AzureCliExample { get; set; }
     }
 }

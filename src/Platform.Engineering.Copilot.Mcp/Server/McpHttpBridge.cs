@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Mcp.Tools;
@@ -32,24 +33,31 @@ public class McpHttpBridge
     /// </summary>
     public void MapHttpEndpoints(WebApplication app)
     {
+        // Debug test endpoint
+        app.MapGet("/test", () => Results.Ok(new { message = "Test endpoint working", timestamp = DateTime.UtcNow }));
+
         // Process chat request through multi-agent orchestrator
         app.MapPost("/mcp/chat", async (HttpContext context, PlatformEngineeringCopilotTools chatTool) =>
         {
+            var logger = context.RequestServices.GetRequiredService<ILogger<McpHttpBridge>>();
+            
             try
             {
+                logger.LogInformation("📨 Starting to deserialize chat request");
                 var requestBody = await JsonSerializer.DeserializeAsync<ChatRequest>(
                     context.Request.Body,
                     new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
                 if (requestBody == null || string.IsNullOrEmpty(requestBody.Message))
                 {
+                    logger.LogWarning("⚠️ Invalid request: message is null or empty");
                     context.Response.StatusCode = 400;
                     await context.Response.WriteAsJsonAsync(new { error = "Message is required" });
                     return;
                 }
 
-                var logger = context.RequestServices.GetRequiredService<ILogger<McpHttpBridge>>();
-                logger.LogInformation("HTTP: Processing chat request for conversation: {ConversationId}", 
+                logger.LogInformation("📨 Deserialized chat request | Message: {Message} | ConvId: {ConvId}", 
+                    requestBody.Message.Substring(0, Math.Min(50, requestBody.Message.Length)), 
                     requestBody.ConversationId ?? "new");
 
                 // Process file attachments if present
@@ -70,13 +78,16 @@ public class McpHttpBridge
 
                 try
                 {
+                    logger.LogInformation("🔄 Processing message through orchestrator");
                     var result = await chatTool.ProcessRequestAsync(
                         requestBody.Message,
                         requestBody.ConversationId,
                         requestBody.Context,
                         context.RequestAborted);
 
+                    logger.LogInformation("✅ Got result from orchestrator | Success: {Success}", result.Success);
                     await context.Response.WriteAsJsonAsync(result);
+                    logger.LogInformation("✅ Successfully wrote response to HTTP client");
                 }
                 finally
                 {
@@ -103,10 +114,36 @@ public class McpHttpBridge
             }
             catch (Exception ex)
             {
-                context.RequestServices.GetRequiredService<ILogger<McpHttpBridge>>()
-                    .LogError(ex, "Error processing chat request");
-                context.Response.StatusCode = 500;
-                await context.Response.WriteAsJsonAsync(new { error = ex.Message });
+                logger.LogError(ex, "❌ EXCEPTION in /mcp/chat handler | Type: {ExType} | Message: {Message}", ex.GetType().Name, ex.Message);
+                
+                if (!context.Response.HasStarted)
+                {
+                    context.Response.StatusCode = 500;
+                    context.Response.ContentType = "application/json";
+                    
+                    try
+                    {
+                        logger.LogInformation("Writing error response to client");
+                        await context.Response.WriteAsJsonAsync(new { error = ex.Message, type = ex.GetType().Name });
+                        logger.LogInformation("✅ Successfully wrote error response");
+                    }
+                    catch (Exception writeEx)
+                    {
+                        logger.LogError(writeEx, "❌ Failed to write JSON error response");
+                        try
+                        {
+                            await context.Response.WriteAsync($"{{\"error\":\"Internal Server Error\",\"details\":\"{writeEx.Message}\"}}");
+                        }
+                        catch (Exception plainEx)
+                        {
+                            logger.LogError(plainEx, "❌ Failed to write plain text error response");
+                        }
+                    }
+                }
+                else
+                {
+                    logger.LogError("⚠️ Response already started, cannot write error response");
+                }
             }
         });
 
@@ -116,8 +153,54 @@ public class McpHttpBridge
             status = "healthy", 
             mode = "dual (http+stdio)",
             server = "Platform Engineering Copilot MCP",
-            version = "1.0.0"
+            version = "0.9.0"
         }));
+
+        // Debug endpoint to check configuration
+        app.MapGet("/mcp/debug/config", (HttpContext context) =>
+        {
+            try
+            {
+                var logger = context.RequestServices.GetRequiredService<ILogger<McpHttpBridge>>();
+                var configuration = context.RequestServices.GetRequiredService<IConfiguration>();
+                
+                logger.LogInformation("🔍 Checking configuration for Azure OpenAI...");
+                
+                var endpoint = configuration.GetValue<string>("Gateway:AzureOpenAI:Endpoint");
+                var deployment = configuration.GetValue<string>("Gateway:AzureOpenAI:DeploymentName");
+                var apiKey = configuration.GetValue<string>("Gateway:AzureOpenAI:ApiKey");
+                var useManagedId = configuration.GetValue<bool>("Gateway:AzureOpenAI:UseManagedIdentity");
+                var chatDeployment = configuration.GetValue<string>("Gateway:AzureOpenAI:ChatDeploymentName");
+                var embeddingDeployment = configuration.GetValue<string>("Gateway:AzureOpenAI:EmbeddingDeploymentName");
+                
+                var result = new
+                {
+                    azureOpenAI = new
+                    {
+                        endpoint = endpoint ?? "[NOT SET]",
+                        deploymentName = deployment ?? "[NOT SET]",
+                        chatDeploymentName = chatDeployment ?? "[NOT SET]",
+                        embeddingDeploymentName = embeddingDeployment ?? "[NOT SET]",
+                        apiKeyPresent = !string.IsNullOrEmpty(apiKey),
+                        apiKeyLength = apiKey?.Length ?? 0,
+                        useManagedIdentity = useManagedId
+                    },
+                    environmentVariables = new
+                    {
+                        gateway_AzureOpenAI_Endpoint = System.Environment.GetEnvironmentVariable("Gateway__AzureOpenAI__Endpoint") ?? "[NOT SET]",
+                        gateway_AzureOpenAI_DeploymentName = System.Environment.GetEnvironmentVariable("Gateway__AzureOpenAI__DeploymentName") ?? "[NOT SET]",
+                        gateway_AzureOpenAI_ApiKey_Present = !string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("Gateway__AzureOpenAI__ApiKey")),
+                        gateway_AzureOpenAI_ChatDeploymentName = System.Environment.GetEnvironmentVariable("Gateway__AzureOpenAI__ChatDeploymentName") ?? "[NOT SET]"
+                    }
+                };
+                
+                return Results.Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = ex.Message }, statusCode: 500);
+            }
+        });
 
         // Get templates by conversation ID - for VS Code extension to retrieve generated templates
         app.MapGet("/mcp/templates/{conversationId}", async (HttpContext context, string conversationId) =>

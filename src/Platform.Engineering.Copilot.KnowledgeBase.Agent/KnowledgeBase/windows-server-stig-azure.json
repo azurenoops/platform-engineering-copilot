@@ -1,0 +1,502 @@
+{
+  "metadata": {
+    "name": "Windows Server STIG to Azure Mapping",
+    "description": "Mapping Windows Server STIG requirements to Azure implementation including Azure Policy Guest Configuration",
+    "version": "1.0",
+    "lastUpdated": "2025-01-15",
+    "windowsServerVersion": "2022",
+    "stigVersion": "V2R1",
+    "sources": [
+      "DISA Windows Server 2022 STIG",
+      "Microsoft Security Baselines",
+      "Azure Policy Guest Configuration"
+    ]
+  },
+  "guestConfigurationOverview": {
+    "description": "Azure Policy Guest Configuration allows enforcement of Windows Server STIG settings on Azure VMs",
+    "components": [
+      "Azure Policy with Guest Configuration extension",
+      "Azure Arc for hybrid/on-premises servers",
+      "Guest Configuration Agent (automatically deployed)",
+      "Machine Configuration assignments"
+    ],
+    "supportedCompliance": [
+      "Windows Server 2022 STIG",
+      "Windows Server 2019 STIG",
+      "Windows Server 2016 STIG",
+      "CIS Windows Benchmarks",
+      "Azure Security Baseline"
+    ]
+  },
+  "stigCategories": [
+    {
+      "category": "Account Policies",
+      "description": "Password and account lockout policies",
+      "stigControls": [
+        {
+          "stigId": "V-254239",
+          "title": "Windows Server 2022 must be configured to prevent anonymous enumeration of SAM accounts",
+          "severity": "High",
+          "nistMapping": ["AC-3", "AC-6"],
+          "registryPath": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+          "registryValue": "RestrictAnonymousSAM",
+          "requiredValue": "1",
+          "azureGuestConfiguration": {
+            "policyName": "WindowsGuestConfiguration_RestrictAnonymousSAM",
+            "complianceStatus": "Available in built-in initiative",
+            "remediation": "Automatic via Guest Configuration"
+          },
+          "azurePolicy": {
+            "definitionId": "/providers/Microsoft.Authorization/policyDefinitions/ab1916c0-b853-4880-9f6b-f6e3a5e8f6c0",
+            "effect": "AuditIfNotExists"
+          }
+        },
+        {
+          "stigId": "V-254240",
+          "title": "Windows Server 2022 must have the minimum password age set to at least 1 day",
+          "severity": "Medium",
+          "nistMapping": ["IA-5(1)"],
+          "gpoPath": "Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Account Policies\\Password Policy",
+          "settingName": "Minimum password age",
+          "requiredValue": "1 or more days",
+          "azureGuestConfiguration": {
+            "policyName": "WindowsGuestConfiguration_MinimumPasswordAge",
+            "complianceStatus": "Available in Windows Security Baselines",
+            "remediation": "Apply via Group Policy or Guest Configuration"
+          }
+        },
+        {
+          "stigId": "V-254241",
+          "title": "Windows Server 2022 must have the maximum password age set to 60 days or less",
+          "severity": "Medium",
+          "nistMapping": ["IA-5(1)"],
+          "gpoPath": "Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Account Policies\\Password Policy",
+          "settingName": "Maximum password age",
+          "requiredValue": "60 or fewer days",
+          "azureGuestConfiguration": {
+            "policyName": "WindowsGuestConfiguration_MaximumPasswordAge",
+            "complianceStatus": "Available",
+            "remediation": "Apply via Group Policy or Guest Configuration"
+          }
+        },
+        {
+          "stigId": "V-254242",
+          "title": "Windows Server 2022 must have the minimum password length set to 14 characters",
+          "severity": "Medium",
+          "nistMapping": ["IA-5(1)"],
+          "gpoPath": "Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Account Policies\\Password Policy",
+          "settingName": "Minimum password length",
+          "requiredValue": "14 characters",
+          "azureGuestConfiguration": {
+            "policyName": "WindowsGuestConfiguration_MinimumPasswordLength",
+            "complianceStatus": "Available",
+            "remediation": "Apply via Group Policy or Guest Configuration"
+          }
+        },
+        {
+          "stigId": "V-254243",
+          "title": "Windows Server 2022 must have the account lockout threshold set to 3 invalid logon attempts",
+          "severity": "Medium",
+          "nistMapping": ["AC-7"],
+          "gpoPath": "Computer Configuration\\Policies\\Windows Settings\\Security Settings\\Account Policies\\Account Lockout Policy",
+          "settingName": "Account lockout threshold",
+          "requiredValue": "3 or fewer invalid attempts",
+          "azureGuestConfiguration": {
+            "policyName": "WindowsGuestConfiguration_AccountLockoutThreshold",
+            "complianceStatus": "Available",
+            "remediation": "Apply via Group Policy or Guest Configuration"
+          }
+        }
+      ]
+    },
+    {
+      "category": "Audit Policies",
+      "description": "Windows audit and logging configuration",
+      "stigControls": [
+        {
+          "stigId": "V-254280",
+          "title": "Windows Server 2022 must be configured to audit Account Logon - Credential Validation successes",
+          "severity": "Medium",
+          "nistMapping": ["AU-2", "AU-12"],
+          "auditSubcategory": "Credential Validation",
+          "auditSetting": "Success",
+          "azureGuestConfiguration": {
+            "policyName": "WindowsGuestConfiguration_AuditCredentialValidation",
+            "complianceStatus": "Available in audit policy initiative"
+          },
+          "azureMonitorIntegration": {
+            "eventId": "4774, 4775, 4776",
+            "logAnalyticsTable": "SecurityEvent",
+            "sentinelDetection": "Built-in credential validation analytics"
+          }
+        },
+        {
+          "stigId": "V-254281",
+          "title": "Windows Server 2022 must be configured to audit Account Logon - Credential Validation failures",
+          "severity": "Medium",
+          "nistMapping": ["AU-2", "AU-12"],
+          "auditSubcategory": "Credential Validation",
+          "auditSetting": "Failure",
+          "azureMonitorIntegration": {
+            "eventId": "4774, 4775, 4776",
+            "alertRule": "Multiple failed credential validation attempts"
+          }
+        },
+        {
+          "stigId": "V-254282",
+          "title": "Windows Server 2022 must be configured to audit Logon/Logoff - Logon successes",
+          "severity": "Medium",
+          "nistMapping": ["AU-2", "AU-12"],
+          "auditSubcategory": "Logon",
+          "auditSetting": "Success",
+          "azureMonitorIntegration": {
+            "eventId": "4624",
+            "logAnalyticsTable": "SecurityEvent",
+            "sentinelDetection": "Sign-in analytics"
+          }
+        },
+        {
+          "stigId": "V-254283",
+          "title": "Windows Server 2022 must be configured to audit Logon/Logoff - Logon failures",
+          "severity": "Medium",
+          "nistMapping": ["AU-2", "AU-12"],
+          "auditSubcategory": "Logon",
+          "auditSetting": "Failure",
+          "azureMonitorIntegration": {
+            "eventId": "4625",
+            "logAnalyticsTable": "SecurityEvent",
+            "sentinelDetection": "Failed logon analytics, brute force detection"
+          }
+        },
+        {
+          "stigId": "V-254290",
+          "title": "Windows Server 2022 must be configured to audit Privilege Use - Sensitive Privilege Use successes",
+          "severity": "Medium",
+          "nistMapping": ["AU-2", "AU-12"],
+          "auditSubcategory": "Sensitive Privilege Use",
+          "auditSetting": "Success",
+          "azureMonitorIntegration": {
+            "eventId": "4673, 4674",
+            "logAnalyticsTable": "SecurityEvent",
+            "sentinelDetection": "Privilege escalation detection"
+          }
+        }
+      ]
+    },
+    {
+      "category": "User Rights Assignment",
+      "description": "Privilege assignment to users and groups",
+      "stigControls": [
+        {
+          "stigId": "V-254310",
+          "title": "Windows Server 2022 - Access this computer from the network must only be assigned to appropriate groups",
+          "severity": "Medium",
+          "nistMapping": ["AC-3", "AC-6"],
+          "userRight": "SeNetworkLogonRight",
+          "approvedGroups": ["Administrators", "Authenticated Users", "Enterprise Domain Controllers"],
+          "azureGuestConfiguration": {
+            "policyName": "WindowsGuestConfiguration_NetworkLogonRight",
+            "complianceStatus": "Available"
+          }
+        },
+        {
+          "stigId": "V-254311",
+          "title": "Windows Server 2022 - Allow log on locally must only be assigned to appropriate groups",
+          "severity": "Medium",
+          "nistMapping": ["AC-3", "AC-6"],
+          "userRight": "SeInteractiveLogonRight",
+          "approvedGroups": ["Administrators"],
+          "azureGuestConfiguration": {
+            "policyName": "WindowsGuestConfiguration_InteractiveLogonRight",
+            "complianceStatus": "Available"
+          }
+        },
+        {
+          "stigId": "V-254315",
+          "title": "Windows Server 2022 - Debug programs must only be assigned to Administrators",
+          "severity": "High",
+          "nistMapping": ["AC-6", "AC-6(1)"],
+          "userRight": "SeDebugPrivilege",
+          "approvedGroups": ["Administrators"],
+          "rationale": "Debug privilege allows access to sensitive system memory and can be used for privilege escalation",
+          "azureGuestConfiguration": {
+            "policyName": "WindowsGuestConfiguration_DebugPrivilege",
+            "complianceStatus": "Available"
+          }
+        },
+        {
+          "stigId": "V-254320",
+          "title": "Windows Server 2022 - Take ownership of files or other objects must only be assigned to Administrators",
+          "severity": "Medium",
+          "nistMapping": ["AC-6"],
+          "userRight": "SeTakeOwnershipPrivilege",
+          "approvedGroups": ["Administrators"],
+          "azureGuestConfiguration": {
+            "policyName": "WindowsGuestConfiguration_TakeOwnership",
+            "complianceStatus": "Available"
+          }
+        }
+      ]
+    },
+    {
+      "category": "Security Options",
+      "description": "Local security policy settings",
+      "stigControls": [
+        {
+          "stigId": "V-254350",
+          "title": "Windows Server 2022 must be configured to require CTRL+ALT+DEL for interactive logon",
+          "severity": "Medium",
+          "nistMapping": ["AC-11"],
+          "registryPath": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+          "registryValue": "DisableCAD",
+          "requiredValue": "0",
+          "azureGuestConfiguration": {
+            "complianceStatus": "Available"
+          }
+        },
+        {
+          "stigId": "V-254351",
+          "title": "Windows Server 2022 must not allow anonymous enumeration of shares",
+          "severity": "High",
+          "nistMapping": ["AC-3", "AC-6"],
+          "registryPath": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+          "registryValue": "RestrictAnonymous",
+          "requiredValue": "1",
+          "azureGuestConfiguration": {
+            "complianceStatus": "Available"
+          }
+        },
+        {
+          "stigId": "V-254355",
+          "title": "Windows Server 2022 must use LDAP signing",
+          "severity": "Medium",
+          "nistMapping": ["SC-8", "SC-8(1)"],
+          "registryPath": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters",
+          "registryValue": "LDAPServerIntegrity",
+          "requiredValue": "2",
+          "azureContext": "For domain controllers; Azure AD-joined VMs use Azure AD authentication",
+          "azureGuestConfiguration": {
+            "complianceStatus": "Available for domain controllers"
+          }
+        },
+        {
+          "stigId": "V-254360",
+          "title": "Windows Server 2022 must be configured to use FIPS-compliant algorithms",
+          "severity": "Medium",
+          "nistMapping": ["SC-13"],
+          "registryPath": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\FipsAlgorithmPolicy",
+          "registryValue": "Enabled",
+          "requiredValue": "1",
+          "azureContext": "Required for IL4+ environments; may affect some Azure SDK functionality",
+          "azureGuestConfiguration": {
+            "policyName": "WindowsGuestConfiguration_FIPSMode",
+            "complianceStatus": "Available"
+          }
+        },
+        {
+          "stigId": "V-254365",
+          "title": "Windows Server 2022 must be configured to prevent the storage of LAN Manager hash",
+          "severity": "High",
+          "nistMapping": ["IA-5(1)"],
+          "registryPath": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+          "registryValue": "NoLMHash",
+          "requiredValue": "1",
+          "azureGuestConfiguration": {
+            "complianceStatus": "Available"
+          }
+        }
+      ]
+    },
+    {
+      "category": "Windows Features and Services",
+      "description": "Required and prohibited Windows features",
+      "stigControls": [
+        {
+          "stigId": "V-254400",
+          "title": "Windows Server 2022 must have PowerShell script block logging enabled",
+          "severity": "Medium",
+          "nistMapping": ["AU-2", "AU-12", "SI-4"],
+          "registryPath": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging",
+          "registryValue": "EnableScriptBlockLogging",
+          "requiredValue": "1",
+          "azureMonitorIntegration": {
+            "eventId": "4104",
+            "logAnalyticsTable": "Event",
+            "sentinelDetection": "Suspicious PowerShell activity"
+          },
+          "azureGuestConfiguration": {
+            "complianceStatus": "Available"
+          }
+        },
+        {
+          "stigId": "V-254401",
+          "title": "Windows Server 2022 must have Windows Defender Credential Guard enabled",
+          "severity": "High",
+          "nistMapping": ["SC-39", "SC-4"],
+          "prerequisite": "Requires UEFI firmware, Secure Boot, and virtualization extensions",
+          "azureContext": "Supported on Azure VMs with Trusted Launch enabled",
+          "azureImplementation": {
+            "vmConfiguration": "Enable Trusted Launch with vTPM",
+            "guestConfiguration": "Enable via Group Policy or registry"
+          }
+        },
+        {
+          "stigId": "V-254405",
+          "title": "Windows Server 2022 must have Windows Firewall enabled",
+          "severity": "Medium",
+          "nistMapping": ["SC-7"],
+          "serviceRequirement": "Windows Firewall service must be running",
+          "profiles": ["Domain", "Private", "Public"],
+          "requiredState": "On for all profiles",
+          "azureContext": "Azure NSG provides network-level filtering; Windows Firewall provides host-level defense in depth",
+          "azureGuestConfiguration": {
+            "complianceStatus": "Available"
+          }
+        },
+        {
+          "stigId": "V-254410",
+          "title": "Windows Server 2022 - The Telnet Client must not be installed",
+          "severity": "Medium",
+          "nistMapping": ["CM-7", "SC-8"],
+          "featureName": "TelnetClient",
+          "requiredState": "Not Installed",
+          "rationale": "Telnet transmits data in cleartext",
+          "azureGuestConfiguration": {
+            "complianceStatus": "Available in feature audit policies"
+          }
+        },
+        {
+          "stigId": "V-254411",
+          "title": "Windows Server 2022 - SMBv1 must be disabled",
+          "severity": "High",
+          "nistMapping": ["CM-7", "SC-8"],
+          "featureName": "SMB1Protocol",
+          "requiredState": "Disabled",
+          "rationale": "SMBv1 has critical vulnerabilities (WannaCry, NotPetya)",
+          "registryPath": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters",
+          "registryValue": "SMB1",
+          "requiredValue": "0",
+          "azureGuestConfiguration": {
+            "policyName": "WindowsGuestConfiguration_SMBv1Disabled",
+            "complianceStatus": "Available"
+          }
+        }
+      ]
+    },
+    {
+      "category": "Remote Access",
+      "description": "Remote Desktop and remote management settings",
+      "stigControls": [
+        {
+          "stigId": "V-254450",
+          "title": "Windows Server 2022 must require NLA for Remote Desktop connections",
+          "severity": "High",
+          "nistMapping": ["AC-17", "IA-2"],
+          "registryPath": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp",
+          "registryValue": "UserAuthentication",
+          "requiredValue": "1",
+          "azureContext": "Azure Bastion provides additional secure RDP access without exposing RDP port",
+          "azureGuestConfiguration": {
+            "complianceStatus": "Available"
+          }
+        },
+        {
+          "stigId": "V-254451",
+          "title": "Windows Server 2022 must set the encryption level for RDP to High",
+          "severity": "Medium",
+          "nistMapping": ["SC-8", "SC-8(1)"],
+          "registryPath": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+          "registryValue": "MinEncryptionLevel",
+          "requiredValue": "3",
+          "azureGuestConfiguration": {
+            "complianceStatus": "Available"
+          }
+        },
+        {
+          "stigId": "V-254455",
+          "title": "Windows Server 2022 - Remote Desktop idle timeout must be set to 15 minutes or less",
+          "severity": "Medium",
+          "nistMapping": ["AC-11", "SC-10"],
+          "gpoPath": "Computer Configuration\\Administrative Templates\\Windows Components\\Remote Desktop Services\\Remote Desktop Session Host\\Session Time Limits",
+          "settingName": "Set time limit for active but idle sessions",
+          "requiredValue": "900000 milliseconds (15 minutes) or less",
+          "azureGuestConfiguration": {
+            "complianceStatus": "Available"
+          }
+        }
+      ]
+    }
+  ],
+  "azurePolicyInitiatives": {
+    "description": "Built-in Azure Policy initiatives for Windows Server STIG compliance",
+    "initiatives": [
+      {
+        "name": "Windows machines should meet requirements for the Azure compute security baseline",
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policySetDefinitions/72650e9f-97bc-4b2a-ab5f-9781a9fcecbc",
+        "description": "Azure Security Baseline for Windows VMs",
+        "controlsCovered": "Approximately 200 Windows security settings"
+      },
+      {
+        "name": "Audit Windows machines that do not have the specified Windows PowerShell execution policy",
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/17dc3bb3-5f58-4f86-be2a-aaa1e4e29c69",
+        "description": "PowerShell execution policy compliance"
+      },
+      {
+        "name": "Deploy prerequisites to audit Windows VMs configurations in Guest Configuration",
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policySetDefinitions/12794019-7a39-4f5f-9c30-5a8a1a9b7f9c",
+        "description": "Deploys Guest Configuration extension and managed identity"
+      }
+    ]
+  },
+  "implementationGuidance": {
+    "steps": [
+      {
+        "step": 1,
+        "title": "Deploy Guest Configuration Prerequisites",
+        "actions": [
+          "Assign policy to deploy Guest Configuration extension",
+          "Ensure VMs have system-assigned managed identity",
+          "Verify network access to Azure Policy endpoints"
+        ],
+        "azureCliExample": "az policy assignment create --name 'Deploy-GuestConfig-Prerequisites' --policy-set-definition '12794019-7a39-4f5f-9c30-5a8a1a9b7f9c' --scope '/subscriptions/{subId}'"
+      },
+      {
+        "step": 2,
+        "title": "Assign Windows Security Baseline Initiative",
+        "actions": [
+          "Create policy assignment for Windows security baseline",
+          "Configure exclusions if needed for specific workloads",
+          "Enable remediation tasks for applicable policies"
+        ],
+        "azureCliExample": "az policy assignment create --name 'Windows-Security-Baseline' --policy-set-definition '72650e9f-97bc-4b2a-ab5f-9781a9fcecbc' --scope '/subscriptions/{subId}'"
+      },
+      {
+        "step": 3,
+        "title": "Configure Log Analytics Integration",
+        "actions": [
+          "Deploy Log Analytics agent to VMs",
+          "Configure Windows Security Events collection",
+          "Create Sentinel workbooks for STIG compliance"
+        ]
+      },
+      {
+        "step": 4,
+        "title": "Monitor Compliance",
+        "actions": [
+          "Review Azure Policy compliance dashboard",
+          "Configure alerts for non-compliant resources",
+          "Generate compliance reports for assessors"
+        ]
+      }
+    ],
+    "hybridServers": {
+      "description": "For on-premises or other cloud servers",
+      "requirements": [
+        "Install Azure Arc Connected Machine agent",
+        "Enable Guest Configuration extension via Arc",
+        "Assign same policies as Azure VMs"
+      ],
+      "arcOnboarding": "az connectedmachine extension create --machine-name <server> --resource-group <rg> --name AzurePolicyforWindows --publisher Microsoft.GuestConfiguration --type ConfigurationforWindows"
+    }
+  }
+}

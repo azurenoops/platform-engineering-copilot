@@ -38,6 +38,8 @@
     <ProjectReference Include="..\..\src\Platform.Engineering.Copilot.Core\Platform.Engineering.Copilot.Core.csproj" />
     <ProjectReference Include="..\..\src\Platform.Engineering.Copilot.API\Platform.Engineering.Copilot.API.csproj" />
     <ProjectReference Include="..\..\src\Platform.Engineering.Copilot.Admin.API\Platform.Engineering.Copilot.Admin.API.csproj" />
+    <ProjectReference Include="..\..\src\Platform.Engineering.Copilot.Compliance.Agent\Platform.Engineering.Copilot.Compliance.Agent.csproj" />
+    <ProjectReference Include="..\..\src\Platform.Engineering.Copilot.CostManagement.Agent\Platform.Engineering.Copilot.CostManagement.Agent.csproj" />
   </ItemGroup>
 
 </Project>

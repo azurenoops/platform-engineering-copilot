@@ -11,6 +11,30 @@
 
 The **Platform Engineering Copilot** is an AI-powered platform that transforms how teams interact with Azure Government environments. Instead of navigating complex portals, running manual scripts, or consulting 500-page compliance documents, users simply **ask questions in plain English**.
 
+### 🤖 Multi-Agent Architecture
+
+The Copilot orchestrates **seven specialized AI agents** that work together to deliver comprehensive cloud operations:
+
+| Agent | What It Does | Example Query |
+|-------|-------------|---------------|
+| **🔍 Discovery Agent** | Inventories resources across subscriptions, shows health status, finds resources by type/tag | *"What resources are running in my subscription?"* |
+| **🏗️ Infrastructure Agent** | Generates compliant Bicep/Terraform templates, designs architectures, provisions resources | *"Generate a FedRAMP High compliant storage account"* |
+| **✅ Compliance Agent** | Runs NIST 800-53 scans, maps controls to frameworks, generates remediation plans, collects evidence | *"Run a compliance scan on my resource group"* |
+| **🛡️ Security Agent** | Sets up Microsoft Sentinel SIEM, scans for vulnerabilities, configures threat detection & automated response | *"Set up incident response with threat detection"* |
+| **💰 Cost Management Agent** | Analyzes spend, identifies optimization opportunities, forecasts budgets, tracks cost by resource | *"What are my cost optimization opportunities?"* |
+| **🌍 Environment Agent** | Manages dev/staging/prod environments, handles configurations, tracks deployments | *"Show me environment configurations"* |
+| **📚 Knowledge Base Agent** | Answers NIST control questions, explains requirements, maps frameworks (FedRAMP, CMMC, 800-171) | *"What is NIST 800-53 control AC-2?"* |
+
+### 💡 The Power of Orchestration
+
+When you ask a complex question, the **Orchestrator** automatically coordinates multiple agents:
+
+> *"Give me a complete status report including inventory, compliance score, and current spend"*
+
+Behind the scenes: Discovery Agent → Compliance Agent → Cost Agent → Combined Report
+
+**One question. Multiple agents. Unified answer.**
+
 ### Who Benefits?
 
 | Persona | Pain Points Solved | Time Savings |

@@ -1,8 +1,11 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.SemanticKernel;
 using Platform.Engineering.Copilot.Core.Models.EnvironmentManagement;
+using Platform.Engineering.Copilot.Core.Services;
 using Platform.Engineering.Copilot.Core.Services.Agents;
 using Platform.Engineering.Copilot.Core.Services.Azure;
+using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 using Platform.Engineering.Copilot.Core.Plugins;
 using Platform.Engineering.Copilot.Core.Data.Entities;
 using DeploymentStatus = Platform.Engineering.Copilot.Core.Data.Entities.DeploymentStatus;
@@ -24,7 +27,12 @@ public class EnvironmentManagementPlugin : BaseSupervisorPlugin
     private readonly EnvironmentStorageService _environmentStorage;
     private readonly SharedMemory _sharedMemory;
     private readonly AzureMcpClient _azureMcpClient;
+    private readonly ConfigService _configService;
+    private readonly IAzureResourceService _azureResourceService;
+    private readonly IMemoryCache _subscriptionCache;
     private string? _currentConversationId; // Set by agent before function calls
+    
+    private const string LAST_SUBSCRIPTION_CACHE_KEY = "environment_last_subscription";
 
     public EnvironmentManagementPlugin(
         ILogger<EnvironmentManagementPlugin> logger,
@@ -32,12 +40,104 @@ public class EnvironmentManagementPlugin : BaseSupervisorPlugin
         IEnvironmentManagementEngine environmentEngine,
         EnvironmentStorageService environmentStorage,
         SharedMemory sharedMemory,
-        AzureMcpClient azureMcpClient) : base(logger, kernel)
+        AzureMcpClient azureMcpClient,
+        ConfigService configService,
+        IAzureResourceService azureResourceService,
+        IMemoryCache subscriptionCache) : base(logger, kernel)
     {
         _environmentEngine = environmentEngine ?? throw new ArgumentNullException(nameof(environmentEngine));
         _environmentStorage = environmentStorage ?? throw new ArgumentNullException(nameof(environmentStorage));
         _sharedMemory = sharedMemory ?? throw new ArgumentNullException(nameof(sharedMemory));
         _azureMcpClient = azureMcpClient ?? throw new ArgumentNullException(nameof(azureMcpClient));
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
+        _azureResourceService = azureResourceService ?? throw new ArgumentNullException(nameof(azureResourceService));
+        _subscriptionCache = subscriptionCache ?? throw new ArgumentNullException(nameof(subscriptionCache));
+    }
+    
+    // ========== SUBSCRIPTION LOOKUP HELPERS ==========
+    
+    /// <summary>
+    /// Stores the last used subscription ID in cache AND persistent config file for session continuity
+    /// </summary>
+    private void SetLastUsedSubscription(string subscriptionId)
+    {
+        _subscriptionCache.Set(LAST_SUBSCRIPTION_CACHE_KEY, subscriptionId, TimeSpan.FromHours(24));
+        try
+        {
+            _configService.SetDefaultSubscription(subscriptionId);
+            _logger.LogInformation("Stored subscription in persistent config: {SubscriptionId}", subscriptionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist subscription to config file, will only use cache");
+        }
+    }
+    
+    /// <summary>
+    /// Gets the last used subscription ID from cache, or persistent config file if cache is empty
+    /// </summary>
+    private string? GetLastUsedSubscription()
+    {
+        if (_subscriptionCache.TryGetValue<string>(LAST_SUBSCRIPTION_CACHE_KEY, out var subscriptionId))
+        {
+            _logger.LogDebug("Retrieved last used subscription from cache: {SubscriptionId}", subscriptionId);
+            return subscriptionId;
+        }
+        
+        try
+        {
+            subscriptionId = _configService.GetDefaultSubscription();
+            if (!string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                _logger.LogInformation("Retrieved subscription from persistent config: {SubscriptionId}", subscriptionId);
+                _subscriptionCache.Set(LAST_SUBSCRIPTION_CACHE_KEY, subscriptionId, TimeSpan.FromHours(24));
+                return subscriptionId;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read subscription from config file");
+        }
+        
+        return null;
+    }
+    
+    /// <summary>
+    /// Resolves a subscription identifier to a GUID. Accepts either a GUID or a friendly name.
+    /// </summary>
+    private async Task<string> ResolveSubscriptionIdAsync(string? subscriptionIdOrName)
+    {
+        if (string.IsNullOrWhiteSpace(subscriptionIdOrName))
+        {
+            var lastUsed = GetLastUsedSubscription();
+            if (!string.IsNullOrWhiteSpace(lastUsed))
+            {
+                _logger.LogInformation("Using last used subscription from session: {SubscriptionId}", lastUsed);
+                return lastUsed;
+            }
+            throw new ArgumentException("Subscription ID or name is required. No previous subscription found in session.", nameof(subscriptionIdOrName));
+        }
+        
+        if (Guid.TryParse(subscriptionIdOrName, out _))
+        {
+            SetLastUsedSubscription(subscriptionIdOrName);
+            return subscriptionIdOrName;
+        }
+        
+        try
+        {
+            var subscription = await _azureResourceService.GetSubscriptionByNameAsync(subscriptionIdOrName);
+            _logger.LogInformation("Resolved subscription name '{Name}' to ID '{SubscriptionId}' via Azure API", 
+                subscriptionIdOrName, subscription.SubscriptionId);
+            SetLastUsedSubscription(subscription.SubscriptionId);
+            return subscription.SubscriptionId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not resolve subscription '{Name}' via Azure API", subscriptionIdOrName);
+        }
+        
+        throw new ArgumentException($"Subscription '{subscriptionIdOrName}' not found. Provide a valid GUID or subscription name.", nameof(subscriptionIdOrName));
     }
 
     /// <summary>
