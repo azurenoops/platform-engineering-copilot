@@ -24,9 +24,23 @@ using Platform.Engineering.Copilot.Core.Services.Notifications;
 using Platform.Engineering.Copilot.Core.Services.Validation;
 using Platform.Engineering.Copilot.Core.Services.Validation.Validators;
 using Platform.Engineering.Copilot.Core.Services.ServiceCreation;
+using Platform.Engineering.Copilot.Core.Services.Generators.Adapters;
+using Platform.Engineering.Copilot.Core.Services.Generators.CrossCutting;
+using Platform.Engineering.Copilot.Core.Services.Generators.KeyVault;
+using Platform.Engineering.Copilot.Core.Services.Generators.ContainerRegistry;
+using Platform.Engineering.Copilot.Core.Services.Generators.LogAnalytics;
+using Platform.Engineering.Copilot.Core.Services.Generators.ManagedIdentity;
+using Platform.Engineering.Copilot.Core.Services.Generators.Storage;
+using Platform.Engineering.Copilot.Core.Services.Generators.Database;
+using Platform.Engineering.Copilot.Core.Services.Generators.Kubernetes;
+using Platform.Engineering.Copilot.Core.Services.Generators.Infrastructure;
+using Platform.Engineering.Copilot.Core.Services.Generators.AppService;
+using Platform.Engineering.Copilot.Core.Services.Generators.Containers;
 using Platform.Engineering.Copilot.Core.Interfaces.Validation;
+using Platform.Engineering.Copilot.Core.Interfaces.TemplateGeneration;
 using Platform.Engineering.Copilot.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Data.Repositories;
+using Platform.Engineering.Copilot.Core.Services.TemplateGeneration;
 
 namespace Platform.Engineering.Copilot.Core.Extensions;
 
@@ -192,6 +206,104 @@ public static class ServiceCollectionExtensions
         
         // Register Job Cleanup Background Service
         services.AddHostedService<JobCleanupBackgroundService>();
+        
+        // Register Template Cleanup Background Service (expires templates after 30 minutes)
+        services.AddHostedService<TemplateCleanupBackgroundService>();
+        
+        // Register Cross-Cutting Module Generators (Phase 1 of Template Generation Refactor)
+        // These provide reusable components for Private Endpoints, Diagnostics, RBAC, NSG
+        // Bicep cross-cutting generators
+        services.AddSingleton<ICrossCuttingModuleGenerator, BicepPrivateEndpointGenerator>();
+        services.AddSingleton<ICrossCuttingModuleGenerator, BicepDiagnosticSettingsGenerator>();
+        services.AddSingleton<ICrossCuttingModuleGenerator, BicepRBACGenerator>();
+        services.AddSingleton<ICrossCuttingModuleGenerator, BicepNSGGenerator>();
+        // Terraform cross-cutting generators
+        services.AddSingleton<ICrossCuttingModuleGenerator, TerraformPrivateEndpointGenerator>();
+        services.AddSingleton<ICrossCuttingModuleGenerator, TerraformDiagnosticSettingsGenerator>();
+        services.AddSingleton<ICrossCuttingModuleGenerator, TerraformRBACGenerator>();
+        
+        // Register IResourceModuleGenerator implementations (Phase 2 - Composition Pattern)
+        // These generate core resources and support cross-cutting module composition
+        // Since IResourceModuleGenerator extends IModuleGenerator, we register as both interfaces
+        
+        // Bicep Azure resource generators - registered as both IResourceModuleGenerator and IModuleGenerator
+        services.AddSingleton<BicepKeyVaultModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<BicepKeyVaultModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<BicepKeyVaultModuleGenerator>());
+        
+        services.AddSingleton<BicepContainerRegistryModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<BicepContainerRegistryModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<BicepContainerRegistryModuleGenerator>());
+        
+        services.AddSingleton<BicepLogAnalyticsModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<BicepLogAnalyticsModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<BicepLogAnalyticsModuleGenerator>());
+        
+        services.AddSingleton<BicepManagedIdentityModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<BicepManagedIdentityModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<BicepManagedIdentityModuleGenerator>());
+        
+        services.AddSingleton<BicepStorageAccountModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<BicepStorageAccountModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<BicepStorageAccountModuleGenerator>());
+        
+        services.AddSingleton<BicepSQLModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<BicepSQLModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<BicepSQLModuleGenerator>());
+        
+        services.AddSingleton<BicepAKSResourceModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<BicepAKSResourceModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<BicepAKSResourceModuleGenerator>());
+        
+        services.AddSingleton<BicepNetworkResourceModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<BicepNetworkResourceModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<BicepNetworkResourceModuleGenerator>());
+        
+        // Bicep App Service and Container Apps - registered as both IResourceModuleGenerator and IModuleGenerator
+        services.AddSingleton<BicepAppServiceResourceModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<BicepAppServiceResourceModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<BicepAppServiceResourceModuleGenerator>());
+        
+        services.AddSingleton<BicepContainerAppsResourceModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<BicepContainerAppsResourceModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<BicepContainerAppsResourceModuleGenerator>());
+        
+        // Terraform Azure resource generators - registered as both IResourceModuleGenerator and IModuleGenerator
+        services.AddSingleton<TerraformStorageResourceModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<TerraformStorageResourceModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<TerraformStorageResourceModuleGenerator>());
+        
+        services.AddSingleton<TerraformSQLResourceModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<TerraformSQLResourceModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<TerraformSQLResourceModuleGenerator>());
+        
+        services.AddSingleton<TerraformAKSResourceModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<TerraformAKSResourceModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<TerraformAKSResourceModuleGenerator>());
+        
+        services.AddSingleton<TerraformNetworkResourceModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<TerraformNetworkResourceModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<TerraformNetworkResourceModuleGenerator>());
+        
+        services.AddSingleton<TerraformKeyVaultResourceModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<TerraformKeyVaultResourceModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<TerraformKeyVaultResourceModuleGenerator>());
+        
+        // Terraform App Service and Container Instances - registered as both IResourceModuleGenerator and IModuleGenerator
+        services.AddSingleton<TerraformAppServiceResourceModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<TerraformAppServiceResourceModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<TerraformAppServiceResourceModuleGenerator>());
+        
+        services.AddSingleton<TerraformContainerInstancesResourceModuleGenerator>();
+        services.AddSingleton<IResourceModuleGenerator>(sp => sp.GetRequiredService<TerraformContainerInstancesResourceModuleGenerator>());
+        services.AddSingleton<IModuleGenerator>(sp => sp.GetRequiredService<TerraformContainerInstancesResourceModuleGenerator>());
+        
+        // Legacy adapters - kept ONLY for non-Azure cloud providers (AWS/GCP)
+        services.AddSingleton<IModuleGenerator, TerraformECSModuleAdapter>();
+        services.AddSingleton<IModuleGenerator, TerraformLambdaModuleAdapter>();
+        services.AddSingleton<IModuleGenerator, TerraformCloudRunModuleAdapter>();
+        services.AddSingleton<IModuleGenerator, TerraformEKSModuleAdapter>();
+        services.AddSingleton<IModuleGenerator, TerraformGKEModuleAdapter>();
 
         // Register Azure MCP Client (Microsoft's official Azure MCP Server integration)
         services.AddSingleton(sp =>

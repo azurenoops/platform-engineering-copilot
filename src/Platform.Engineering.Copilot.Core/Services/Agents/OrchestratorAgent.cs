@@ -8,7 +8,6 @@ using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Platform.Engineering.Copilot.Core.Interfaces.Agents;
 using Platform.Engineering.Copilot.Core.Models.Agents;
 using Platform.Engineering.Copilot.Core.Models.IntelligentChat;
-using Platform.Engineering.Copilot.Core.Services;
 using System.Text.Json;
 
 namespace Platform.Engineering.Copilot.Core.Services.Agents;
@@ -352,9 +351,13 @@ CRITICAL Rules (apply in order):
 8. **Template generation** (""create template""/""generate template""/""I need a new"" + resource type) → Infrastructure agent, primaryIntent: ""infrastructure""
    - ONLY for generating IaC templates (Bicep/Terraform/ARM)
    - NOT for security assessments or cost analysis
-9. **Cost analysis** (""cost breakdown""/""how much spending""/""cost optimization"") → Cost Management agent, primaryIntent: ""cost""
-10. **Discovery and inventory** (""list""/""find""/""discover""/""inventory"" resources) → Discovery agent, primaryIntent: ""discovery""
-11. **Actual provisioning** (""actually provision""/""make it live""/""deploy to Azure"") → All agents Sequential
+9. **Show generated files** (""show""/""display""/""view"" + "".bicep""/""main.bicep""/""storage-account.bicep""/""module""/""generated files""/""all files"") → Infrastructure agent, primaryIntent: ""infrastructure""
+   - CRITICAL: When user asks to see previously generated template files, route to Infrastructure agent's get_generated_file function
+   - Examples: ""show the storage-account.bicep file"", ""display main.bicep"", ""show all generated files"", ""show the storage module""
+   - DO NOT route to Discovery agent for viewing generated template files
+10. **Cost analysis** (""cost breakdown""/""how much spending""/""cost optimization"") → Cost Management agent, primaryIntent: ""cost""
+11. **Discovery and inventory** (""list""/""find""/""discover""/""inventory"" resources) → Discovery agent, primaryIntent: ""discovery""
+12. **Actual provisioning** (""actually provision""/""make it live""/""deploy to Azure"") → All agents Sequential
 
 IMPORTANT: ""fix"" in context of ""cost to fix security issues"" means ESTIMATE COST, not generate templates.
 Default: Single agent based on primary keyword. DO NOT default to Infrastructure for security/compliance queries.
@@ -988,6 +991,29 @@ Synthesized response:";
         {
             // Document generation and ATO preparation use Compliance agent
             return AgentType.Compliance;
+        }
+        
+        // ============================================================================
+        // INFRASTRUCTURE AGENT - Show/Display Generated Files (Check BEFORE Discovery)
+        // Routes queries asking to view previously generated template files to Infrastructure Agent
+        // which has the get_generated_file and get_all_generated_files functions
+        // ============================================================================
+        var isShowGeneratedFile = 
+            (lowerMessage.Contains("show") || lowerMessage.Contains("display") || 
+             lowerMessage.Contains("view") || lowerMessage.Contains("get")) &&
+            (lowerMessage.Contains(".bicep") || lowerMessage.Contains(".tf") || 
+             lowerMessage.Contains("main.bicep") || lowerMessage.Contains("main.tf") ||
+             lowerMessage.Contains("generated file") || lowerMessage.Contains("generated template") ||
+             lowerMessage.Contains("all files") || lowerMessage.Contains("all generated") ||
+             lowerMessage.Contains("storage-account") || lowerMessage.Contains("storage module") ||
+             (lowerMessage.Contains("the") && lowerMessage.Contains("file") && 
+              (lowerMessage.Contains("bicep") || lowerMessage.Contains("terraform") || 
+               lowerMessage.Contains("module") || lowerMessage.Contains("template"))));
+        
+        if (isShowGeneratedFile)
+        {
+            _logger.LogInformation("🎯 Fast-path: Show generated file → Infrastructure Agent (get_generated_file)");
+            return AgentType.Infrastructure;
         }
         
         // ============================================================================

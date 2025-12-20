@@ -1,0 +1,547 @@
+{
+  "metadata": {
+    "name": "Enhanced RMF Process Guide for DoD Cloud",
+    "description": "Comprehensive RMF guidance including service-specific workflows, timelines, artifacts, and Azure implementation",
+    "version": "1.0",
+    "lastUpdated": "2025-01-15",
+    "sources": [
+      "DoD 8510.01 - RMF for DoD IT",
+      "NIST SP 800-37 Rev 2",
+      "NIST SP 800-53 Rev 5",
+      "FedRAMP Authorization Process"
+    ]
+  },
+  "rmfTimelines": {
+    "description": "Typical timelines for RMF authorization process",
+    "averageTimelines": {
+      "newSystem": {
+        "category": "New System Authorization",
+        "totalDuration": "9-18 months",
+        "phases": [
+          {"phase": "Categorization", "duration": "2-4 weeks", "parallelizable": false},
+          {"phase": "Control Selection", "duration": "2-4 weeks", "parallelizable": true},
+          {"phase": "Implementation", "duration": "3-12 months", "parallelizable": true},
+          {"phase": "Assessment", "duration": "2-4 months", "parallelizable": false},
+          {"phase": "Authorization", "duration": "4-8 weeks", "parallelizable": false},
+          {"phase": "Continuous Monitoring", "duration": "Ongoing", "parallelizable": true}
+        ]
+      },
+      "cloudMigration": {
+        "category": "Cloud Migration/Existing FedRAMP",
+        "totalDuration": "3-9 months",
+        "phases": [
+          {"phase": "Categorization", "duration": "1-2 weeks", "parallelizable": false},
+          {"phase": "Control Selection", "duration": "1-2 weeks", "parallelizable": true},
+          {"phase": "Implementation", "duration": "1-6 months", "parallelizable": true},
+          {"phase": "Assessment", "duration": "1-2 months", "parallelizable": false},
+          {"phase": "Authorization", "duration": "2-4 weeks", "parallelizable": false}
+        ],
+        "note": "Leverages existing CSP FedRAMP/DoD PA authorization"
+      },
+      "reciprocity": {
+        "category": "Authorization Reciprocity",
+        "totalDuration": "4-12 weeks",
+        "phases": [
+          {"phase": "Package Review", "duration": "2-4 weeks", "parallelizable": false},
+          {"phase": "Delta Assessment", "duration": "2-4 weeks", "parallelizable": false},
+          {"phase": "Authorization Decision", "duration": "2-4 weeks", "parallelizable": false}
+        ],
+        "note": "Requires existing ATO from another DoD organization"
+      }
+    },
+    "acceleratedProcesses": [
+      {
+        "name": "Interim Authority to Test (IATT)",
+        "duration": "2-6 weeks",
+        "purpose": "Allow limited testing/development activities",
+        "restrictions": "No operational data, limited user access",
+        "maxDuration": "180 days"
+      },
+      {
+        "name": "Interim Authority to Operate (IATO)",
+        "duration": "4-12 weeks",
+        "purpose": "Allow operation with known risks",
+        "restrictions": "Must have remediation plan, elevated monitoring",
+        "maxDuration": "180 days"
+      }
+    ]
+  },
+  "serviceSpecificGuidance": {
+    "navy": {
+      "service": "U.S. Navy",
+      "authorizingOrganization": "Navy Authorizing Official (NAO)",
+      "keyContacts": [
+        "Fleet Cyber Command (FCC)",
+        "Naval Information Warfare Center (NIWC)",
+        "Program Management Office (PMO)"
+      ],
+      "specificRequirements": [
+        "Navy Risk Management Framework (RMF) Process Guide",
+        "SPAWAR/NIWC assessment support",
+        "Fleet Cyber Command compliance validation"
+      ],
+      "typicalTimeline": "12-18 months for new systems",
+      "tools": [
+        "eMASS (Enterprise Mission Assurance Support Service)",
+        "VRAM (Vulnerability Remediation Asset Manager)",
+        "ACAS (Assured Compliance Assessment Solution)"
+      ],
+      "workflow": [
+        {
+          "step": 1,
+          "activity": "Program Registration",
+          "description": "Register program in eMASS, assign ISSO/ISSM",
+          "duration": "1-2 weeks",
+          "artifacts": ["eMASS registration", "ISSO/ISSM appointment letters"]
+        },
+        {
+          "step": 2,
+          "activity": "System Categorization",
+          "description": "Complete FIPS 199 categorization, identify authorization boundary",
+          "duration": "2-4 weeks",
+          "artifacts": ["DD Form 2930", "System categorization memo", "Architecture diagrams"]
+        },
+        {
+          "step": 3,
+          "activity": "Control Selection & SSP",
+          "description": "Select controls, document in eMASS, develop SSP",
+          "duration": "4-8 weeks",
+          "artifacts": ["Control selection memo", "SSP in eMASS", "Implementation plan"]
+        },
+        {
+          "step": 4,
+          "activity": "Implementation & Scanning",
+          "description": "Implement controls, run ACAS/SCAP scans, remediate findings",
+          "duration": "3-12 months",
+          "artifacts": ["STIG checklists", "ACAS scan reports", "POA&M items"]
+        },
+        {
+          "step": 5,
+          "activity": "Security Control Assessment",
+          "description": "Independent assessment by SCA (often NIWC)",
+          "duration": "2-4 months",
+          "artifacts": ["SAP", "SAR", "Risk Assessment Report"]
+        },
+        {
+          "step": 6,
+          "activity": "Authorization Package",
+          "description": "Compile package, review by ISSM, submit to NAO",
+          "duration": "2-4 weeks",
+          "artifacts": ["Authorization package", "Risk acceptance recommendation"]
+        },
+        {
+          "step": 7,
+          "activity": "AO Decision",
+          "description": "NAO reviews package, issues authorization decision",
+          "duration": "2-4 weeks",
+          "artifacts": ["ATO/IATO/DATO memo", "Terms and conditions"]
+        }
+      ]
+    },
+    "army": {
+      "service": "U.S. Army",
+      "authorizingOrganization": "Army Network Enterprise Technology Command (NETCOM)",
+      "keyContacts": [
+        "Army Cyber Command (ARCYBER)",
+        "NETCOM G6",
+        "Program Executive Office (PEO)"
+      ],
+      "specificRequirements": [
+        "Army RMF Implementation Guide",
+        "NETCOM assessment validation",
+        "Army Privacy Impact Assessment (PIA)"
+      ],
+      "typicalTimeline": "12-24 months for new systems",
+      "tools": [
+        "eMASS",
+        "ACAS",
+        "Army Portfolio Management Solution (APMS)"
+      ],
+      "workflow": [
+        {
+          "step": 1,
+          "activity": "Program Registration",
+          "description": "Register in eMASS and APMS, identify AO",
+          "duration": "1-2 weeks"
+        },
+        {
+          "step": 2,
+          "activity": "Categorization",
+          "description": "FIPS 199 analysis, Army-specific overlays",
+          "duration": "2-4 weeks"
+        },
+        {
+          "step": 3,
+          "activity": "Control Selection",
+          "description": "Apply Army RMF control baselines",
+          "duration": "3-6 weeks"
+        },
+        {
+          "step": 4,
+          "activity": "Implementation",
+          "description": "Implement controls per Army standards",
+          "duration": "6-18 months"
+        },
+        {
+          "step": 5,
+          "activity": "NETCOM Assessment",
+          "description": "Validation by NETCOM or delegated assessor",
+          "duration": "2-4 months"
+        },
+        {
+          "step": 6,
+          "activity": "Authorization",
+          "description": "AO decision through ARCYBER",
+          "duration": "4-8 weeks"
+        }
+      ]
+    },
+    "airForce": {
+      "service": "U.S. Air Force",
+      "authorizingOrganization": "Air Force Authorizing Officials",
+      "keyContacts": [
+        "16th Air Force (AFCYBER)",
+        "Air Force Life Cycle Management Center (AFLCMC)",
+        "Program Management Office"
+      ],
+      "specificRequirements": [
+        "Air Force RMF Implementation Guide (AFI 17-101)",
+        "AF-specific STIGs and overlays",
+        "AFCYBER compliance validation"
+      ],
+      "typicalTimeline": "12-18 months for new systems",
+      "tools": [
+        "eMASS",
+        "ACAS",
+        "AF-specific compliance tools"
+      ],
+      "workflow": [
+        {
+          "step": 1,
+          "activity": "System Registration",
+          "description": "eMASS registration, assign cybersecurity team",
+          "duration": "1-2 weeks"
+        },
+        {
+          "step": 2,
+          "activity": "Categorization",
+          "description": "Complete AFI 17-101 categorization requirements",
+          "duration": "2-4 weeks"
+        },
+        {
+          "step": 3,
+          "activity": "Control Selection",
+          "description": "Apply AF overlays and tailoring",
+          "duration": "3-6 weeks"
+        },
+        {
+          "step": 4,
+          "activity": "Implementation",
+          "description": "Implement per AF security standards",
+          "duration": "6-12 months"
+        },
+        {
+          "step": 5,
+          "activity": "Assessment",
+          "description": "Independent assessment validation",
+          "duration": "2-3 months"
+        },
+        {
+          "step": 6,
+          "activity": "Authorization",
+          "description": "AF AO decision",
+          "duration": "4-6 weeks"
+        }
+      ]
+    },
+    "disa": {
+      "service": "Defense Information Systems Agency",
+      "authorizingOrganization": "DISA Authorizing Official",
+      "specificRequirements": [
+        "DISA Cloud Access Point (CAP) requirements",
+        "Impact Level assessments",
+        "DISA Security Technical Implementation Guides (STIGs)"
+      ],
+      "cloudFocus": {
+        "description": "DISA provides enterprise cloud services and authorization for DoD",
+        "services": [
+          "milCloud 2.0",
+          "Commercial Cloud services via CAP",
+          "DoD Cloud Computing SRG compliance"
+        ],
+        "impactLevels": ["IL2", "IL4", "IL5", "IL6"]
+      },
+      "typicalTimeline": "6-12 months for cloud authorization"
+    }
+  },
+  "rmfArtifacts": {
+    "description": "Required and recommended artifacts for RMF authorization",
+    "requiredDocuments": [
+      {
+        "artifact": "System Security Plan (SSP)",
+        "description": "Formal document describing security controls and implementation",
+        "template": "FedRAMP SSP Template or eMASS-generated",
+        "updateFrequency": "With any significant change, minimum annually",
+        "azureSupport": {
+          "dataSource": "Azure Resource Manager, Defender for Cloud, Policy compliance",
+          "automation": "Can generate control implementation evidence automatically"
+        }
+      },
+      {
+        "artifact": "Security Assessment Plan (SAP)",
+        "description": "Methodology for assessing security controls",
+        "template": "FedRAMP SAP Template",
+        "owner": "Security Control Assessor (SCA)",
+        "timing": "Prior to assessment phase"
+      },
+      {
+        "artifact": "Security Assessment Report (SAR)",
+        "description": "Results of security control assessment",
+        "template": "FedRAMP SAR Template",
+        "owner": "Security Control Assessor (SCA)",
+        "timing": "After assessment completion",
+        "azureSupport": {
+          "dataSource": "Defender for Cloud recommendations, Policy compliance reports, vulnerability scans"
+        }
+      },
+      {
+        "artifact": "Plan of Action and Milestones (POA&M)",
+        "description": "Tracking document for remediation of security weaknesses",
+        "template": "FedRAMP POA&M Template",
+        "updateFrequency": "Monthly minimum",
+        "azureSupport": {
+          "dataSource": "Defender for Cloud recommendations, Policy non-compliance",
+          "automation": "Azure DevOps work items, ServiceNow integration"
+        }
+      },
+      {
+        "artifact": "Authorization Decision Document",
+        "description": "Formal ATO/IATO/DATO memorandum",
+        "owner": "Authorizing Official",
+        "content": ["Authorization decision", "Terms and conditions", "Validity period"]
+      },
+      {
+        "artifact": "Continuous Monitoring Plan",
+        "description": "Strategy for ongoing security monitoring",
+        "template": "NIST 800-137 guidance",
+        "azureSupport": {
+          "implementation": "Microsoft Sentinel, Defender for Cloud, Azure Policy, Log Analytics"
+        }
+      }
+    ],
+    "supportingDocuments": [
+      {
+        "artifact": "System Architecture Diagram",
+        "description": "Visual representation of system components and data flows",
+        "azureSupport": "Azure Architecture diagrams, Network topology from Network Watcher"
+      },
+      {
+        "artifact": "Network Diagram",
+        "description": "Network topology including security boundaries",
+        "azureSupport": "Azure Network Watcher topology view"
+      },
+      {
+        "artifact": "Data Flow Diagram",
+        "description": "How data moves through the system",
+        "azureSupport": "Application Insights dependency maps"
+      },
+      {
+        "artifact": "Hardware/Software Inventory",
+        "description": "Complete inventory of system components",
+        "azureSupport": "Azure Resource Graph, Azure Arc inventory"
+      },
+      {
+        "artifact": "Incident Response Plan",
+        "description": "Procedures for security incident handling",
+        "azureSupport": "Microsoft Sentinel playbooks, Azure Automation runbooks"
+      },
+      {
+        "artifact": "Contingency Plan",
+        "description": "Business continuity and disaster recovery procedures",
+        "azureSupport": "Azure Site Recovery, Backup policies, BCDR architecture"
+      },
+      {
+        "artifact": "Configuration Management Plan",
+        "description": "Process for managing system configurations",
+        "azureSupport": "Azure DevOps, GitHub Actions, Azure Policy, ARM/Bicep templates"
+      }
+    ]
+  },
+  "azureRmfSupport": {
+    "description": "How Azure services support RMF activities",
+    "byRmfStep": [
+      {
+        "step": "Categorize",
+        "azureSupport": [
+          {
+            "service": "Azure Resource Tags",
+            "usage": "Tag resources with data classification and impact levels"
+          },
+          {
+            "service": "Microsoft Purview",
+            "usage": "Discover and classify sensitive data"
+          },
+          {
+            "service": "Azure Resource Graph",
+            "usage": "Query and document system boundaries"
+          }
+        ]
+      },
+      {
+        "step": "Select",
+        "azureSupport": [
+          {
+            "service": "Azure Policy",
+            "usage": "Map organizational controls to policy definitions"
+          },
+          {
+            "service": "Defender for Cloud",
+            "usage": "View control recommendations by regulatory standard"
+          },
+          {
+            "service": "Azure Blueprints",
+            "usage": "Package control baselines for deployment"
+          }
+        ]
+      },
+      {
+        "step": "Implement",
+        "azureSupport": [
+          {
+            "service": "Azure Policy",
+            "usage": "Enforce security configurations at scale"
+          },
+          {
+            "service": "ARM/Bicep Templates",
+            "usage": "Infrastructure as code for repeatable deployments"
+          },
+          {
+            "service": "Azure DevOps/GitHub",
+            "usage": "CI/CD pipelines with security gates"
+          },
+          {
+            "service": "Guest Configuration",
+            "usage": "Enforce OS-level settings (STIGs)"
+          }
+        ]
+      },
+      {
+        "step": "Assess",
+        "azureSupport": [
+          {
+            "service": "Defender for Cloud",
+            "usage": "Vulnerability assessment, regulatory compliance"
+          },
+          {
+            "service": "Azure Policy",
+            "usage": "Compliance reports by policy initiative"
+          },
+          {
+            "service": "Microsoft Sentinel",
+            "usage": "Security analytics and threat detection"
+          },
+          {
+            "service": "Resource Graph",
+            "usage": "Ad-hoc compliance queries"
+          }
+        ]
+      },
+      {
+        "step": "Authorize",
+        "azureSupport": [
+          {
+            "service": "Defender for Cloud",
+            "usage": "Export compliance reports for authorization package"
+          },
+          {
+            "service": "Azure Policy",
+            "usage": "Generate compliance evidence"
+          },
+          {
+            "service": "Azure DevOps",
+            "usage": "Track authorization artifacts and approvals"
+          }
+        ]
+      },
+      {
+        "step": "Monitor",
+        "azureSupport": [
+          {
+            "service": "Microsoft Sentinel",
+            "usage": "SIEM/SOAR for continuous monitoring"
+          },
+          {
+            "service": "Azure Monitor",
+            "usage": "Metrics, logs, and alerts"
+          },
+          {
+            "service": "Defender for Cloud",
+            "usage": "Continuous compliance assessment"
+          },
+          {
+            "service": "Azure Policy",
+            "usage": "Drift detection and remediation"
+          }
+        ]
+      }
+    ]
+  },
+  "commonChallenges": {
+    "description": "Common RMF challenges and solutions",
+    "challenges": [
+      {
+        "challenge": "Long authorization timelines",
+        "solution": "Start RMF activities early in SDLC, leverage FedRAMP/PA inheritance, use IATT for development",
+        "azureHelp": "FedRAMP High PA for Azure Government enables faster authorization"
+      },
+      {
+        "challenge": "Maintaining POA&M currency",
+        "solution": "Automate POA&M tracking, integrate with ticketing systems",
+        "azureHelp": "Azure DevOps work items linked to Defender for Cloud findings"
+      },
+      {
+        "challenge": "Documentation burden",
+        "solution": "Use infrastructure as code, automate evidence collection",
+        "azureHelp": "Azure Resource Graph queries, Policy compliance exports"
+      },
+      {
+        "challenge": "Control inheritance complexity",
+        "solution": "Clearly document shared responsibility, reference CSP authorizations",
+        "azureHelp": "Microsoft provides customer responsibility matrix for Azure"
+      },
+      {
+        "challenge": "Continuous monitoring resource constraints",
+        "solution": "Automate monitoring and alerting, use SOAR playbooks",
+        "azureHelp": "Sentinel playbooks for automated response"
+      }
+    ]
+  },
+  "controlInheritance": {
+    "description": "Control inheritance from Azure Government FedRAMP High / DoD PA",
+    "inheritanceTypes": [
+      {
+        "type": "Fully Inherited",
+        "description": "Control completely implemented by CSP",
+        "examples": ["PE-2 Physical Access Authorizations", "PE-3 Physical Access Control"],
+        "customerAction": "Document inheritance in SSP"
+      },
+      {
+        "type": "Shared",
+        "description": "Control implemented by both CSP and customer",
+        "examples": ["AC-2 Account Management", "AU-2 Audit Events"],
+        "customerAction": "Implement customer portion, document shared responsibility"
+      },
+      {
+        "type": "Customer Responsible",
+        "description": "Control fully customer responsibility",
+        "examples": ["AT-2 Security Awareness Training", "PL-2 System Security Plan"],
+        "customerAction": "Fully implement and document"
+      }
+    ],
+    "azureGovernmentInheritance": {
+      "fedRampLevel": "High",
+      "controlsInherited": "Approximately 150+ controls fully inherited",
+      "documentation": "Azure FedRAMP High SSP available via Microsoft Trust Center"
+    }
+  }
+}

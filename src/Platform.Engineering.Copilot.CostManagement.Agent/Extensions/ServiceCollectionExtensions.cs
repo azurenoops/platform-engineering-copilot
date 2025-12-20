@@ -16,6 +16,9 @@ public static class ServiceCollectionExtensions
     {
         // Note: Configuration is registered in Program.cs from AgentConfiguration:CostManagementAgent section
 
+        // Required for IMemoryCache subscription caching
+        services.AddMemoryCache();
+        
         // Register Cost Management Agent and Plugin
         services.AddScoped<CostManagementAgent>();
         services.AddScoped<ISpecializedAgent, CostManagementAgent>(sp => sp.GetRequiredService<CostManagementAgent>());

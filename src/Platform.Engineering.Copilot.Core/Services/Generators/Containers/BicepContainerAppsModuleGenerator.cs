@@ -1010,7 +1010,7 @@ output trafficConfig array = [
     {
         if (_cachedNetworkFiles == null)
         {
-            var networkGenerator = new Infrastructure.BicepNetworkModuleGenerator();
+            var networkGenerator = new Infrastructure.BicepNetworkResourceModuleGenerator();
             _cachedNetworkFiles = networkGenerator.GenerateModule(request);
         }
         return _cachedNetworkFiles;

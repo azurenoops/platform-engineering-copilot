@@ -5,10 +5,12 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Platform.Engineering.Copilot.Core.Interfaces.Agents;
+using Platform.Engineering.Copilot.Core.Interfaces.TokenManagement;
 using Platform.Engineering.Copilot.Core.Models.Agents;
+using Platform.Engineering.Copilot.Core.Models.TokenManagement;
+using Platform.Engineering.Copilot.Core.Services;
 using System.Text.RegularExpressions;
 using Platform.Engineering.Copilot.Compliance.Agent.Plugins;
-using Platform.Engineering.Copilot.Compliance.Agent.Plugins.ATO;
 using Platform.Engineering.Copilot.Compliance.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Services.Agents;
 
@@ -25,17 +27,34 @@ public class ComplianceAgent : ISpecializedAgent
     private readonly IChatCompletionService? _chatCompletion;
     private readonly ILogger<ComplianceAgent> _logger;
     private readonly ComplianceAgentOptions _options;
+    private readonly ConfigService _configService;
+    private readonly ITokenCounter _tokenCounter;
+    private readonly IPromptOptimizer _promptOptimizer;
+    private readonly IRagContextOptimizer _ragContextOptimizer;
+    private readonly IConversationHistoryOptimizer _conversationHistoryOptimizer;
+    private readonly DocumentAgent _documentAgent;
 
     public ComplianceAgent(
         ISemanticKernelService semanticKernelService,
         ILogger<ComplianceAgent> logger,
         IOptions<ComplianceAgentOptions> options,
         CompliancePlugin compliancePlugin,
-        DocumentGenerationPlugin documentGenerationPlugin,
-        Platform.Engineering.Copilot.Core.Plugins.ConfigurationPlugin configurationPlugin)
+        Platform.Engineering.Copilot.Core.Plugins.ConfigurationPlugin configurationPlugin,
+        ConfigService configService,
+        ITokenCounter tokenCounter,
+        IPromptOptimizer promptOptimizer,
+        IRagContextOptimizer ragContextOptimizer,
+        IConversationHistoryOptimizer conversationHistoryOptimizer,
+        DocumentAgent documentAgent)
     {
         _logger = logger;
         _options = options.Value;
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
+        _tokenCounter = tokenCounter ?? throw new ArgumentNullException(nameof(tokenCounter));
+        _promptOptimizer = promptOptimizer ?? throw new ArgumentNullException(nameof(promptOptimizer));
+        _ragContextOptimizer = ragContextOptimizer ?? throw new ArgumentNullException(nameof(ragContextOptimizer));
+        _conversationHistoryOptimizer = conversationHistoryOptimizer ?? throw new ArgumentNullException(nameof(conversationHistoryOptimizer));
+        _documentAgent = documentAgent ?? throw new ArgumentNullException(nameof(documentAgent));
         
         // Create specialized kernel for compliance operations
         _kernel = semanticKernelService.CreateSpecializedKernel(AgentType.Compliance);
@@ -55,13 +74,10 @@ public class ComplianceAgent : ISpecializedAgent
         // Register shared configuration plugin (set_azure_subscription, get_azure_subscription, etc.)
         _kernel.Plugins.Add(KernelPluginFactory.CreateFromObject(configurationPlugin, "ConfigurationPlugin"));
         
-        // Register compliance plugin
+        // Register compliance plugin (includes ATO preparation and document generation utilities)
         _kernel.Plugins.Add(KernelPluginFactory.CreateFromObject(compliancePlugin, "CompliancePlugin"));
-        
-        // Register document generation plugin for control narratives, SSP, SAR, POA&M generation
-        _kernel.Plugins.Add(KernelPluginFactory.CreateFromObject(documentGenerationPlugin, "DocumentGenerationPlugin"));
 
-        _logger.LogInformation("✅ Compliance Agent initialized with specialized kernel (compliance + document generation)");
+        _logger.LogInformation("✅ Compliance Agent initialized with specialized kernel (compliance + ATO + document utilities)");
     }
 
     public async Task<AgentResponse> ProcessAsync(AgentTask task, SharedMemory memory)
@@ -78,7 +94,133 @@ public class ComplianceAgent : ISpecializedAgent
 
         try
         {
-            // Check if AI services are available
+            // ====================================================================
+            // PHASE 1: Check if this is a document generation request
+            // Route to DocumentAgent sub-agent for SSP, SAR, POA&M, verification
+            // ====================================================================
+            if (IsSSPGenerationRequest(task.Description))
+            {
+                _logger.LogInformation("📄 Routing SSP generation to DocumentAgent sub-agent");
+                
+                // Ensure assessment data is available in SharedMemory for DocumentAgent
+                var docContext = memory.GetContext(task.ConversationId ?? "default");
+                if (docContext?.PreviousResults.Count > 0)
+                {
+                    var recentAssessments = docContext.PreviousResults
+                        .Where(r => r.AgentType == AgentType.Compliance)
+                        .TakeLast(1)
+                        .Select(r => r.Content)
+                        .FirstOrDefault();
+                    
+                    if (!string.IsNullOrEmpty(recentAssessments))
+                    {
+                        docContext.WorkflowState["recentAssessment"] = recentAssessments;
+                        _logger.LogInformation("📊 Injected recent assessment into WorkflowState for DocumentAgent");
+                    }
+                }
+                
+                var documentContent = await _documentAgent.GenerateSSPAsync(task, memory);
+                response.Success = true;
+                response.Content = documentContent;
+                response.Metadata = new Dictionary<string, object>
+                {
+                    ["documentType"] = "SSP",
+                    ["sourceAgent"] = "DocumentAgent",
+                    ["generationMethod"] = "AI-Enhanced",
+                    ["timestamp"] = DateTime.UtcNow
+                };
+                response.ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
+                return response;
+            }
+            else if (IsSARGenerationRequest(task.Description))
+            {
+                _logger.LogInformation("📄 Routing SAR generation to DocumentAgent sub-agent");
+                
+                // Ensure assessment data is available in SharedMemory for DocumentAgent
+                var docContext = memory.GetContext(task.ConversationId ?? "default");
+                if (docContext?.PreviousResults.Count > 0)
+                {
+                    var recentAssessments = docContext.PreviousResults
+                        .Where(r => r.AgentType == AgentType.Compliance)
+                        .TakeLast(1)
+                        .Select(r => r.Content)
+                        .FirstOrDefault();
+                    
+                    if (!string.IsNullOrEmpty(recentAssessments))
+                    {
+                        docContext.WorkflowState["recentAssessment"] = recentAssessments;
+                        _logger.LogInformation("📊 Injected recent assessment into WorkflowState for DocumentAgent");
+                    }
+                }
+                
+                var documentContent = await _documentAgent.GenerateSARAsync(task, memory);
+                response.Success = true;
+                response.Content = documentContent;
+                response.Metadata = new Dictionary<string, object>
+                {
+                    ["documentType"] = "SAR",
+                    ["sourceAgent"] = "DocumentAgent",
+                    ["generationMethod"] = "AI-Enhanced",
+                    ["timestamp"] = DateTime.UtcNow
+                };
+                response.ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
+                return response;
+            }
+            else if (IsPoamGenerationRequest(task.Description))
+            {
+                _logger.LogInformation("📄 Routing POA&M generation to DocumentAgent sub-agent");
+                
+                // Ensure assessment data is available in SharedMemory for DocumentAgent
+                var docContext = memory.GetContext(task.ConversationId ?? "default");
+                if (docContext?.PreviousResults.Count > 0)
+                {
+                    var recentAssessments = docContext.PreviousResults
+                        .Where(r => r.AgentType == AgentType.Compliance)
+                        .TakeLast(1)
+                        .Select(r => r.Content)
+                        .FirstOrDefault();
+                    
+                    if (!string.IsNullOrEmpty(recentAssessments))
+                    {
+                        docContext.WorkflowState["recentAssessment"] = recentAssessments;
+                        docContext.WorkflowState["recentFindings"] = recentAssessments;
+                        _logger.LogInformation("📊 Injected recent assessment into WorkflowState for DocumentAgent");
+                    }
+                }
+                
+                var documentContent = await _documentAgent.GeneratePOAMAsync(task, memory);
+                response.Success = true;
+                response.Content = documentContent;
+                response.Metadata = new Dictionary<string, object>
+                {
+                    ["documentType"] = "POA&M",
+                    ["sourceAgent"] = "DocumentAgent",
+                    ["generationMethod"] = "AI-Enhanced",
+                    ["timestamp"] = DateTime.UtcNow
+                };
+                response.ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
+                return response;
+            }
+            else if (IsDocumentVerificationRequest(task.Description))
+            {
+                _logger.LogInformation("📄 Routing document verification to DocumentAgent sub-agent");
+                var verificationResult = await _documentAgent.VerifyDocumentAsync(task, memory);
+                response.Success = true;
+                response.Content = verificationResult;
+                response.Metadata = new Dictionary<string, object>
+                {
+                    ["validationType"] = "DocumentCompliance",
+                    ["sourceAgent"] = "DocumentAgent",
+                    ["generationMethod"] = "AI-Validation",
+                    ["timestamp"] = DateTime.UtcNow
+                };
+                response.ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
+                return response;
+            }
+            
+            // ====================================================================
+            // PHASE 2: Check if AI services are available for compliance assessment
+            // ====================================================================
             if (_chatCompletion == null)
             {
                 _logger.LogWarning("⚠️ AI chat completion service not available. Returning basic response for task: {TaskId}", task.TaskId);
@@ -95,8 +237,58 @@ public class ComplianceAgent : ISpecializedAgent
             var context = memory.GetContext(task.ConversationId ?? "default");
             var previousResults = context?.PreviousResults ?? new List<AgentResponse>();
 
+            // Phase 5: Evaluate conversation health and optimize if needed
+            if (context.MessageHistory != null && context.MessageHistory.Any())
+            {
+                var conversationMessages = context.MessageHistory
+                    .Select(m => new ConversationMessage
+                    {
+                        Role = m.Role,
+                        Content = m.Content,
+                        Timestamp = m.Timestamp
+                    })
+                    .ToList();
+
+                // Evaluate conversation health
+                var health = await EvaluateConversationHealthAsync(
+                    conversationMessages, 
+                    _conversationHistoryOptimizer, 
+                    conversationMessages.Sum(m => _tokenCounter.CountTokens(m.Content)), 
+                    8000);
+
+                if (health.NeedsOptimization)
+                {
+                    _logger.LogInformation(
+                        "Compliance Agent - Conversation optimization needed: {HealthStatus}", 
+                        health.GetHealthSummary());
+
+                    // Manage context window by getting focused message range
+                    var managedMessages = await ManageContextWindowAsync(
+                        conversationMessages, 
+                        _conversationHistoryOptimizer, 
+                        conversationMessages.Count - 1,
+                        3500);
+                    
+                    conversationMessages = managedMessages;
+                }
+            }
+
+            // Get default subscription from config service
+            var defaultSubscriptionId = _configService.GetDefaultSubscription();
+            
+            // Build subscription info if available
+            var subscriptionInfo = !string.IsNullOrEmpty(defaultSubscriptionId)
+                ? $@"
+
+**🔧 DEFAULT CONFIGURATION:**
+- Default Subscription ID: {defaultSubscriptionId}
+- When users don't specify a subscription, automatically use the default subscription ID above
+- ALWAYS use the default subscription when available unless user explicitly specifies a different one
+"
+                : "";
+
             // Build system prompt for compliance expertise
-            var systemPrompt = BuildSystemPrompt();
+            var systemPrompt = BuildSystemPrompt(subscriptionInfo);
 
             // Build user message with context (including deployment metadata from SharedMemory)
             var userMessage = BuildUserMessage(task, previousResults, memory);
@@ -106,6 +298,47 @@ public class ComplianceAgent : ISpecializedAgent
             chatHistory.AddSystemMessage(systemPrompt);
             chatHistory.AddUserMessage(userMessage);
 
+            // Phase 5: Optimize conversation history before using it
+            if (memory.HasContext(task.ConversationId ?? "default"))
+            {
+                var conversationContext = memory.GetContext(task.ConversationId ?? "default");
+                
+                if (conversationContext.MessageHistory != null && conversationContext.MessageHistory.Any())
+                {
+                    var conversationMessages = conversationContext.MessageHistory
+                        .Select(m => new ConversationMessage
+                        {
+                            Role = m.Role,
+                            Content = m.Content,
+                            Timestamp = m.Timestamp
+                        })
+                        .ToList();
+
+                    var optimizedHistory = await OptimizeConversationHistoryAsync(conversationMessages, _conversationHistoryOptimizer, 3500);
+                    
+                    // Use optimized messages for context
+                    var recentHistory = optimizedHistory.Messages
+                        .OrderBy(m => m.Timestamp)
+                        .TakeLast(Math.Min(5, optimizedHistory.Messages.Count))
+                        .ToList();
+
+                    if (recentHistory.Any())
+                    {
+                        var historyText = string.Join("\n", recentHistory.Select(h => 
+                            $"{h.Role}: {h.Content}"));
+                        
+                        chatHistory.AddUserMessage($@"
+**IMPORTANT: Previous conversation context (optimized for this compliance assessment):**
+{historyText}
+
+**The current message is a continuation of this conversation. User has ALREADY provided compliance context.**
+
+**DO NOT ask for information the user already provided above. Instead, USE the information for your compliance assessment!**
+");
+                    }
+                }
+            }
+
             // Execute with lower temperature for precision in compliance assessments
             var executionSettings = new OpenAIPromptExecutionSettings
             {
@@ -113,6 +346,20 @@ public class ComplianceAgent : ISpecializedAgent
                 MaxTokens = _options.MaxTokens,
                 ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions
             };
+
+            // Phase 5: Optimize prompt to fit token budget before sending to LLM
+            var systemPromptText = chatHistory.FirstOrDefault(m => m.Role == Microsoft.SemanticKernel.ChatCompletion.AuthorRole.System)?.Content ?? "";
+            var userMessageText = task.Description;
+            if (!string.IsNullOrEmpty(systemPromptText) && !string.IsNullOrEmpty(userMessageText))
+            {
+                var optimizedPrompt = FitPromptInTokenBudget(systemPromptText, userMessageText);
+                if (optimizedPrompt.WasOptimized)
+                {
+                    _logger.LogInformation(
+                        "Compliance Agent - Prompt optimized before LLM call: {Strategy}, Tokens saved: {Saved}",
+                        optimizedPrompt.OptimizationStrategy, optimizedPrompt.TokensSaved);
+                }
+            }
 
             var result = await _chatCompletion.GetChatMessageContentAsync(
                 chatHistory,
@@ -182,9 +429,21 @@ public class ComplianceAgent : ISpecializedAgent
         return response;
     }
 
-    private string BuildSystemPrompt()
+    private string BuildSystemPrompt(string subscriptionInfo = "")
     {
-        return @"🚨 CRITICAL FUNCTION SELECTION RULES - READ FIRST:
+        return $@"🚨 CRITICAL FUNCTION SELECTION RULES - READ FIRST:
+
+**🔧 AZURE CONTEXT CONFIGURATION:**
+- **Azure context configuration (subscription, tenant, authentication settings)**
+{subscriptionInfo}
+
+**CONFIGURATION vs ASSESSMENT:**
+- If users say ""Use subscription X"", ""Set tenant Y"", ""Set authentication Z"" → **IMMEDIATELY CALL** `set_azure_subscription`, `set_azure_tenant`, or `set_authentication_method` functions (CONFIGURATION)
+  - DO NOT just acknowledge - you MUST call the function to actually configure the Azure context
+  - Extract the subscription ID/tenant ID from the user's message and pass it to the function
+  - Example: ""Use subscription abc-123"" → Call set_azure_subscription(""abc-123"")
+  - **CRITICAL**: After calling these functions, return the EXACT function result - DO NOT paraphrase or add commentary
+- If users say ""Run assessment"", ""Check compliance"", ""Scan for violations"" → Use compliance assessment functions (ASSESSMENT)
 
 1. If user says: collect evidence, evidence package, generate evidence, gather evidence
    → MUST call collect_evidence function
@@ -377,20 +636,20 @@ DISTINGUISH between different types of requests:
 
 **Example Conversation Flow:**
 
+**If default subscription IS configured:**
 User: ""Run a compliance assessment""
-You: ""I'd be happy to run a compliance assessment! To get started, I need a few details:
+You: **[IMMEDIATELY call run_compliance_assessment with the default subscription - use NIST 800-53 as default framework]**
+- DO NOT ask which subscription - use the default from configuration
+- Only ask clarifying questions if user wants something specific (different framework, specific resource group, etc.)
 
-1. Which Azure subscription should I assess? (name or subscription ID)
-2. What scope would you like?
-   - Entire subscription (all resources)
-   - Specific resource group
-   - Recently deployed resources
-3. Which compliance framework? (NIST 800-53, FedRAMP High, DoD IL5, etc.)
+**If NO default subscription is configured:**
+User: ""Run a compliance assessment""
+You: ""I'd be happy to run a compliance assessment! I don't have a default subscription configured yet.
 
-Let me know your preferences!""
+Please provide a subscription ID, or say 'Set subscription <id>' to configure a default for future assessments.""
 
-User: ""subscription 453c..., entire subscription, NIST 800-53""
-You: **[IMMEDIATELY call run_compliance_assessment function - DO NOT ask for confirmation]**
+User: ""Set subscription 453c2549-...""
+You: **[IMMEDIATELY call set_azure_subscription function, then proceed with compliance assessment]**
 
 **CRITICAL: One Question Cycle Only!**
 - First message: User asks for assessment → Ask for missing critical info
@@ -404,45 +663,37 @@ Before asking for details, ALWAYS check SharedMemory for:
 - Subscription IDs from previous tasks
 - If found, confirm with user: ""I found resource group 'rg-xyz' from a recent deployment. Would you like me to scan this one?""
 
-**🔴 CRITICAL: ALWAYS ASK FOR REQUIRED PARAMETERS**
-Before running any compliance assessment, you MUST have the following information:
+**🔴 CRITICAL: PARAMETER HANDLING WITH DEFAULT SUBSCRIPTION**
 
-1. **Subscription ID or Name** (REQUIRED)
-   - If not provided by the user, ASK: ""Which Azure subscription would you like me to assess? You can provide:
-     - A friendly name (e.g., 'production', 'dev', 'staging')
-     - A subscription GUID (e.g., '00000000-0000-0000-0000-000000000000')""
-   - DO NOT proceed without this information
+1. **Subscription ID or Name**
+   - **IF default subscription IS configured**: Use it automatically - DO NOT ask!
+   - **IF NO default subscription**: Ask user to provide one or set a default
    - DO NOT make assumptions or use placeholder values
 
-2. **Scan Scope** (REQUIRED - choose one)
-   - If not specified, ASK: ""Would you like me to:
-     a) Scan the entire subscription (all resources)
-     b) Scan a specific resource group""
-   - If they choose (b), ask for the resource group name
-   - DO NOT assume subscription-wide scan without confirmation
+2. **Scan Scope** (use smart defaults)
+   - Default to entire subscription scan unless user specifies otherwise
+   - If user mentions specific resources or resource groups, scope to those
 
-3. **Resource Group Name** (REQUIRED if scanning specific RG)
-   - If user requests resource group scan but doesn't provide the name, ASK: ""Which resource group would you like me to scan?""
+3. **Resource Group Name** (only if specifically requested)
    - First check SharedMemory deployment metadata for recently created resource groups
-   - If found in SharedMemory, confirm with user: ""I found resource group 'rg-xyz' from a recent deployment. Would you like me to scan this one?""
+   - If found in SharedMemory, use it automatically for newly provisioned resource scans
 
-**Example Conversation Flow:**
+**Example Conversation Flow - WITH Default Subscription:**
 User: ""Run a compliance assessment""
-You: ""I'd be happy to run a compliance assessment! To get started, I need a few details:
+You: **[IMMEDIATELY call run_compliance_assessment - the function will use the configured default subscription]**
 
-1. Which Azure subscription would you like me to assess? (You can use a name like 'production' or a subscription ID)
-2. Would you like me to scan:
-   - The entire subscription (all resources), or
-   - A specific resource group?
-
-Please let me know your preferences.""
+**Example Conversation Flow - WITHOUT Default Subscription:**
+User: ""Run a compliance assessment""
+You: ""I don't have a default subscription configured. Please provide a subscription ID, or say 'Set subscription <id>' to configure one.""
 
 **CRITICAL: Subscription ID Handling**
-When you DO have a subscription ID:
+When you DO have a subscription ID (from default config or conversation):
+- Use the default subscription from configuration automatically
 - Look for subscription IDs in the conversation history or shared memory
 - Extract subscription IDs from previous agent responses (look for GUIDs like '00000000-0000-0000-0000-000000000000')
 - If a task mentions 'newly-provisioned-resources' or 'newly-provisioned-acr', use the subscription ID from the ORIGINAL user request
 - DO NOT pass resource descriptions (like 'newly-provisioned-acr') as subscription IDs
+- DO NOT ask for subscription if one is already configured
 
 **CRITICAL: Resource Group and Subscription ID for Newly Provisioned Resources**
 When assessing compliance of newly provisioned or newly created resources:
@@ -731,4 +982,305 @@ For other families (CP, IR, RA, CA, etc.), provide similar structured informatio
         var ratio = (double)positiveCount / Math.Max(positiveCount + negativeCount, 1);
         return Math.Round(ratio * 100, 1);
     }
+
+    /// <summary>
+    /// Helper method to optimize search results for RAG context
+    /// </summary>
+    private OptimizedRagContext OptimizeSearchResults(
+        List<string> results,
+        string query,
+        int maxTokens = 1500)
+    {
+        var ranked = new List<RankedSearchResult>();
+
+        foreach (var result in results)
+        {
+            if (string.IsNullOrEmpty(result))
+                continue;
+
+            var relevanceScore = CalculateRelevanceScore(query, result);
+            ranked.Add(new RankedSearchResult
+            {
+                Content = result,
+                RelevanceScore = relevanceScore,
+                TokenCount = 0,
+                Metadata = new Dictionary<string, object> { { "query", query } }
+            });
+        }
+
+        var options = new RagOptimizationOptions
+        {
+            MaxRagTokens = maxTokens,
+            MinRelevanceScore = 0.3,
+            MaxResults = 10,
+            TrimLargeResults = true
+        };
+
+        return _ragContextOptimizer.OptimizeContext(ranked, options);
+    }
+
+    /// <summary>
+    /// Calculate relevance score based on keyword matching
+    /// </summary>
+    private double CalculateRelevanceScore(string query, string content, string? title = null)
+    {
+        if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(content))
+            return 0.0;
+
+        var queryWords = query.ToLower()
+            .Split(new[] { ' ', ',', '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 3)
+            .ToList();
+
+        if (queryWords.Count == 0)
+            return 0.0;
+
+        var contentLower = content.ToLower();
+        var titleLower = title?.ToLower() ?? string.Empty;
+
+        int contentMatches = queryWords.Count(w => contentLower.Contains(w));
+        double contentScore = (double)contentMatches / queryWords.Count;
+
+        double titleScore = 0.0;
+        if (!string.IsNullOrEmpty(titleLower))
+        {
+            int titleMatches = queryWords.Count(w => titleLower.Contains(w));
+            titleScore = (titleMatches * 0.15);
+        }
+
+        double score = contentScore + titleScore;
+        return Math.Min(1.0, Math.Max(0.0, score));
+    }
+
+    /// <summary>
+    /// Helper method to fit a prompt within token budget using optimization
+    /// </summary>
+    private OptimizedPrompt FitPromptInTokenBudget(
+        string systemPrompt,
+        string userMessage,
+        List<string>? ragContext = null,
+        List<string>? conversationHistory = null)
+    {
+        ragContext ??= new List<string>();
+        conversationHistory ??= new List<string>();
+
+        var options = BuildPromptOptimizationOptions();
+        var optimized = _promptOptimizer.OptimizePrompt(
+            systemPrompt,
+            userMessage,
+            ragContext,
+            conversationHistory,
+            options);
+
+        if (optimized.WasOptimized)
+        {
+            _logger.LogInformation("Prompt optimization applied: {Strategy}", optimized.OptimizationStrategy);
+            _logger.LogInformation("Tokens saved: {TokensSaved}", optimized.TokensSaved);
+        }
+
+        return optimized;
+    }
+
+    /// <summary>
+    /// Helper method to build prompt optimization options
+    /// </summary>
+    private PromptOptimizationOptions BuildPromptOptimizationOptions()
+    {
+        return new PromptOptimizationOptions
+        {
+            ModelName = "gpt-4o",
+            MaxContextWindow = 128000,
+            TargetTokenCount = 0,
+            ReservedCompletionTokens = 4000,
+            SystemPromptPriority = 100,
+            UserMessagePriority = 100,
+            RagContextPriority = 90,
+            ConversationHistoryPriority = 50,
+            MinRagContextItems = 5,
+            MinConversationHistoryMessages = 1,
+            SafetyBufferPercentage = 10,
+            UseSummarization = true
+        };
+    }
+
+    /// <summary>
+    /// Helper method to calculate and record agent cost metrics
+    /// </summary>
+    private async Task RecordAgentCostAsync(
+        OptimizedPrompt optimizedPrompt,
+        int completionTokens,
+        string taskId,
+        string conversationId)
+    {
+        try
+        {
+            var metrics = new AgentCostMetrics
+            {
+                AgentType = AgentType.Compliance.ToString(),
+                TaskId = taskId,
+                ConversationId = conversationId,
+                Timestamp = DateTime.UtcNow,
+                OriginalPromptTokens = optimizedPrompt.OriginalEstimate?.TotalInputTokens ?? 0,
+                OptimizedPromptTokens = optimizedPrompt.OptimizedEstimate?.TotalInputTokens ?? 0,
+                TokensSaved = optimizedPrompt.TokensSaved,
+                OptimizationPercentage = optimizedPrompt.OriginalEstimate?.TotalInputTokens > 0
+                    ? (optimizedPrompt.TokensSaved * 100.0 / optimizedPrompt.OriginalEstimate.TotalInputTokens)
+                    : 0,
+                CompletionTokens = completionTokens,
+                TotalTokens = (optimizedPrompt.OptimizedEstimate?.TotalInputTokens ?? 0) + completionTokens,
+                Model = "gpt-4o",
+                WasOptimized = optimizedPrompt.WasOptimized,
+                OptimizationStrategy = optimizedPrompt.OptimizationStrategy,
+                RagContextItems = optimizedPrompt.OriginalEstimate?.RagContextItemTokens.Count ?? 0,
+                RagContextItemsAfterOptimization = optimizedPrompt.RagContext.Count,
+                ConversationHistoryMessages = optimizedPrompt.ConversationHistory.Count
+            };
+
+            // Calculate cost (GPT-4o pricing: ~$0.03 per 1K prompt tokens, ~$0.06 per 1K completion tokens)
+            var promptCost = (metrics.OptimizedPromptTokens / 1000.0) * 0.03;
+            var completionCost = (completionTokens / 1000.0) * 0.06;
+            metrics.EstimatedCost = promptCost + completionCost;
+
+            // Calculate original cost for comparison
+            var originalPromptCost = (metrics.OriginalPromptTokens / 1000.0) * 0.03;
+            metrics.CostSaved = originalPromptCost - promptCost;
+
+            _logger.LogInformation("Compliance Agent - Cost metrics recorded: {Summary}", metrics.GetSummary());
+
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to record agent cost metrics");
+        }
+    }
+
+    #region Document Type Detection
+
+    /// <summary>
+    /// Detects if task is requesting SSP (System Security Plan) generation
+    /// </summary>
+    private bool IsSSPGenerationRequest(string description) =>
+        description.Contains("SSP", StringComparison.OrdinalIgnoreCase) ||
+        description.Contains("System Security Plan", StringComparison.OrdinalIgnoreCase) ||
+        description.Contains("generate SSP", StringComparison.OrdinalIgnoreCase) ||
+        description.Contains("create SSP", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Detects if task is requesting SAR (Security Assessment Report) generation
+    /// </summary>
+    private bool IsSARGenerationRequest(string description) =>
+        description.Contains("SAR", StringComparison.OrdinalIgnoreCase) ||
+        description.Contains("Security Assessment Report", StringComparison.OrdinalIgnoreCase) ||
+        description.Contains("assessment report", StringComparison.OrdinalIgnoreCase) ||
+        description.Contains("generate SAR", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Detects if task is requesting POA&M (Plan of Action & Milestones) generation
+    /// </summary>
+    private bool IsPoamGenerationRequest(string description) =>
+        description.Contains("POA&M", StringComparison.OrdinalIgnoreCase) ||
+        description.Contains("POAM", StringComparison.OrdinalIgnoreCase) ||
+        description.Contains("Plan of Action", StringComparison.OrdinalIgnoreCase) ||
+        description.Contains("action plan", StringComparison.OrdinalIgnoreCase) ||
+        description.Contains("remediation plan", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Detects if task is requesting document verification/validation
+    /// </summary>
+    private bool IsDocumentVerificationRequest(string description) =>
+        description.Contains("verify", StringComparison.OrdinalIgnoreCase) ||
+        description.Contains("validate", StringComparison.OrdinalIgnoreCase) ||
+        (description.Contains("check", StringComparison.OrdinalIgnoreCase) &&
+         (description.Contains("document", StringComparison.OrdinalIgnoreCase) ||
+          description.Contains("compliance", StringComparison.OrdinalIgnoreCase))) ||
+        (description.Contains("document", StringComparison.OrdinalIgnoreCase) &&
+         (description.Contains("complian", StringComparison.OrdinalIgnoreCase) ||
+          description.Contains("standard", StringComparison.OrdinalIgnoreCase)));
+
+    #endregion
+
+    #region Conversation History Optimization
+
+    /// <summary>
+    /// Helper method to optimize conversation history for context window management
+    /// </summary>
+    private async Task<OptimizedConversationHistory> OptimizeConversationHistoryAsync(
+        List<ConversationMessage> messages,
+        IConversationHistoryOptimizer historyOptimizer,
+        int tokenBudget = 3500)
+    {
+        try
+        {
+            var options = historyOptimizer.GetRecommendedOptionsForAgent("Compliance");
+            options.MaxTokens = Math.Min(tokenBudget, options.MaxTokens);
+
+            var optimized = await historyOptimizer.OptimizeHistoryAsync(messages, options);
+            
+            return optimized;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to optimize conversation history");
+            return new OptimizedConversationHistory { Messages = messages };
+        }
+    }
+
+    /// <summary>
+    /// Helper method to evaluate conversation health and determine if pruning is needed
+    /// </summary>
+    private async Task<ConversationHealthMetrics> EvaluateConversationHealthAsync(
+        List<ConversationMessage> messages,
+        IConversationHistoryOptimizer historyOptimizer,
+        int currentTokenCount,
+        int tokenBudget = 7000)
+    {
+        try
+        {
+            var health = await historyOptimizer.EvaluateConversationHealthAsync(
+                messages, 
+                currentTokenCount, 
+                tokenBudget);
+
+            _logger.LogDebug("Compliance Agent - Conversation health evaluated:\n{Summary}", 
+                health.GetHealthSummary());
+
+            return health;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to evaluate conversation health");
+            return new ConversationHealthMetrics { TotalMessages = messages.Count };
+        }
+    }
+
+    /// <summary>
+    /// Helper method to manage context window for long-running conversations
+    /// </summary>
+    private async Task<List<ConversationMessage>> ManageContextWindowAsync(
+        List<ConversationMessage> messages,
+        IConversationHistoryOptimizer historyOptimizer,
+        int targetMessageIndex,
+        int maxTokens = 3500)
+    {
+        try
+        {
+            var contextWindow = await historyOptimizer.GetContextWindowAsync(
+                messages,
+                maxTokens,
+                targetMessageIndex);
+
+            _logger.LogDebug("Compliance Agent - Context window managed: {TargetIndex} → {WindowSize} messages", 
+                targetMessageIndex, contextWindow.Count);
+
+            return contextWindow;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to manage context window");
+            return messages;
+        }
+    }
+
+    #endregion
 }

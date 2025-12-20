@@ -1,0 +1,74 @@
+# syntax=docker/dockerfile:1.4
+# Simplified build - without Node.js (not needed for C# MCP server)
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS restore
+WORKDIR /src
+
+# Copy solution and project files only
+COPY ["Platform.Engineering.Copilot.sln", "./"]
+COPY ["src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj", "src/Platform.Engineering.Copilot.Mcp/"]
+COPY ["src/Platform.Engineering.Copilot.Core/Platform.Engineering.Copilot.Core.csproj", "src/Platform.Engineering.Copilot.Core/"]
+COPY ["src/Platform.Engineering.Copilot.Compliance.Agent/Platform.Engineering.Copilot.Compliance.Agent.csproj", "src/Platform.Engineering.Copilot.Compliance.Agent/"]
+COPY ["src/Platform.Engineering.Copilot.Infrastructure.Agent/Platform.Engineering.Copilot.Infrastructure.Agent.csproj", "src/Platform.Engineering.Copilot.Infrastructure.Agent/"]
+COPY ["src/Platform.Engineering.Copilot.CostManagement.Agent/Platform.Engineering.Copilot.CostManagement.Agent.csproj", "src/Platform.Engineering.Copilot.CostManagement.Agent/"]
+COPY ["src/Platform.Engineering.Copilot.Security.Agent/Platform.Engineering.Copilot.Security.Agent.csproj", "src/Platform.Engineering.Copilot.Security.Agent/"]
+COPY ["src/Platform.Engineering.Copilot.Environment.Agent/Platform.Engineering.Copilot.Environment.Agent.csproj", "src/Platform.Engineering.Copilot.Environment.Agent/"]
+COPY ["src/Platform.Engineering.Copilot.Discovery.Agent/Platform.Engineering.Copilot.Discovery.Agent.csproj", "src/Platform.Engineering.Copilot.Discovery.Agent/"]
+COPY ["src/Platform.Engineering.Copilot.KnowledgeBase.Agent/Platform.Engineering.Copilot.KnowledgeBase.Agent.csproj", "src/Platform.Engineering.Copilot.KnowledgeBase.Agent/"]
+
+RUN dotnet restore "src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj" \
+    --runtime linux-x64
+
+# Stage 2: Build
+FROM restore AS build
+WORKDIR /src
+COPY . .
+
+WORKDIR "/src/src/Platform.Engineering.Copilot.Mcp"
+RUN dotnet build "Platform.Engineering.Copilot.Mcp.csproj" \
+    -c Release \
+    -o /app/build \
+    --no-restore \
+    --runtime linux-x64
+
+# Stage 3: Publish
+FROM build AS publish
+RUN dotnet publish "Platform.Engineering.Copilot.Mcp.csproj" \
+    -c Release \
+    -o /app/publish \
+    --no-restore \
+    --runtime linux-x64 \
+    /p:UseAppHost=false
+
+# Stage 4: Runtime
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
+WORKDIR /app
+
+# Install minimal dependencies (curl for health check)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Create non-root user for security
+RUN groupadd -r -g 1000 appuser && \
+    useradd -r -u 1000 -g appuser -m -s /sbin/nologin appuser && \
+    chown -R appuser:appuser /app
+
+# Copy published app
+COPY --from=publish --chown=appuser:appuser /app/publish .
+
+# Copy appsettings.json
+COPY --chown=appuser:appuser appsettings.json ./appsettings.json
+
+USER appuser
+
+EXPOSE 5100
+
+ENV ASPNETCORE_URLS=http://+:5100 \
+    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
+    DOTNET_EnableDiagnostics=0
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:5100/health || exit 1
+
+ENTRYPOINT ["dotnet", "Platform.Engineering.Copilot.Mcp.dll", "--http"]

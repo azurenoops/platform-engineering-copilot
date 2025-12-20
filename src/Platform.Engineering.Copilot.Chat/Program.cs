@@ -147,7 +147,7 @@ builder.Services.AddScoped<IEnvironmentManagementEngine, EnvironmentManagementEn
 builder.Services.AddScoped<EnvironmentStorageService>();
 
 // Register Platform.Engineering.Copilot.Core services (includes ConfigurationPlugin, OrchestratorAgent, SemanticKernelService, etc.)
-builder.Services.AddPlatformEngineeringCopilotCore();
+builder.Services.AddPlatformEngineeringCopilotCore(builder.Configuration);
 
 // Configure agent options from nested AgentConfiguration sections
 builder.Services.Configure<Platform.Engineering.Copilot.Infrastructure.Agent.Configuration.InfrastructureAgentOptions>(

@@ -3,22 +3,19 @@ using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
-using Platform.Engineering.Copilot.Core.Interfaces.Agents;
 using Platform.Engineering.Copilot.Core.Models.Agents;
 using Platform.Engineering.Copilot.Compliance.Agent.Plugins;
-using Platform.Engineering.Copilot.Compliance.Agent.Plugins.ATO;
 using Platform.Engineering.Copilot.Core.Services.Agents;
 
 namespace Platform.Engineering.Copilot.Compliance.Agent.Services.Agents;
 
 /// <summary>
-/// Specialized agent for Authority to Operate (ATO) package preparation and orchestration
+/// Sub-agent for Authority to Operate (ATO) package preparation and orchestration
 /// Coordinates SSP, SAR, POA&M generation and tracks ATO readiness
+/// Orchestrated internally by ComplianceAgent (not a top-level ISpecializedAgent)
 /// </summary>
-public class AtoPreparationAgent : ISpecializedAgent
+public class AtoPreparationAgent
 {
-    public AgentType AgentType => AgentType.Compliance;
-
     private readonly Kernel _kernel;
     private readonly IChatCompletionService? _chatCompletion;
     private readonly ILogger<AtoPreparationAgent> _logger;
@@ -26,7 +23,7 @@ public class AtoPreparationAgent : ISpecializedAgent
     public AtoPreparationAgent(
         ISemanticKernelService semanticKernelService,
         ILogger<AtoPreparationAgent> logger,
-        AtoPreparationPlugin atoPreparationPlugin,
+        CompliancePlugin compliancePlugin,
         Platform.Engineering.Copilot.Core.Plugins.ConfigurationPlugin configurationPlugin)
     {
         _logger = logger;
@@ -49,8 +46,8 @@ public class AtoPreparationAgent : ISpecializedAgent
         // Register shared configuration plugin (set_azure_subscription, get_azure_subscription, etc.)
         _kernel.Plugins.Add(KernelPluginFactory.CreateFromObject(configurationPlugin, "ConfigurationPlugin"));
         
-        // Register ATO preparation plugin
-        _kernel.Plugins.Add(KernelPluginFactory.CreateFromObject(atoPreparationPlugin, "AtoPreparationPlugin"));
+        // Register compliance plugin (includes ATO preparation functions)
+        _kernel.Plugins.Add(KernelPluginFactory.CreateFromObject(compliancePlugin, "CompliancePlugin"));
         
         _logger.LogInformation("🔐 ATO Preparation Agent initialized successfully");
     }

@@ -1,41 +1,53 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Platform.Engineering.Copilot.Compliance.Agent.Plugins;
-using Platform.Engineering.Copilot.Compliance.Agent.Plugins.ATO;
-using Platform.Engineering.Copilot.Core.Interfaces.Agents;
+using Platform.Engineering.Copilot.Compliance.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Interfaces.Chat;
+using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
 using Platform.Engineering.Copilot.Core.Models.Agents;
 using Platform.Engineering.Copilot.Core.Models.Chat;
+using Platform.Engineering.Copilot.Core.Models.Compliance;
+using Platform.Engineering.Copilot.Core.Models.IntelligentChat;
 using Platform.Engineering.Copilot.Core.Services.Agents;
 using Platform.Engineering.Copilot.Core.Services.TokenManagement;
+using System.Text.Json;
 
 namespace Platform.Engineering.Copilot.Compliance.Agent.Services.Agents;
 
 /// <summary>
-/// Specialized agent for ATO documentation generation and compliance artifact management
-/// Handles SSP, SAR, POA&M, and other compliance document creation, formatting, and version control
-/// Uses RAG (Retrieval-Augmented Generation) to enhance responses with relevant documentation
+/// Sub-agent for ATO documentation generation and compliance artifact management
+/// Creates SSP, SAR, POA&M documents using AI-enhanced generation with assessment data
+/// Validates documents against NIST, FedRAMP, and DoD standards
+/// Orchestrated internally by ComplianceAgent (not a top-level ISpecializedAgent)
 /// </summary>
-public class DocumentAgent : ISpecializedAgent
+public class DocumentAgent
 {
-    public AgentType AgentType => AgentType.Compliance;
-
     private readonly Kernel _kernel;
     private readonly IChatCompletionService? _chatCompletion;
     private readonly ILogger<DocumentAgent> _logger;
     private readonly TokenManagementHelper? _tokenHelper;
+    private readonly DocumentAgentOptions _options;
+    private readonly IDocumentGenerationService? _documentGenerationService;
+    private readonly IAtoComplianceEngine? _complianceEngine;
 
     public DocumentAgent(
         ISemanticKernelService semanticKernelService,
         ILogger<DocumentAgent> logger,
-        DocumentGenerationPlugin documentGenerationPlugin,
+        CompliancePlugin compliancePlugin,
         Platform.Engineering.Copilot.Core.Plugins.ConfigurationPlugin configurationPlugin,
+        IOptions<DocumentAgentOptions> options,
+        IDocumentGenerationService? documentGenerationService = null,
+        IAtoComplianceEngine? complianceEngine = null,
         TokenManagementHelper? tokenHelper = null)
     {
         _logger = logger;
         _tokenHelper = tokenHelper;
+        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        _documentGenerationService = documentGenerationService;
+        _complianceEngine = complianceEngine;
         
         // Create specialized kernel for document operations
         _kernel = semanticKernelService.CreateSpecializedKernel(AgentType.Compliance);
@@ -44,7 +56,16 @@ public class DocumentAgent : ISpecializedAgent
         try
         {
             _chatCompletion = _kernel.GetRequiredService<IChatCompletionService>();
-            _logger.LogInformation("✅ Document Agent initialized with AI chat completion service");
+            
+            if (_options.EnableAIGeneration)
+            {
+                _logger.LogInformation("✅ Document Agent initialized with AI chat completion service for enhanced document generation");
+            }
+            else
+            {
+                _logger.LogWarning("⚠️ AI generation disabled in configuration. Using template-based generation only.");
+                _chatCompletion = null;
+            }
         }
         catch (Exception ex)
         {
@@ -55,200 +76,339 @@ public class DocumentAgent : ISpecializedAgent
         // Register shared configuration plugin (set_azure_subscription, get_azure_subscription, etc.)
         _kernel.Plugins.Add(KernelPluginFactory.CreateFromObject(configurationPlugin, "ConfigurationPlugin"));
         
-        // Register document generation plugin
-        _kernel.Plugins.Add(KernelPluginFactory.CreateFromObject(documentGenerationPlugin, "DocumentGenerationPlugin"));
+        // Register compliance plugin (includes document generation utilities)
+        _kernel.Plugins.Add(KernelPluginFactory.CreateFromObject(compliancePlugin, "CompliancePlugin"));
         
-        if (_tokenHelper != null)
-        {
-            _logger.LogInformation("📄 Document Agent initialized with RAG support for enhanced documentation");
-        }
-        else
-        {
-            _logger.LogInformation("📄 Document Agent initialized (RAG support not available)");
-        }
+        _logger.LogInformation("📄 Document Agent initialized:");
+        _logger.LogInformation("  ✓ AI Generation: {AIEnabled}", _options.EnableAIGeneration);
+        _logger.LogInformation("  ✓ Templates: {TemplatesEnabled}", _options.EnableTemplates);
+        _logger.LogInformation("  ✓ Max Doc Size: {MaxDocMB}MB", _options.DocumentGeneration.MaxDocumentSizeMB);
+        _logger.LogInformation("  ✓ Supported Formats: {Formats}", string.Join(", ", _options.DocumentGeneration.SupportedFormats));
+        _logger.LogInformation("  ✓ RAG Support: {RAGAvailable}", _tokenHelper != null);
+        _logger.LogInformation("  ✓ Assessment Integration: {AssessmentAvailable}", _complianceEngine != null);
     }
 
-    public async Task<AgentResponse> ProcessAsync(AgentTask task, SharedMemory memory)
+    public async Task<string> GenerateSSPAsync(AgentTask task, SharedMemory memory, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("📄 Document Agent processing task: {TaskId}", task.TaskId);
-
-        var startTime = DateTime.UtcNow;
-        var response = new AgentResponse
-        {
-            TaskId = task.TaskId,
-            AgentType = AgentType.Compliance,
-            Success = false
-        };
+        _logger.LogInformation("📋 Generating SSP document with AI enhancement");
 
         try
         {
-            // Check if AI services are available
-            if (_chatCompletion == null)
-            {
-                _logger.LogWarning("⚠️ AI chat completion service not available. Returning basic response for task: {TaskId}", task.TaskId);
-                
-                response.Success = true;
-                response.Content = "AI services not configured. Configure Azure OpenAI to enable full AI-powered document generation.";
-                response.ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
-                
-                return response;
-            }
+            var context = memory.GetContext(task.ConversationId ?? "default");
+            var subscriptionId = context?.WorkflowState.ContainsKey("lastSubscriptionId") == true
+                ? context.WorkflowState["lastSubscriptionId"].ToString()
+                : "default";
 
-            // Determine if this is a knowledge query that can benefit from RAG
-            if (_tokenHelper != null && IsKnowledgeQuery(task.Description))
-            {
-                _logger.LogInformation("📚 Using RAG for knowledge-based document query");
-                return await ProcessWithRAGAsync(task, memory, startTime);
-            }
-            else
-            {
-                _logger.LogInformation("🔧 Using function calling for document generation task");
-                return await ProcessWithFunctionCallingAsync(task, memory, startTime);
-            }
+            // Gather assessment data: Try SharedMemory first, then database
+            string assessmentData = await GetAssessmentDataAsync(
+                context, 
+                subscriptionId, 
+                cancellationToken);
+
+            // Build AI prompt with assessment context
+            var systemPrompt = BuildSSPSystemPrompt();
+            var userMessage = BuildSSPUserMessage(task, memory, assessmentData);
+
+            // Generate with AI
+            var result = await InvokeWithFunctionCallingAsync(systemPrompt, userMessage);
+
+            _logger.LogInformation("✅ SSP generated successfully");
+            return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Error in Document Agent processing task {TaskId}", task.TaskId);
-            
-            response.Success = false;
-            response.Content = $"Error processing document request: {ex.Message}";
-            response.Errors.Add(ex.Message);
-            response.ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
-
-            return response;
+            _logger.LogError(ex, "❌ Error generating SSP");
+            throw;
         }
     }
 
     /// <summary>
-    /// Process knowledge queries using RAG (Retrieval-Augmented Generation)
+    /// Generate SAR (Security Assessment Report) using assessment findings
+    /// Called directly by ComplianceAgent for document generation
     /// </summary>
-    private async Task<AgentResponse> ProcessWithRAGAsync(AgentTask task, SharedMemory memory, DateTime startTime)
+    public async Task<string> GenerateSARAsync(AgentTask task, SharedMemory memory, CancellationToken cancellationToken = default)
     {
-        // Get conversation context
-        var context = memory.GetContext(task.ConversationId ?? "default");
-
-        // Build RAG request
-        var ragRequest = new ChatCompletionRequest
-        {
-            SystemPrompt = BuildSystemPrompt(),
-            UserPrompt = BuildUserMessage(task, memory),
-            ConversationContext = context,
-            ModelName = "gpt-4o",
-            Temperature = 0.4,  // Balanced for document generation
-            MaxTokens = 8000,   // Longer completions for documents
-            IncludeConversationHistory = true,
-            MaxHistoryTokens = 3000,
-            MaxHistoryMessages = 10
-        };
-
-        // Get RAG-enhanced completion
-        var ragResponse = await _tokenHelper!.GetRagCompletionAsync(ragRequest);
-
-        if (!ragResponse.Success)
-        {
-            _logger.LogError("RAG completion failed: {Error}", ragResponse.ErrorMessage);
-            // Fall back to function calling
-            return await ProcessWithFunctionCallingAsync(task, memory, startTime);
-        }
-
-        // Calculate and log token usage
-        ragResponse.TokenUsage.CalculateEstimatedCost();
-        double cost = ragResponse.TokenUsage.EstimatedCost;
-        _logger.LogInformation(
-            "💰 Token usage: {TokenSummary} | Cost: ${Cost:F4}",
-            ragResponse.TokenUsage.GetCompactSummary(),
-            cost
-        );
-
-        // Return enhanced response
-        return new AgentResponse
-        {
-            TaskId = task.TaskId,
-            AgentType = AgentType.Compliance,
-            Success = true,
-            Content = ragResponse.Content,
-            ExecutionTimeMs = ragResponse.ProcessingTimeMs,
-            Metadata = new Dictionary<string, object>
-            {
-                ["processingMode"] = "rag",
-                ["tokenUsage"] = ragResponse.TokenUsage.GetSummary(),
-                ["estimatedCost"] = cost,
-                ["modelUsed"] = ragResponse.ModelUsed ?? "gpt-4o",
-                ["historyMessagesIncluded"] = ragResponse.IncludedHistory?.MessageCount ?? 0
-            }
-        };
-    }
-
-    /// <summary>
-    /// Process document generation tasks using function calling
-    /// </summary>
-    private async Task<AgentResponse> ProcessWithFunctionCallingAsync(AgentTask task, SharedMemory memory, DateTime startTime)
-    {
-        var response = new AgentResponse
-        {
-            TaskId = task.TaskId,
-            AgentType = AgentType.Compliance,
-            Success = false
-        };
+        _logger.LogInformation("📋 Generating SAR document with assessment findings");
 
         try
         {
-            // Get conversation context from shared memory
             var context = memory.GetContext(task.ConversationId ?? "default");
-            var previousResults = context?.PreviousResults ?? new List<AgentResponse>();
+            var subscriptionId = context?.WorkflowState.ContainsKey("lastSubscriptionId") == true
+                ? context.WorkflowState["lastSubscriptionId"].ToString()
+                : "default";
 
-            // Build system prompt for document expertise
+            // Gather assessment findings: Try SharedMemory first, then database
+            string assessmentFindings = await GetAssessmentDataAsync(
+                context, 
+                subscriptionId, 
+                cancellationToken);
+
+            var systemPrompt = BuildSARSystemPrompt();
+            var userMessage = BuildSARUserMessage(task, memory, assessmentFindings);
+
+            var result = await InvokeWithFunctionCallingAsync(systemPrompt, userMessage);
+
+            _logger.LogInformation("✅ SAR generated successfully");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Error generating SAR");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Generate POA&M (Plan of Action & Milestones) from findings
+    /// Called directly by ComplianceAgent for remediation planning
+    /// </summary>
+    public async Task<string> GeneratePOAMAsync(AgentTask task, SharedMemory memory, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("📋 Generating POA&M document from assessment findings");
+
+        try
+        {
+            var context = memory.GetContext(task.ConversationId ?? "default");
+            var subscriptionId = context?.WorkflowState.ContainsKey("lastSubscriptionId") == true
+                ? context.WorkflowState["lastSubscriptionId"].ToString()
+                : "default";
+
+            // Get findings from SharedMemory first, then database
+            string findings = await GetAssessmentDataAsync(
+                context, 
+                subscriptionId, 
+                cancellationToken);
+
+            var systemPrompt = BuildPOAMSystemPrompt();
+            var userMessage = BuildPOAMUserMessage(task, memory, findings);
+
+            var result = await InvokeWithFunctionCallingAsync(systemPrompt, userMessage);
+
+            _logger.LogInformation("✅ POA&M generated successfully ({FindingsCount} findings)", CountFindings(findings));
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Error generating POA&M");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Verify and validate a document against NIST/FedRAMP standards
+    /// Called directly by ComplianceAgent for compliance validation
+    /// </summary>
+    public async Task<string> VerifyDocumentAsync(AgentTask task, SharedMemory memory, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("🔍 Verifying document compliance with standards");
+
+        try
+        {
+            var systemPrompt = BuildDocumentVerificationSystemPrompt();
+            var userMessage = BuildDocumentVerificationMessage(task, memory);
+
+            var result = await InvokeWithFunctionCallingAsync(systemPrompt, userMessage);
+
+            _logger.LogInformation("✅ Document verification completed successfully");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Error verifying document");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Process general document guidance and knowledge queries
+    /// Called directly by ComplianceAgent for document-related questions
+    /// </summary>
+    public async Task<string> ProcessDocumentQueryAsync(AgentTask task, SharedMemory memory, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("📄 Processing document guidance request");
+
+        try
+        {
+            var context = memory.GetContext(task.ConversationId ?? "default");
             var systemPrompt = BuildSystemPrompt();
-
-            // Build user message with context
             var userMessage = BuildUserMessage(task, memory);
 
-            // Create chat history
-            var chatHistory = new ChatHistory();
-            chatHistory.AddSystemMessage(systemPrompt);
-            chatHistory.AddUserMessage(userMessage);
+            var result = await InvokeWithFunctionCallingAsync(systemPrompt, userMessage);
 
-            // Execute with balanced temperature for creative yet accurate document generation
-            var executionSettings = new OpenAIPromptExecutionSettings
-            {
-                Temperature = 0.4, // Balanced for creativity + accuracy
-                MaxTokens = 8000, // Longer for document generation
-                ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions
-            };
-
-            var result = await _chatCompletion!.GetChatMessageContentAsync(
-                chatHistory,
-                executionSettings,
-                _kernel);
-
-            // Store results
-            response.Success = true;
-            response.Content = result.Content ?? "No response generated.";
-            response.Metadata = ExtractMetadata(result);
-            response.Metadata["processingMode"] = "function-calling";
-            response.ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
-
-            // Save in context for future reference
             if (context != null)
             {
+                var response = new AgentResponse
+                {
+                    TaskId = task.TaskId,
+                    AgentType = AgentType.Compliance,
+                    Success = true,
+                    Content = result
+                };
                 context.PreviousResults.Add(response);
             }
 
-            _logger.LogInformation("✅ Document Agent completed task {TaskId} in {Ms}ms", task.TaskId, response.ExecutionTimeMs);
-
-            return response;
+            _logger.LogInformation("✅ Document guidance query completed");
+            return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "❌ Error in Document Agent processing task {TaskId}", task.TaskId);
-            
-            response.Success = false;
-            response.Content = $"Error processing document request: {ex.Message}";
-            response.Errors.Add(ex.Message);
-            response.ExecutionTimeMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
-
-            return response;
+            _logger.LogError(ex, "❌ Error processing document query");
+            throw;
         }
+    }
+
+    /// <summary>
+    /// Invoke AI with function calling and proper settings
+    /// </summary>
+    private async Task<string> InvokeWithFunctionCallingAsync(string systemPrompt, string userMessage)
+    {
+        var chatHistory = new ChatHistory();
+        chatHistory.AddSystemMessage(systemPrompt);
+        chatHistory.AddUserMessage(userMessage);
+
+        var executionSettings = new OpenAIPromptExecutionSettings
+        {
+            Temperature = _options.Temperature,
+            MaxTokens = _options.MaxTokens,
+            ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions
+        };
+
+        var result = await _chatCompletion!.GetChatMessageContentAsync(
+            chatHistory,
+            executionSettings,
+            _kernel);
+
+        return result.Content ?? "No response generated.";
+    }
+
+    #region System Prompts
+
+    private string BuildSSPSystemPrompt()
+    {
+        return @"You are an expert System Security Plan (SSP) author specializing in NIST SP 800-18 compliance and FedRAMP guidelines.
+
+**YOUR TASK:**
+Generate a comprehensive System Security Plan (SSP) document using:
+1. Current compliance assessment data
+2. System architecture and boundaries
+3. Control implementation details
+4. Roles and responsibilities
+
+**DOCUMENT STRUCTURE:**
+- Executive Summary
+- System Description & Boundaries
+- System Security Plan Organization
+- Security Control Implementation (by control family)
+- Evidence and Supporting Documentation
+
+**KEY REQUIREMENTS:**
+- Follow NIST SP 800-18 format
+- Include FedRAMP baseline requirements if applicable
+- Reference specific control implementation details
+- Distinguish between customer and inherited (Azure) responsibilities
+- Maintain consistent terminology and formatting
+- Include clear ownership assignments
+
+**VALIDATION:**
+- Ensure all required sections are present
+- Verify control descriptions reference implementation details
+- Check consistency across all sections
+- Validate references to evidence artifacts";
+    }
+
+    private string BuildSARSystemPrompt()
+    {
+        return @"You are an expert Security Assessment Report (SAR) author specializing in NIST SP 800-53A methodology.
+
+**YOUR TASK:**
+Generate a Security Assessment Report based on:
+1. Assessment findings and test results
+2. Control testing methodology
+3. Evidence evaluation
+4. Risk categorization
+
+**DOCUMENT STRUCTURE:**
+- Assessment Overview
+- Control-by-Control Assessment Results
+- Findings Summary (Open/Closed, Severity)
+- Evidence Evaluation
+- Risk Assessment
+- Recommendations
+
+**KEY REQUIREMENTS:**
+- Use NIST SP 800-53A assessment procedures
+- Categorize findings by severity
+- Provide evidence references for each finding
+- Include assessment methodology
+- Recommend remediation priorities
+- Maintain objectivity and clarity
+
+**VALIDATION:**
+- Ensure all assessed controls are documented
+- Verify evidence supports findings
+- Check severity ratings are appropriate
+- Validate findings are clearly documented";
+    }
+
+    private string BuildPOAMSystemPrompt()
+    {
+        return @"You are an expert Plan of Action & Milestones (POA&M) author specializing in remediation planning.
+
+**YOUR TASK:**
+Generate a POA&M document that:
+1. Lists all open findings from assessments
+2. Defines remediation plans and milestones
+3. Assigns accountability and resources
+4. Tracks progress toward closure
+
+**DOCUMENT STRUCTURE:**
+- POA&M Overview
+- Findings Listing with Remediation Plans
+- Milestones and Timeline
+- Resource Requirements
+- Responsible Parties and Contacts
+- Status Tracking
+
+**KEY REQUIREMENTS:**
+- Each finding has clear remediation plan
+- Realistic milestones with target dates
+- Resource requirements are documented
+- Responsible parties are assigned
+- Progress tracking mechanism is defined
+- Priorities reflect risk severity
+
+**VALIDATION:**
+- Ensure all open findings are included
+- Verify remediation plans are feasible
+- Check milestones are realistic
+- Validate responsible parties are assigned";
+    }
+
+    private string BuildDocumentVerificationSystemPrompt()
+    {
+        return @"You are an expert document compliance reviewer for federal security documentation.
+
+**YOUR TASK:**
+Verify and validate a security document against applicable standards:
+1. NIST SP 800-18 (SSP)
+2. NIST SP 800-53A (SAR)
+3. FedRAMP guidelines
+4. DoD RMF requirements
+
+**VALIDATION CHECKS:**
+- Document completeness
+- Formatting and structure
+- Content accuracy and consistency
+- Evidence support and references
+- Control coverage
+- Compliance standard adherence
+
+**REPORTING:**
+- Identify gaps or missing sections
+- Flag inconsistencies
+- Recommend improvements
+- Prioritize issues by severity
+- Provide specific remediation guidance";
     }
 
     private string BuildSystemPrompt()
@@ -256,179 +416,290 @@ public class DocumentAgent : ISpecializedAgent
         return @"You are the Document Agent, an expert in ATO documentation generation and compliance artifact management.
 
 **YOUR ROLE:**
-You generate, format, manage, and maintain compliance documentation for Authority to Operate (ATO) processes. You are expert in:
+Generate, format, manage, and maintain compliance documentation for Authority to Operate (ATO) processes.
+
+**EXPERTISE:**
 - System Security Plan (SSP) authoring
 - Security Assessment Report (SAR) writing
 - Plan of Action & Milestones (POA&M) creation
 - Control implementation narratives
 - Evidence artifact management
-- Document version control
+- Document formatting and standards
 - Template management
-- Compliance formatting standards
+- Compliance validation
 
-**AVAILABLE FUNCTIONS:**
+**WORKFLOW:**
+- For SSP generation: Gather system architecture, controls, evidence
+- For SAR generation: Use assessment results and findings
+- For POA&M generation: Reference open findings and remediation plans
+- For document verification: Validate against applicable standards
+- For control narratives: Describe implementation and supporting evidence";
+    }
 
-**Document Generation:**
-- GenerateDocumentFromTemplate: Create document from predefined template
-- GenerateControlNarrative: Write control implementation narrative
-- GenerateExecutiveSummary: Create executive summary for ATO package
-- CreateDocumentOutline: Generate structured outline for document
+    #endregion
 
-**Document Management:**
-- ListDocuments: Show all documents in ATO package
-- GetDocumentMetadata: Retrieve document details and version info
-- UpdateDocumentSection: Modify specific section of document
-- MergeDocuments: Combine multiple documents into one
+    #region User Message Builders
 
-**Document Analysis (from uploaded files):**
-- upload_security_document: Upload and analyze existing compliance documents (SSP, POA&M, architecture diagrams)
-- extract_security_controls: Extract NIST 800-53 controls from uploaded documents
-- analyze_architecture_diagram: Analyze architecture and data flow diagrams
-- compare_documents: Compare two document versions or different documents
+    private string BuildSSPUserMessage(AgentTask task, SharedMemory memory, string assessmentData)
+    {
+        var context = memory.GetContext(task.ConversationId ?? "default");
+        var message = task.Description;
 
-**Formatting & Export:**
-- FormatDocument: Apply compliance formatting standards (NIST, FedRAMP, DoD)
-- ExportDocument: Export to various formats (DOCX, PDF, Markdown)
-- ValidateDocumentCompliance: Check document against standards
-- GenerateTableOfContents: Create ToC for document
+        if (!string.IsNullOrEmpty(assessmentData))
+        {
+            message = $@"ASSESSMENT DATA CONTEXT:
+{assessmentData}
 
-**Version Control:**
-- CreateDocumentVersion: Save versioned copy
-- CompareDocumentVersions: Show differences between versions
-- RestoreDocumentVersion: Revert to previous version
+USER REQUEST: {task.Description}";
+        }
 
-**DOCUMENT STANDARDS:**
-You follow these formatting and content standards:
+        if (context?.WorkflowState.ContainsKey("systemName") == true)
+        {
+            message += $"\n- System Name: {context.WorkflowState["systemName"]}";
+        }
 
-**SSP (System Security Plan):**
-- NIST SP 800-18 structure
-- FedRAMP SSP template (if applicable)
-- DoD RMF requirements (if applicable)
-- Sections: System Description, Boundary, Control Implementation, Roles
+        if (context?.WorkflowState.ContainsKey("baseline") == true)
+        {
+            message += $"\n- Baseline: {context.WorkflowState["baseline"]}";
+        }
 
-**SAR (Security Assessment Report):**
-- NIST SP 800-53A methodology
-- Control-by-control assessment results
-- Evidence documentation
-- Finding categorization (Open/Closed, Severity)
+        return message;
+    }
 
-**POA&M (Plan of Action & Milestones):**
-- Standard format with required fields
-- Finding ID, Description, Remediation Plan
-- Responsible Party, Resources Required
-- Scheduled Completion Date, Milestones
+    private string BuildSARUserMessage(AgentTask task, SharedMemory memory, string assessmentFindings)
+    {
+        var message = task.Description;
 
-**Control Narratives:**
-- Clear description of ""what"" is implemented
-- Explanation of ""how"" control is met
-- Reference to evidence artifacts
-- Customer vs. inherited responsibilities
+        if (!string.IsNullOrEmpty(assessmentFindings))
+        {
+            message = $@"ASSESSMENT FINDINGS:
+{assessmentFindings}
 
-**WORKFLOW PATTERNS:**
-- For ""create SSP section"" -> Use GenerateDocumentFromTemplate with section name
-- For ""write control narrative"" -> Call GenerateControlNarrative with control ID
-- For ""format document"" -> Use FormatDocument with standard type
-- For ""show my documents"" -> Call ListDocuments
-- For ""update section"" -> Use UpdateDocumentSection
-- For ""export as PDF"" -> Call ExportDocument with format specification
-- For ""upload document"" -> Use upload_security_document (provide file path)
-- For ""analyze existing SSP"" -> Use upload_security_document with documentType='SSP'
-- For ""extract controls from document"" -> Use extract_security_controls after uploading
-- For ""analyze architecture diagram"" -> Use analyze_architecture_diagram with file path
+USER REQUEST: {task.Description}";
+        }
 
-**RESPONSE STYLE:**
-- Professional and formal (government compliance context)
-- Precise and unambiguous language
-- Include references to standards (NIST SP numbers, FedRAMP baselines)
-- Provide document structure previews
-- Suggest related sections that may need updates
+        return message;
+    }
 
-**IMPORTANT:**
-- Maintain consistency across all documents in package
-- Track document versions for audit trail
-- Validate all content against applicable standards
-- Cross-reference controls, findings, and evidence
-- Preserve metadata (author, date, version, classification)";
+    private string BuildPOAMUserMessage(AgentTask task, SharedMemory memory, string findings)
+    {
+        var message = task.Description;
+
+        if (!string.IsNullOrEmpty(findings))
+        {
+            message = $@"OPEN FINDINGS:
+{findings}
+
+USER REQUEST: {task.Description}";
+        }
+
+        return message;
+    }
+
+    private string BuildDocumentVerificationMessage(AgentTask task, SharedMemory memory)
+    {
+        return task.Description;
     }
 
     private string BuildUserMessage(AgentTask task, SharedMemory memory)
     {
         var context = memory.GetContext(task.ConversationId ?? "default");
-        var enhancedMessage = task.Description;
+        var message = task.Description;
 
-        // Add saved context if available
         if (context?.WorkflowState.ContainsKey("lastSubscriptionId") == true)
         {
             var subscriptionId = context.WorkflowState["lastSubscriptionId"];
-            enhancedMessage = $@"SAVED CONTEXT FROM PREVIOUS ACTIVITY:
+            message = $@"SAVED CONTEXT:
 - Last scanned subscription: {subscriptionId}
 
 USER REQUEST: {task.Description}";
         }
 
-        // Add ATO package context if available
-        if (context?.WorkflowState.ContainsKey("atoPackageId") == true)
-        {
-            var packageId = context.WorkflowState["atoPackageId"];
-            enhancedMessage += $"\n- Active ATO Package: {packageId}";
-        }
-
-        // Add document context if available
-        if (context?.WorkflowState.ContainsKey("currentDocumentId") == true)
-        {
-            var docId = context.WorkflowState["currentDocumentId"];
-            enhancedMessage += $"\n- Current Document: {docId}";
-        }
-
-        return enhancedMessage;
+        return message;
     }
 
-    private Dictionary<string, object> ExtractMetadata(ChatMessageContent response)
-    {
-        var metadata = new Dictionary<string, object>();
+    #endregion
 
-        if (response.Metadata != null)
+    #region Helper Methods
+
+    private string ExtractFindingsFromContext(ConversationContext? context)
+    {
+        if (context == null) return "";
+
+        if (context.WorkflowState.ContainsKey("recentFindings"))
         {
-            foreach (var kvp in response.Metadata)
-            {
-                if (kvp.Value != null)
-                {
-                    metadata[$"Document_{kvp.Key}"] = kvp.Value;
-                }
-            }
+            return context.WorkflowState["recentFindings"].ToString() ?? "";
         }
 
-        return metadata;
+        if (context.PreviousResults.Count > 0)
+        {
+            var recentResults = context.PreviousResults.TakeLast(3)
+                .Select(r => r.Content)
+                .Where(c => !string.IsNullOrEmpty(c));
+            
+            return string.Join("\n---\n", recentResults);
+        }
+
+        return "";
+    }
+
+    private int CountFindings(string findings)
+    {
+        if (string.IsNullOrEmpty(findings)) return 0;
+        // Simple count of "finding" occurrences
+        return findings.Split(new[] { "finding", "Finding" }, StringSplitOptions.None).Length - 1;
     }
 
     /// <summary>
-    /// Determine if the query is a knowledge/guidance request vs. a document generation task
+    /// Get assessment data with fallback chain: SharedMemory (WorkflowState) → SharedMemory (PreviousResults) → Database
     /// </summary>
-    private bool IsKnowledgeQuery(string query)
+    private async Task<string> GetAssessmentDataAsync(
+        ConversationContext? context, 
+        string subscriptionId,
+        CancellationToken cancellationToken = default)
     {
-        var knowledgeKeywords = new[]
+        // Priority 1: Check SharedMemory WorkflowState (current session data)
+        if (context?.WorkflowState.ContainsKey("recentAssessment") == true)
         {
-            // Question indicators
-            "what is", "how do", "how to", "explain", "describe",
-            "difference between", "what are", "why",
-            
-            // Guidance requests
-            "best practice", "recommend", "should i", "when to",
-            "guidance", "example", "sample",
-            
-            // Comparison/Analysis
-            "compare", "versus", "vs", "differences",
-            
-            // Learning/Understanding
-            "help me understand", "teach me", "learn about",
-            "overview of", "introduction to",
-            
-            // Compliance questions
-            "which controls", "what controls", "compliance requirements",
-            "nist requirements", "fedramp requirements", "what evidence"
-        };
+            var data = context.WorkflowState["recentAssessment"].ToString();
+            if (!string.IsNullOrEmpty(data))
+            {
+                _logger.LogInformation("📊 Assessment data retrieved from SharedMemory (WorkflowState)");
+                return data;
+            }
+        }
 
-        var lowerQuery = query.ToLower();
-        return knowledgeKeywords.Any(keyword => lowerQuery.Contains(keyword));
+        // Priority 2: Check SharedMemory PreviousResults (conversation history)
+        if (context?.PreviousResults.Count > 0)
+        {
+            var recentResults = context.PreviousResults
+                .Where(r => r.AgentType == AgentType.Compliance)
+                .TakeLast(1)
+                .Select(r => r.Content)
+                .FirstOrDefault();
+            
+            if (!string.IsNullOrEmpty(recentResults))
+            {
+                _logger.LogInformation("📊 Assessment data retrieved from SharedMemory (PreviousResults)");
+                return recentResults;
+            }
+        }
+
+        // Priority 3: Query Database (cross-session persistence)
+        if (_complianceEngine != null && !string.IsNullOrEmpty(subscriptionId) && subscriptionId != "default")
+        {
+            try
+            {
+                _logger.LogInformation("📊 Querying database for latest assessment (subscription: {SubscriptionId})", subscriptionId);
+                
+                var latestAssessment = await _complianceEngine.GetLatestAssessmentAsync(subscriptionId, cancellationToken);
+                
+                if (latestAssessment != null)
+                {
+                    // Format assessment data for document generation
+                    var assessmentSummary = FormatAssessmentForDocuments(latestAssessment);
+                    _logger.LogInformation("✅ Assessment data retrieved from database - {FindingsCount} findings", latestAssessment.TotalFindings);
+                    
+                    // Cache it in WorkflowState for future use in this session
+                    if (context != null)
+                    {
+                        context.WorkflowState["recentAssessment"] = assessmentSummary;
+                        _logger.LogInformation("💾 Cached assessment data in SharedMemory for future use");
+                    }
+                    
+                    return assessmentSummary;
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ No assessment found in database for subscription {SubscriptionId}", subscriptionId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "⚠️ Error retrieving assessment from database: {Error}", ex.Message);
+            }
+        }
+
+        // Fallback: No assessment data available
+        _logger.LogWarning("⚠️ No assessment data available (SharedMemory or Database). Document will be generated from templates only.");
+        return "";
     }
+
+    /// <summary>
+    /// Format AtoComplianceAssessment for document generation
+    /// </summary>
+    private string FormatAssessmentForDocuments(AtoComplianceAssessment assessment)
+    {
+        if (assessment == null) return "";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Assessment ID: {assessment.AssessmentId}");
+        sb.AppendLine($"Subscription ID: {assessment.SubscriptionId}");
+        sb.AppendLine($"Assessment Date: {assessment.EndTime:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine($"Compliance Score: {assessment.OverallComplianceScore:F2}%");
+        sb.AppendLine();
+
+        // Summary of findings by severity
+        sb.AppendLine("## Finding Summary by Severity");
+        sb.AppendLine($"- Total Findings: {assessment.TotalFindings}");
+        sb.AppendLine($"- Critical: {assessment.CriticalFindings}");
+        sb.AppendLine($"- High: {assessment.HighFindings}");
+        sb.AppendLine($"- Medium: {assessment.MediumFindings}");
+        sb.AppendLine($"- Low: {assessment.LowFindings}");
+        sb.AppendLine($"- Informational: {assessment.InformationalFindings}");
+        sb.AppendLine();
+
+        // Control family results
+        if (assessment.ControlFamilyResults != null && assessment.ControlFamilyResults.Any())
+        {
+            sb.AppendLine("## Control Family Compliance Status");
+            foreach (var familyKvp in assessment.ControlFamilyResults)
+            {
+                var family = familyKvp.Value;
+                sb.AppendLine($"### {family.ControlFamily} - {family.FamilyName}");
+                sb.AppendLine($"- Compliance Score: {family.ComplianceScore:F2}%");
+                sb.AppendLine($"- Passed Controls: {family.PassedControls}/{family.TotalControls}");
+                
+                if (family.Findings != null && family.Findings.Any())
+                {
+                    sb.AppendLine($"- Findings: {family.Findings.Count}");
+                    foreach (var finding in family.Findings.Take(5)) // Limit to first 5 findings
+                    {
+                        sb.AppendLine($"  - **{finding.Title}** ({finding.Severity})");
+                    }
+                    if (family.Findings.Count > 5)
+                    {
+                        sb.AppendLine($"  - ... and {family.Findings.Count - 5} more findings");
+                    }
+                }
+                sb.AppendLine();
+            }
+        }
+
+        // Executive summary
+        if (!string.IsNullOrEmpty(assessment.ExecutiveSummary))
+        {
+            sb.AppendLine("## Executive Summary");
+            sb.AppendLine(assessment.ExecutiveSummary);
+            sb.AppendLine();
+        }
+
+        // Recommendations
+        if (assessment.Recommendations != null && assessment.Recommendations.Any())
+        {
+            sb.AppendLine("## Recommendations");
+            foreach (var rec in assessment.Recommendations.Take(10)) // Limit to first 10 recommendations
+            {
+                sb.AppendLine($"- {rec}");
+            }
+            if (assessment.Recommendations.Count > 10)
+            {
+                sb.AppendLine($"- ... and {assessment.Recommendations.Count - 10} more recommendations");
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    #endregion
 }

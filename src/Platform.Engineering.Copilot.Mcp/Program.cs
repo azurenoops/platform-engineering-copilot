@@ -107,11 +107,37 @@ class Program
             logging.AddSerilog();
         });
 
-        // Register database context (SQLite)
-        var dbPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../..", "platform_engineering_copilot_management.db"));
-        var connectionString = $"Data Source={dbPath}";
-        builder.Services.AddDbContext<PlatformEngineeringCopilotContext>(options =>
-            options.UseSqlite(connectionString));
+        // Register database context - use SQL Server connection from config or env variable
+        var configuration = builder.Configuration;
+        var connectionString = configuration.GetConnectionString("DefaultConnection") 
+            ?? configuration.GetConnectionString("SqlServerConnection");
+        
+        Log.Information("🔧 Database connection string lookup:");
+        Log.Information("   - DefaultConnection: {Exists}", configuration.GetConnectionString("DefaultConnection") != null ? "Found" : "Not found");
+        Log.Information("   - SqlServerConnection: {Exists}", configuration.GetConnectionString("SqlServerConnection") != null ? "Found" : "Not found");
+        
+        if (!string.IsNullOrEmpty(connectionString))
+        {
+            Log.Information("✅ Using SQL Server database");
+            // Mask the password in the connection string for logging
+            var maskedConnectionString = System.Text.RegularExpressions.Regex.Replace(
+                connectionString, @"(Password|Pwd)=[^;]+", "$1=***", 
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            Log.Information("   Connection: {ConnectionString}", maskedConnectionString);
+            
+            builder.Services.AddDbContext<PlatformEngineeringCopilotContext>(options =>
+                options.UseSqlServer(connectionString));
+        }
+        else
+        {
+            // Fallback to SQLite
+            Log.Warning("⚠️ No SQL Server connection string found, falling back to SQLite");
+            var dbPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../..", "platform_engineering_copilot_management.db"));
+            var sqliteConnectionString = $"Data Source={dbPath}";
+            Log.Information("   SQLite Path: {DbPath}", dbPath);
+            builder.Services.AddDbContext<PlatformEngineeringCopilotContext>(options =>
+                options.UseSqlite(sqliteConnectionString));
+        }
 
         // Register HttpClient for services that need it (like NistControlsService)
         builder.Services.AddHttpClient();

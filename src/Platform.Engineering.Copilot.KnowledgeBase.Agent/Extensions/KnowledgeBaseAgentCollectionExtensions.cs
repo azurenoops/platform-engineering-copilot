@@ -58,11 +58,13 @@ public static class KnowledgeBaseAgentCollectionExtensions
                 return true;
             }, "Knowledge Base Agent configuration is invalid");
 
-        // Knowledge Base Services (RMF, STIG, DoD Instructions, Workflows)
+        // Knowledge Base Services (RMF, STIG, DoD Instructions, Workflows, Impact Levels, FedRAMP)
         services.AddSingleton<IRmfKnowledgeService, RmfKnowledgeService>();
         services.AddSingleton<IStigKnowledgeService, StigKnowledgeService>();
         services.AddSingleton<IDoDInstructionService, DoDInstructionService>();
         services.AddSingleton<IDoDWorkflowService, DoDWorkflowService>();
+        services.AddSingleton<IImpactLevelService, ImpactLevelService>();
+        services.AddSingleton<IFedRampTemplateService, FedRampTemplateService>();
 
         // Register plugin
         services.AddScoped<KnowledgeBasePlugin>();

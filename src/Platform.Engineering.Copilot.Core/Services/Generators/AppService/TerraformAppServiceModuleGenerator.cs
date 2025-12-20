@@ -456,7 +456,7 @@ public class TerraformAppServiceModuleGenerator
   {
     if (_cachedKeyVaultFiles == null)
     {
-      var kvGenerator = new KeyVault.TerraformKeyVaultModuleGenerator();
+      var kvGenerator = new KeyVault.TerraformKeyVaultResourceModuleGenerator();
       _cachedKeyVaultFiles = kvGenerator.GenerateModule(request);
     }
     return _cachedKeyVaultFiles;
@@ -533,7 +533,7 @@ public class TerraformAppServiceModuleGenerator
   {
     if (_cachedNetworkFiles == null)
     {
-      var networkGenerator = new Infrastructure.TerraformNetworkModuleGenerator();
+      var networkGenerator = new Infrastructure.TerraformNetworkResourceModuleGenerator();
       _cachedNetworkFiles = networkGenerator.GenerateModule(request);
     }
     return _cachedNetworkFiles;

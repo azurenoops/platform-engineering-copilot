@@ -11,6 +11,9 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddEnvironmentAgent(this IServiceCollection services)
     {
+        // Required for IMemoryCache subscription caching
+        services.AddMemoryCache();
+        
         // Register Environment Agent and Plugin
         services.AddScoped<EnvironmentAgent>();
         services.AddScoped<ISpecializedAgent, EnvironmentAgent>(sp => sp.GetRequiredService<EnvironmentAgent>());

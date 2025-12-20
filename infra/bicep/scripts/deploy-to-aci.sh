@@ -137,28 +137,26 @@ echo -e "${BLUE}  Using local Docker buildx with cross-platform support${NC}"
 echo -e "${BLUE}  Building for linux/amd64 (Azure compatible)${NC}"
 echo -e "${BLUE}  This may take 5-10 minutes...${NC}"
 
-# Function to check and build image
-build_image_if_needed() {
+# Ask about rebuild strategy
+read -p "Force rebuild all images? (y/n) [n]: " FORCE_REBUILD
+FORCE_REBUILD=${FORCE_REBUILD:-n}
+
+# Function to build and push image
+build_image() {
   local image_name=$1
   local dockerfile=$2
   
-  echo -e "\n${YELLOW}  Checking $image_name...${NC}"
-  
-  # Check if image already exists with correct platform
-  if az acr repository show --name $ACR_NAME --repository $image_name >/dev/null 2>&1; then
-    # Simple check - if it exists, assume it's correct (we can verify later if needed)
-    echo -e "${GREEN}✓ $image_name already exists in ACR, skipping build${NC}"
-    return 0
-  fi
-  
-  echo -e "${YELLOW}  Building $image_name for linux/amd64...${NC}"
+  echo -e "\n${YELLOW}  Building $image_name for linux/amd64...${NC}"
   
   # Use Docker buildx with the multiplatform builder
+  # --provenance=false prevents attestation manifest issues
   docker buildx build \
     --builder multiplatform \
     --platform linux/amd64 \
     --tag ${ACR_LOGIN_SERVER}/${image_name}:latest \
+    --tag ${ACR_LOGIN_SERVER}/${image_name}:${VERSION:-v0.9.0} \
     --file $dockerfile \
+    --provenance=false \
     --push \
     . || {
     echo -e "${RED}✗ Failed to build $image_name${NC}"
@@ -166,6 +164,42 @@ build_image_if_needed() {
   }
   
   echo -e "${GREEN}✓ $image_name built and pushed${NC}"
+}
+
+# Function to check and build image
+build_image_if_needed() {
+  local image_name=$1
+  local dockerfile=$2
+  
+  echo -e "\n${YELLOW}  Checking $image_name...${NC}"
+  
+  # Force rebuild if requested
+  if [[ "$FORCE_REBUILD" =~ ^[Yy]$ ]]; then
+    echo -e "${YELLOW}  Force rebuild requested...${NC}"
+    build_image "$image_name" "$dockerfile"
+    return 0
+  fi
+  
+  # Check if image already exists
+  if az acr repository show --name $ACR_NAME --repository $image_name >/dev/null 2>&1; then
+    # Verify the image has the correct architecture
+    MANIFEST_OS=$(az acr manifest list-metadata --registry $ACR_NAME --name $image_name --query "[0].configMediaType" -o tsv 2>/dev/null || echo "")
+    
+    # Check if it's a valid linux/amd64 image by inspecting
+    echo -e "${YELLOW}  Image exists, verifying platform...${NC}"
+    PLATFORM_CHECK=$(az acr manifest show-metadata --registry $ACR_NAME --name "${image_name}:latest" --query "architecture" -o tsv 2>/dev/null || echo "unknown")
+    
+    if [ "$PLATFORM_CHECK" == "amd64" ]; then
+      echo -e "${GREEN}✓ $image_name already exists with correct platform (amd64), skipping build${NC}"
+      return 0
+    else
+      echo -e "${YELLOW}  Image platform mismatch or unknown ($PLATFORM_CHECK), rebuilding...${NC}"
+      # Delete the bad image first
+      az acr repository delete --name $ACR_NAME --repository $image_name --yes 2>/dev/null || true
+    fi
+  fi
+  
+  build_image "$image_name" "$dockerfile"
 }
 
 # Build all images

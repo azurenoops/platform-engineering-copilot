@@ -54,23 +54,13 @@ RUN --mount=type=cache,target=/root/.nuget/packages \
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
 
-# Install Node.js for Azure MCP Server (using non-root install)
+# Install minimal dependencies for health checks and curl
 USER root
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        curl \
-        ca-certificates \
-        xz-utils && \
-    curl -fsSL https://nodejs.org/dist/v20.18.1/node-v20.18.1-linux-x64.tar.xz -o node.tar.xz && \
-    tar -xf node.tar.xz -C /usr/local --strip-components=1 && \
-    rm node.tar.xz && \
-    apt-get remove -y xz-utils && \
-    apt-get autoremove -y && \
+        curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-# Verify installations
-RUN node --version && npm --version
 
 # Create non-root user for security
 RUN groupadd -r -g 1000 appuser && \

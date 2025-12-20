@@ -53,6 +53,12 @@ public class EnvironmentTemplate
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     
+    /// <summary>
+    /// When the template expires and should be auto-deleted. Null means no expiration.
+    /// Default is 30 minutes from creation for generated templates.
+    /// </summary>
+    public DateTime? ExpiresAt { get; set; }
+    
     public bool IsActive { get; set; } = true;
     public bool IsPublic { get; set; } = false;
     
@@ -78,6 +84,14 @@ public class EnvironmentTemplate
     
     [NotMapped]
     public bool IsDeleted => !IsActive;
+    
+    [NotMapped]
+    public bool IsExpired => ExpiresAt.HasValue && ExpiresAt.Value < DateTime.UtcNow;
+    
+    [NotMapped]
+    public int? ExpiresInMinutes => ExpiresAt.HasValue 
+        ? (int)Math.Max(0, (ExpiresAt.Value - DateTime.UtcNow).TotalMinutes) 
+        : null;
     
     [NotMapped]
     public bool IsMultiFile => FilesCount > 1;

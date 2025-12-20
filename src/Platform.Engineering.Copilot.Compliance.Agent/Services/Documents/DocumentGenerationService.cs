@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Platform.Engineering.Copilot.Compliance.Agent.Services.Compliance;
+using Platform.Engineering.Copilot.Compliance.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Constants;
 using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
 using Platform.Engineering.Copilot.Core.Models.Compliance;
@@ -29,28 +31,39 @@ public class DocumentGenerationService : IDocumentGenerationService
     private readonly IEvidenceStorageService _storageService;
     private readonly ILogger<DocumentGenerationService> _logger;
     private readonly IChatCompletionService? _chatCompletion;
+    private readonly DocumentAgentOptions _options;
 
     public DocumentGenerationService(
         IAtoComplianceEngine complianceEngine,
         INistControlsService nistService,
         IEvidenceStorageService storageService,
         ILogger<DocumentGenerationService> logger,
+        IOptions<DocumentAgentOptions> options,
         Kernel? kernel = null)
     {
         _complianceEngine = complianceEngine ?? throw new ArgumentNullException(nameof(complianceEngine));
         _nistService = nistService ?? throw new ArgumentNullException(nameof(nistService));
         _storageService = storageService ?? throw new ArgumentNullException(nameof(storageService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _chatCompletion = kernel?.Services.GetService(typeof(IChatCompletionService)) as IChatCompletionService;
         
-        if (_chatCompletion != null)
+        if (_options.EnableAIGeneration && _chatCompletion != null)
         {
-            _logger.LogInformation("Document Generation Service initialized with AI-enhanced capabilities");
+            _logger.LogInformation("✅ Document Generation Service initialized with AI-enhanced capabilities");
+        }
+        else if (!_options.EnableAIGeneration)
+        {
+            _logger.LogInformation("📄 Document Generation Service initialized with AI generation disabled (template-based only)");
         }
         else
         {
-            _logger.LogInformation("Document Generation Service initialized without AI (will use template-based generation)");
+            _logger.LogInformation("📄 Document Generation Service initialized without AI (will use template-based generation)");
         }
+        
+        _logger.LogInformation("📄 Document configuration: Storage={StorageAccount}/{Container}, MaxSize={MaxDocMB}MB, Templates={TemplatesEnabled}",
+            _options.DocumentGeneration.StorageAccount, _options.DocumentGeneration.Container,
+            _options.DocumentGeneration.MaxDocumentSizeMB, _options.EnableTemplates);
     }
 
     public async Task<ControlNarrative> GenerateControlNarrativeAsync(
@@ -58,6 +71,20 @@ public class DocumentGenerationService : IDocumentGenerationService
         string? subscriptionId = null,
         CancellationToken cancellationToken = default)
     {
+        if (!_options.EnableAIGeneration)
+        {
+            _logger.LogInformation("AI generation disabled. Returning basic control narrative for {ControlId}", controlId);
+            // Return basic control narrative without AI enhancement
+            return new ControlNarrative
+            {
+                ControlId = controlId,
+                ControlTitle = controlId,
+                What = "Manual narrative required - AI generation disabled",
+                ImplementationStatus = "Pending",
+                LastReviewed = DateTime.UtcNow
+            };
+        }
+
         _logger.LogInformation("Generating control narrative for {ControlId} with AI enhancement", controlId);
 
         // Get NIST control details

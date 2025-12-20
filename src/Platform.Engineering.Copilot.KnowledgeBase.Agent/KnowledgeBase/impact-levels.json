@@ -1,0 +1,648 @@
+{
+  "metadata": {
+    "name": "DoD Impact Levels and Cloud Security Requirements",
+    "description": "Comprehensive guide to DoD Impact Levels (IL2, IL4, IL5, IL6) with Azure implementation requirements and control overlays",
+    "version": "1.0",
+    "lastUpdated": "2025-01-15",
+    "sources": [
+      "DoD Cloud Computing Security Requirements Guide (CC SRG)",
+      "FedRAMP Authorization Requirements",
+      "DISA Cloud Access Point (CAP) Requirements"
+    ]
+  },
+  "impactLevelOverview": {
+    "description": "DoD Impact Levels define the sensitivity of information and the security controls required to protect it in cloud environments",
+    "levelSummary": [
+      {
+        "level": "IL2",
+        "name": "Impact Level 2",
+        "dataTypes": "Public and Non-CUI DoD Information",
+        "fedRampEquivalent": "FedRAMP Moderate",
+        "cloudModel": "Public/Community Cloud",
+        "accessRequirement": "Internet accessible"
+      },
+      {
+        "level": "IL4",
+        "name": "Impact Level 4",
+        "dataTypes": "CUI, Non-Critical Mission Information",
+        "fedRampEquivalent": "FedRAMP Moderate + DoD Overlay",
+        "cloudModel": "Government Community Cloud",
+        "accessRequirement": "NIPRNet connectivity preferred"
+      },
+      {
+        "level": "IL5",
+        "name": "Impact Level 5",
+        "dataTypes": "CUI, Mission Critical Information, National Security Systems",
+        "fedRampEquivalent": "FedRAMP High + DoD Overlay",
+        "cloudModel": "Government Community Cloud (Isolated)",
+        "accessRequirement": "NIPRNet or dedicated connection"
+      },
+      {
+        "level": "IL6",
+        "name": "Impact Level 6",
+        "dataTypes": "Classified Information up to SECRET",
+        "fedRampEquivalent": "FedRAMP High + DoD SECRET Overlay",
+        "cloudModel": "Secret Cloud",
+        "accessRequirement": "SIPRNet or classified network"
+      }
+    ]
+  },
+  "impactLevels": {
+    "IL2": {
+      "name": "Impact Level 2",
+      "description": "Accommodates non-controlled unclassified information that does not require special handling. Information that is publicly releasable or intended for public release.",
+      "dataClassification": {
+        "authorized": [
+          "Publicly releasable DoD information",
+          "Non-sensitive DoD data",
+          "Training and educational materials",
+          "Unclassified general information"
+        ],
+        "notAuthorized": [
+          "Controlled Unclassified Information (CUI)",
+          "For Official Use Only (FOUO)",
+          "Privacy Act protected data",
+          "Personally Identifiable Information (PII)",
+          "Any classified data"
+        ]
+      },
+      "securityRequirements": {
+        "baseline": "FedRAMP Moderate",
+        "additionalControls": [],
+        "encryptionRequirements": {
+          "dataAtRest": "AES-256 recommended",
+          "dataInTransit": "TLS 1.2 or higher",
+          "fipsRequirement": "FIPS 140-2 recommended"
+        },
+        "networkRequirements": {
+          "connectivity": "Internet accessible",
+          "capRequired": false,
+          "dedicatedConnection": false
+        },
+        "personnelRequirements": {
+          "clearanceRequired": "None",
+          "citizenshipRequired": false,
+          "backgroundCheck": "Basic background check"
+        }
+      },
+      "azureImplementation": {
+        "cloudEnvironment": "Azure Commercial or Azure Government",
+        "regions": [
+          "Any Azure region",
+          "Azure Government regions for government preference"
+        ],
+        "services": {
+          "recommended": [
+            "Azure Government (preferred)",
+            "Azure Commercial (acceptable)",
+            "Azure Active Directory / Entra ID",
+            "Azure Policy for compliance",
+            "Azure Security Center / Defender for Cloud"
+          ],
+          "encryption": {
+            "atRest": "Azure Storage Service Encryption",
+            "inTransit": "HTTPS/TLS 1.2+",
+            "keyManagement": "Azure Key Vault"
+          }
+        },
+        "policyDefinitions": [
+          "/providers/Microsoft.Authorization/policyDefinitions/4733ea7b-a883-42fe-8cac-97454c2a9e4a",
+          "/providers/Microsoft.Authorization/policyDefinitions/404c3081-a854-4457-ae30-26a93ef643f9"
+        ],
+        "complianceChecklist": [
+          "Enable Azure Security Center standard tier",
+          "Configure Azure Policy for FedRAMP Moderate",
+          "Enable diagnostic logging",
+          "Configure Azure Monitor",
+          "Implement RBAC for access control",
+          "Enable Azure Defender for all resource types"
+        ]
+      }
+    },
+    "IL4": {
+      "name": "Impact Level 4",
+      "description": "Accommodates Controlled Unclassified Information (CUI) that requires safeguarding, including DoD data not approved for public release and For Official Use Only (FOUO) data.",
+      "dataClassification": {
+        "authorized": [
+          "Controlled Unclassified Information (CUI)",
+          "For Official Use Only (FOUO)",
+          "Privacy Act protected data (non-critical)",
+          "DoD contractor proprietary data",
+          "Non-critical mission data"
+        ],
+        "notAuthorized": [
+          "National Security Systems (NSS) data",
+          "Critical mission data",
+          "Classified data (any level)",
+          "Export controlled data (ITAR/EAR) without additional controls"
+        ]
+      },
+      "securityRequirements": {
+        "baseline": "FedRAMP Moderate + DoD IL4 Overlay",
+        "additionalControls": [
+          "AC-2(5) - Inactivity Logout",
+          "AC-3(9) - Controlled Release",
+          "AC-4(21) - Physical/Logical Separation",
+          "AU-9(4) - Access by Subset of Privileged Users",
+          "CM-3(6) - Cryptography Management",
+          "IA-2(12) - Acceptance of PIV Credentials",
+          "PE-3(1) - Physical Access Control",
+          "SC-8(1) - Cryptographic Protection",
+          "SC-28(1) - Cryptographic Protection"
+        ],
+        "encryptionRequirements": {
+          "dataAtRest": "AES-256 required",
+          "dataInTransit": "TLS 1.2 or higher required",
+          "fipsRequirement": "FIPS 140-2 Level 1 minimum required"
+        },
+        "networkRequirements": {
+          "connectivity": "NIPRNet preferred, Internet with additional controls acceptable",
+          "capRequired": true,
+          "dedicatedConnection": "Recommended (ExpressRoute)"
+        },
+        "personnelRequirements": {
+          "clearanceRequired": "None (Favorable adjudication)",
+          "citizenshipRequired": "US Person required for privileged access",
+          "backgroundCheck": "NACI or equivalent"
+        }
+      },
+      "azureImplementation": {
+        "cloudEnvironment": "Azure Government only",
+        "regions": [
+          "USGov Virginia",
+          "USGov Texas",
+          "USGov Arizona"
+        ],
+        "services": {
+          "required": [
+            "Azure Government",
+            "Azure Government Entra ID",
+            "Azure ExpressRoute (recommended)",
+            "Azure Key Vault (FIPS 140-2 Level 2 HSM)",
+            "Azure Policy with IL4 initiative",
+            "Azure Defender for Cloud"
+          ],
+          "encryption": {
+            "atRest": "Azure Storage Service Encryption with CMK",
+            "inTransit": "HTTPS/TLS 1.2+ only",
+            "keyManagement": "Azure Key Vault with HSM backing"
+          }
+        },
+        "policyDefinitions": [
+          "/providers/Microsoft.Authorization/policyDefinitions/d5264498-16f4-418a-b659-fa7ef418175f",
+          "/providers/Microsoft.Authorization/policyDefinitions/cf25b9c1-bd23-4eb6-bd2c-f4f3ac6f4456"
+        ],
+        "complianceChecklist": [
+          "Deploy to Azure Government regions only",
+          "Enable Azure Defender for all resource types",
+          "Configure IL4-specific Azure Policy initiative",
+          "Implement Customer Managed Keys (CMK) for encryption",
+          "Configure ExpressRoute with Microsoft peering",
+          "Enable all diagnostic and audit logging",
+          "Configure Azure Sentinel for security monitoring",
+          "Implement just-in-time VM access",
+          "Enable Azure Firewall for network segmentation",
+          "Configure Azure DDoS Protection Standard",
+          "Implement PIV/CAC authentication via Entra ID"
+        ],
+        "networkArchitecture": {
+          "pattern": "Hub and Spoke with Azure Firewall",
+          "components": [
+            "Azure ExpressRoute for NIPRNet connectivity",
+            "Azure Firewall in hub VNET",
+            "Network Security Groups on all subnets",
+            "Azure Bastion for secure management",
+            "Azure Private Link for PaaS services"
+          ]
+        }
+      }
+    },
+    "IL5": {
+      "name": "Impact Level 5",
+      "description": "Accommodates higher sensitivity CUI and National Security Systems (NSS) data. Provides enhanced security for mission-critical information.",
+      "dataClassification": {
+        "authorized": [
+          "Controlled Unclassified Information (CUI)",
+          "National Security Systems (NSS) data",
+          "Mission critical data",
+          "ITAR/EAR controlled data",
+          "Critical infrastructure data",
+          "Sensitive PII requiring enhanced protection"
+        ],
+        "notAuthorized": [
+          "Classified data (CONFIDENTIAL, SECRET, TOP SECRET)",
+          "Special Access Program (SAP) data",
+          "Sensitive Compartmented Information (SCI)"
+        ]
+      },
+      "securityRequirements": {
+        "baseline": "FedRAMP High + DoD IL5 Overlay",
+        "additionalControls": [
+          "AC-2(4) - Automated Audit Actions",
+          "AC-2(7) - Privileged User Accounts",
+          "AC-3(4) - Discretionary Access Control",
+          "AC-6(1) - Authorize Access to Security Functions",
+          "AC-6(2) - Non-privileged Access for Nonsecurity Functions",
+          "AU-4(1) - Transfer to Alternate Storage",
+          "AU-12(1) - System-wide/Time-correlated Audit Trail",
+          "CP-6(1) - Separation from Primary Site",
+          "IA-2(1) - Multi-factor to Privileged Accounts",
+          "IA-2(2) - Multi-factor to Non-privileged Accounts",
+          "IA-5(2) - PKI-based Authentication",
+          "SC-7(8) - Route Traffic to Authenticated Proxy",
+          "SC-7(18) - Fail Secure",
+          "SC-12(1) - Availability",
+          "SC-13 - Cryptographic Protection",
+          "SC-28 - Protection of Information at Rest",
+          "SI-4(5) - System-generated Alerts"
+        ],
+        "encryptionRequirements": {
+          "dataAtRest": "AES-256 with HSM-backed keys required",
+          "dataInTransit": "TLS 1.2 or higher required, TLS 1.3 recommended",
+          "fipsRequirement": "FIPS 140-2 Level 2 required (Level 3 for key management)"
+        },
+        "networkRequirements": {
+          "connectivity": "Dedicated connection required (NIPRNet or ExpressRoute)",
+          "capRequired": true,
+          "dedicatedConnection": "Required (ExpressRoute with Microsoft peering)",
+          "networkIsolation": "Physical or logical separation required"
+        },
+        "personnelRequirements": {
+          "clearanceRequired": "IT-I or IT-II Position of Trust",
+          "citizenshipRequired": "US Citizen required for all access",
+          "backgroundCheck": "SSBI or T5 investigation"
+        }
+      },
+      "azureImplementation": {
+        "cloudEnvironment": "Azure Government DoD regions only",
+        "regions": [
+          "USDoD Central",
+          "USDoD East"
+        ],
+        "services": {
+          "required": [
+            "Azure Government DoD",
+            "Azure Government Entra ID",
+            "Azure ExpressRoute with DoD peering",
+            "Azure Dedicated HSM or Managed HSM",
+            "Azure Policy with DoD IL5 initiative",
+            "Microsoft Defender for Cloud",
+            "Microsoft Sentinel"
+          ],
+          "encryption": {
+            "atRest": "Customer Managed Keys with Dedicated HSM",
+            "inTransit": "HTTPS/TLS 1.3 preferred, TLS 1.2 minimum",
+            "keyManagement": "Azure Dedicated HSM (FIPS 140-2 Level 3)"
+          }
+        },
+        "policyDefinitions": [
+          "/providers/Microsoft.Authorization/policyDefinitions/d5264498-16f4-418a-b659-fa7ef418175f",
+          "/providers/Microsoft.Authorization/policyDefinitions/b5629c75-5c77-4422-87b9-2509e680f8de"
+        ],
+        "complianceChecklist": [
+          "Deploy to USDoD Central or USDoD East regions ONLY",
+          "Implement Azure Dedicated HSM for key management",
+          "Configure ExpressRoute with DoD peering",
+          "Enable all advanced threat protection features",
+          "Configure Microsoft Sentinel with DoD-specific analytics",
+          "Implement network micro-segmentation",
+          "Enable continuous compliance monitoring",
+          "Configure automated incident response playbooks",
+          "Implement privileged identity management",
+          "Enable just-in-time VM access for all VMs",
+          "Configure Azure Confidential Computing for sensitive workloads",
+          "Implement CAC/PIV authentication as primary factor",
+          "Enable full audit logging with immutable storage",
+          "Configure geo-redundant backup to DoD regions only"
+        ],
+        "networkArchitecture": {
+          "pattern": "Isolated Hub and Spoke with dedicated ExpressRoute",
+          "components": [
+            "Dedicated ExpressRoute circuit with DoD peering",
+            "Azure Firewall Premium in hub VNET",
+            "Network Security Groups with deny-all default",
+            "Azure Private Link for ALL PaaS services",
+            "Azure Bastion Premium for secure management",
+            "Network watcher for traffic analytics",
+            "DDoS Protection Standard"
+          ],
+          "isolationRequirements": [
+            "No internet egress without explicit approval",
+            "All traffic must traverse Azure Firewall",
+            "Private endpoints for all supported services",
+            "Dedicated subnets for each workload tier"
+          ]
+        }
+      }
+    },
+    "IL6": {
+      "name": "Impact Level 6",
+      "description": "Accommodates classified information up to and including SECRET. Requires SECRET-level facilities, personnel, and network infrastructure.",
+      "dataClassification": {
+        "authorized": [
+          "SECRET classified information",
+          "CONFIDENTIAL classified information",
+          "Collateral SECRET data",
+          "NATO SECRET equivalent"
+        ],
+        "notAuthorized": [
+          "TOP SECRET information",
+          "Sensitive Compartmented Information (SCI)",
+          "Special Access Program (SAP) data",
+          "Foreign government TOP SECRET"
+        ]
+      },
+      "securityRequirements": {
+        "baseline": "FedRAMP High + DoD IL6/SECRET Overlay",
+        "additionalControls": [
+          "All IL5 controls plus:",
+          "AC-2(11) - Usage Conditions",
+          "AC-3(10) - Audited Override",
+          "AU-9(7) - Store on Component with Different OS",
+          "CA-3(6) - Transfer Authorizations",
+          "CM-5(4) - Dual Authorization",
+          "IA-3(1) - Cryptographic Bidirectional Authentication",
+          "MA-5(1) - Individuals Without Appropriate Access",
+          "PE-5(3) - Tamper Protection",
+          "SC-3 - Security Function Isolation",
+          "SC-7(21) - Isolation of System Components",
+          "SC-8(4) - Conceal/Randomize Communications"
+        ],
+        "encryptionRequirements": {
+          "dataAtRest": "NSA Type 1 or NSA approved Suite B required",
+          "dataInTransit": "NSA Type 1 or approved Suite B required",
+          "fipsRequirement": "FIPS 140-2 Level 3 required, NSA approved algorithms"
+        },
+        "networkRequirements": {
+          "connectivity": "SIPRNet or classified network only",
+          "capRequired": true,
+          "dedicatedConnection": "Required (Classified ExpressRoute)",
+          "networkIsolation": "Air-gapped from unclassified networks"
+        },
+        "personnelRequirements": {
+          "clearanceRequired": "SECRET clearance minimum",
+          "citizenshipRequired": "US Citizen required",
+          "backgroundCheck": "SSBI/T5 with SECRET adjudication"
+        }
+      },
+      "azureImplementation": {
+        "cloudEnvironment": "Microsoft Azure Government Secret (offline)",
+        "regions": [
+          "Azure Government Secret regions (location classified)"
+        ],
+        "services": {
+          "required": [
+            "Azure Government Secret",
+            "Azure Government Secret Entra ID",
+            "Classified network connectivity",
+            "NSA-approved cryptographic modules",
+            "Air-gapped infrastructure"
+          ],
+          "encryption": {
+            "atRest": "NSA approved algorithms with Type 1 key management",
+            "inTransit": "NSA approved Suite B or Type 1",
+            "keyManagement": "NSA approved key management system"
+          }
+        },
+        "complianceChecklist": [
+          "Contact Microsoft Federal team for Azure Government Secret access",
+          "Obtain facility clearance (FCL) at SECRET level",
+          "Ensure all personnel have active SECRET clearances",
+          "Establish classified network connectivity",
+          "Complete Security Control Assessment (SCA)",
+          "Obtain Interim Authorization to Test (IATT)",
+          "Complete Certification and Accreditation process",
+          "Obtain Authorization to Operate (ATO)"
+        ],
+        "notes": [
+          "Azure Government Secret is an air-gapped environment",
+          "Requires on-premises connectivity to classified networks",
+          "All data handling must follow classified data procedures",
+          "Contact Microsoft Federal sales team for access requirements"
+        ]
+      }
+    }
+  },
+  "controlOverlays": {
+    "description": "Control overlays add DoD-specific requirements on top of FedRAMP baselines",
+    "overlays": [
+      {
+        "impactLevel": "IL4",
+        "baselineControls": 325,
+        "additionalControls": 32,
+        "totalControls": 357,
+        "keyDifferences": [
+          "Requires US Person access for privileged functions",
+          "Enhanced encryption requirements (FIPS 140-2)",
+          "Cloud Access Point (CAP) connectivity recommended",
+          "Customer Managed Keys (CMK) required",
+          "Enhanced audit and logging requirements"
+        ]
+      },
+      {
+        "impactLevel": "IL5",
+        "baselineControls": 421,
+        "additionalControls": 58,
+        "totalControls": 479,
+        "keyDifferences": [
+          "US Citizen access required for all functions",
+          "Dedicated HSM for key management",
+          "DoD region isolation required",
+          "Enhanced network segmentation",
+          "Continuous monitoring with DoD dashboards",
+          "Physical isolation from commercial cloud"
+        ]
+      },
+      {
+        "impactLevel": "IL6",
+        "baselineControls": 421,
+        "additionalControls": 127,
+        "totalControls": 548,
+        "keyDifferences": [
+          "SECRET clearance required for all access",
+          "Air-gapped from all unclassified networks",
+          "NSA Type 1 cryptography required",
+          "Classified facility and handling requirements",
+          "DISA-approved connectivity only"
+        ]
+      }
+    ]
+  },
+  "migrationGuidance": {
+    "IL2toIL4": {
+      "overview": "Migrating from IL2 to IL4 requires enhanced security controls and Azure Government deployment",
+      "steps": [
+        {
+          "step": 1,
+          "title": "Assessment",
+          "description": "Evaluate current workload security posture and identify gaps",
+          "tasks": [
+            "Run Microsoft Defender for Cloud regulatory compliance assessment",
+            "Identify data classification requirements",
+            "Document current security controls",
+            "Identify non-compliant resources"
+          ]
+        },
+        {
+          "step": 2,
+          "title": "Planning",
+          "description": "Plan migration to Azure Government with IL4 controls",
+          "tasks": [
+            "Design Azure Government landing zone architecture",
+            "Plan ExpressRoute connectivity",
+            "Design identity architecture with Entra ID",
+            "Plan Customer Managed Key (CMK) implementation"
+          ]
+        },
+        {
+          "step": 3,
+          "title": "Implementation",
+          "description": "Deploy infrastructure in Azure Government",
+          "tasks": [
+            "Deploy Azure Government subscription",
+            "Configure Azure Policy with IL4 initiative",
+            "Implement Key Vault with CMK",
+            "Configure ExpressRoute circuit",
+            "Deploy hub-and-spoke network architecture"
+          ]
+        },
+        {
+          "step": 4,
+          "title": "Migration",
+          "description": "Migrate workloads to Azure Government",
+          "tasks": [
+            "Use Azure Migrate for assessment and migration",
+            "Migrate data with Azure Data Box if needed",
+            "Re-deploy applications in Azure Government",
+            "Configure backup and disaster recovery"
+          ]
+        },
+        {
+          "step": 5,
+          "title": "Validation",
+          "description": "Validate compliance and security posture",
+          "tasks": [
+            "Run compliance assessment against IL4 baseline",
+            "Conduct penetration testing",
+            "Validate encryption implementation",
+            "Document residual risks"
+          ]
+        }
+      ]
+    },
+    "IL4toIL5": {
+      "overview": "Migrating from IL4 to IL5 requires DoD region deployment and enhanced isolation",
+      "steps": [
+        {
+          "step": 1,
+          "title": "Assessment",
+          "description": "Evaluate IL5 requirements and current gaps",
+          "tasks": [
+            "Identify IL5-specific control requirements",
+            "Assess personnel clearance requirements",
+            "Document network isolation needs",
+            "Evaluate Dedicated HSM requirements"
+          ]
+        },
+        {
+          "step": 2,
+          "title": "Planning",
+          "description": "Plan migration to DoD regions",
+          "tasks": [
+            "Design DoD region architecture",
+            "Plan Dedicated HSM deployment",
+            "Design network isolation architecture",
+            "Plan ExpressRoute with DoD peering"
+          ]
+        },
+        {
+          "step": 3,
+          "title": "Implementation",
+          "description": "Deploy infrastructure in DoD regions",
+          "tasks": [
+            "Provision subscription in DoD regions",
+            "Deploy Azure Dedicated HSM",
+            "Configure ExpressRoute with DoD peering",
+            "Implement private endpoints for all services",
+            "Configure Azure Sentinel with DoD analytics"
+          ]
+        },
+        {
+          "step": 4,
+          "title": "Migration",
+          "description": "Migrate workloads to DoD regions",
+          "tasks": [
+            "Coordinate with DISA for network connectivity",
+            "Migrate data using approved methods",
+            "Re-deploy applications in DoD regions",
+            "Configure geo-redundancy within DoD regions"
+          ]
+        },
+        {
+          "step": 5,
+          "title": "Authorization",
+          "description": "Obtain IL5 Authorization to Operate",
+          "tasks": [
+            "Complete Security Control Assessment",
+            "Submit authorization package to AO",
+            "Address POA&M items",
+            "Obtain ATO"
+          ]
+        }
+      ]
+    }
+  },
+  "comparisonMatrix": {
+    "categories": [
+      {
+        "category": "Data Types",
+        "IL2": "Public, non-sensitive",
+        "IL4": "CUI, FOUO, PII",
+        "IL5": "NSS, Mission Critical, ITAR",
+        "IL6": "SECRET classified"
+      },
+      {
+        "category": "Cloud Environment",
+        "IL2": "Commercial or Government",
+        "IL4": "Azure Government only",
+        "IL5": "Azure Government DoD only",
+        "IL6": "Azure Government Secret"
+      },
+      {
+        "category": "Encryption at Rest",
+        "IL2": "AES-256 recommended",
+        "IL4": "AES-256 + CMK required",
+        "IL5": "AES-256 + Dedicated HSM",
+        "IL6": "NSA Type 1"
+      },
+      {
+        "category": "Network Connectivity",
+        "IL2": "Internet",
+        "IL4": "ExpressRoute recommended",
+        "IL5": "ExpressRoute DoD required",
+        "IL6": "SIPRNet only"
+      },
+      {
+        "category": "Personnel",
+        "IL2": "Basic background check",
+        "IL4": "US Person for privileged",
+        "IL5": "US Citizen required",
+        "IL6": "SECRET clearance"
+      },
+      {
+        "category": "FedRAMP Baseline",
+        "IL2": "Moderate",
+        "IL4": "Moderate + Overlay",
+        "IL5": "High + Overlay",
+        "IL6": "High + SECRET Overlay"
+      },
+      {
+        "category": "Approximate Control Count",
+        "IL2": "325",
+        "IL4": "357",
+        "IL5": "479",
+        "IL6": "548"
+      }
+    ]
+  }
+}

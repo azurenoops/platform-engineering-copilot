@@ -11,6 +11,11 @@ public interface IRmfKnowledgeService
     Task<IReadOnlyList<RmfProcess>> GetAllRmfStepsAsync(CancellationToken cancellationToken = default);
     Task<string> ExplainRmfProcessAsync(string? specificStep = null, CancellationToken cancellationToken = default);
     Task<List<string>> GetRmfOutputsForStepAsync(string step, CancellationToken cancellationToken = default);
+    
+    // Enhanced: Service-specific workflows from rmf-process-enhanced.json
+    Task<string> GetServiceSpecificGuidanceAsync(string service, CancellationToken cancellationToken = default);
+    Task<string> GetRmfTimelineAsync(string authorizationType, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<string>> GetRmfArtifactsAsync(bool requiredOnly = false, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -31,6 +36,11 @@ public interface IStigKnowledgeService
     Task<IReadOnlyList<string>> GetNistControlsForStigAsync(string stigId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<StigControl>> GetAzureStigsAsync(string azureService, CancellationToken cancellationToken = default);
     Task<string> GetStigCrossReferenceAsync(string stigId, CancellationToken cancellationToken = default);
+    
+    // Enhanced: Windows Server STIG support from windows-server-stig-azure.json
+    Task<string> GetWindowsServerStigGuidanceAsync(string stigId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<string>> SearchWindowsStigsAsync(string searchTerm, CancellationToken cancellationToken = default);
+    Task<string> GetGuestConfigurationPolicyAsync(string stigCategory, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -64,6 +74,24 @@ public interface IImpactLevelService
     Task<IReadOnlyList<ImpactLevel>> GetAllImpactLevelsAsync(CancellationToken cancellationToken = default);
     Task<BoundaryProtectionRequirement?> GetBoundaryRequirementsAsync(string impactLevel, CancellationToken cancellationToken = default);
     Task<string> ExplainImpactLevelAsync(string level, CancellationToken cancellationToken = default);
+    
+    // Enhanced: Detailed IL data from impact-levels.json
+    Task<string> GetImpactLevelComparisonAsync(CancellationToken cancellationToken = default);
+    Task<string> GetMigrationGuidanceAsync(string fromLevel, string toLevel, CancellationToken cancellationToken = default);
+    Task<string> GetAzureImplementationAsync(string level, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Service for FedRAMP templates and authorization guidance
+/// </summary>
+public interface IFedRampTemplateService
+{
+    Task<string> GetSspSectionTemplateAsync(string sectionNumber, CancellationToken cancellationToken = default);
+    Task<string> GetControlNarrativeAsync(string controlId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<string>> GetAuthorizationPackageChecklistAsync(CancellationToken cancellationToken = default);
+    Task<string> GetPoamTemplateAsync(CancellationToken cancellationToken = default);
+    Task<string> GetContinuousMonitoringRequirementsAsync(CancellationToken cancellationToken = default);
+    Task<string> ExplainAuthorizationPathAsync(string path, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

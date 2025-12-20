@@ -361,4 +361,63 @@ public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
         _logger.LogDebug("Unlinked {Count} deployments from template {TemplateId}", deployments.Count, templateId);
         return deployments.Count;
     }
+
+    // ==================== Expiration Operations ====================
+
+    public async Task<IReadOnlyList<EnvironmentTemplate>> GetExpiredTemplatesAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        return await _context.EnvironmentTemplates
+            .Include(t => t.Files)
+            .Where(t => t.ExpiresAt != null && t.ExpiresAt < now)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<int> DeleteExpiredTemplatesAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var expiredTemplates = await _context.EnvironmentTemplates
+            .Include(t => t.Files)
+            .Where(t => t.ExpiresAt != null && t.ExpiresAt < now)
+            .ToListAsync(cancellationToken);
+
+        if (!expiredTemplates.Any())
+            return 0;
+
+        var templateIds = expiredTemplates.Select(t => t.Id).ToList();
+        
+        _logger.LogInformation("Deleting {Count} expired templates", expiredTemplates.Count);
+
+        // Unlink deployments first
+        foreach (var templateId in templateIds)
+        {
+            await UnlinkDeploymentsAsync(templateId, cancellationToken);
+        }
+
+        // Delete all associated files
+        var allFiles = expiredTemplates.SelectMany(t => t.Files).ToList();
+        if (allFiles.Any())
+        {
+            _context.TemplateFiles.RemoveRange(allFiles);
+            _logger.LogDebug("Deleted {Count} files from expired templates", allFiles.Count);
+        }
+
+        // Delete template versions
+        var versions = await _context.TemplateVersions
+            .Where(v => templateIds.Contains(v.TemplateId))
+            .ToListAsync(cancellationToken);
+        if (versions.Any())
+        {
+            _context.TemplateVersions.RemoveRange(versions);
+        }
+
+        // Delete the templates
+        _context.EnvironmentTemplates.RemoveRange(expiredTemplates);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Successfully deleted {Count} expired templates with {FileCount} files", 
+            expiredTemplates.Count, allFiles.Count);
+        
+        return expiredTemplates.Count;
+    }
 }

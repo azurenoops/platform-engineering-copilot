@@ -278,11 +278,32 @@ namespace Platform.Engineering.Copilot.Core.Models
     /// </summary>
     public enum SubnetPurpose
     {
+        // Basic/Legacy purposes
         Application,        // Main application subnet (App Service, AKS nodes, Container Instances)
         PrivateEndpoints,   // For private endpoints
         ApplicationGateway, // For Application Gateway (AKS ingress)
-        Database,          // For database resources
-        Other              // Custom purpose
+        Database,           // For database resources
+        Other,              // Custom purpose
+        
+        // 3-Tier Architecture purposes
+        WebTier,            // Web/presentation tier - public-facing
+        ApplicationTier,    // Application/business logic tier
+        DataTier,           // Data/persistence tier
+        
+        // AKS-specific purposes
+        AksSystemNodePool,  // AKS system node pool
+        AksUserNodePool,    // AKS user/workload node pool
+        AksIngress,         // AKS ingress controller subnet
+        
+        // Landing Zone purposes
+        Management,         // Management subnet for bastion, jump boxes
+        SharedServices,     // Shared services - DNS, AD, monitoring
+        Workload,           // Primary workload subnet
+        
+        // Security/Infrastructure purposes
+        Firewall,           // Azure Firewall subnet
+        Bastion,            // Azure Bastion subnet
+        Gateway             // VPN/ExpressRoute Gateway subnet
     }
 
     /// <summary>
@@ -553,5 +574,192 @@ namespace Platform.Engineering.Copilot.Core.Models
         public string Summary { get; set; } = string.Empty;
         public string? ErrorMessage { get; set; }
         public List<string> ValidationErrors { get; set; } = new();
+    }
+
+    // ======================================================================
+    // COMPOSITE INFRASTRUCTURE MODELS - Multi-Resource Orchestration
+    // ======================================================================
+
+    /// <summary>
+    /// Architecture patterns for pre-built infrastructure compositions
+    /// </summary>
+    public enum ArchitecturePattern
+    {
+        /// <summary>Custom composition - no pre-defined pattern, user specifies all resources</summary>
+        Custom,
+        
+        /// <summary>Classic 3-tier: VNet with web/app/data subnets + tiered NSGs</summary>
+        ThreeTier,
+        
+        /// <summary>Azure Landing Zone: Hub-spoke VNet, AKS, Key Vault, Log Analytics</summary>
+        LandingZone,
+        
+        /// <summary>AKS with supporting infrastructure: VNet, ACR, Key Vault, Managed Identity</summary>
+        AksWithVNet,
+        
+        /// <summary>Microservices: AKS + Container Registry + Service Mesh + Observability</summary>
+        Microservices,
+        
+        /// <summary>Serverless: Azure Functions + Storage + Event Grid + App Insights</summary>
+        Serverless,
+        
+        /// <summary>Data Platform: Storage + SQL + Cosmos DB + Data Factory</summary>
+        DataPlatform,
+        
+        /// <summary>SCCA-compliant: 3-tier VNet with CAP/VDSS zones + Firewall + Log Analytics</summary>
+        SccaCompliant
+    }
+
+    /// <summary>
+    /// Request for composite infrastructure generation with multiple resources
+    /// </summary>
+    public class CompositeInfrastructureRequest
+    {
+        /// <summary>Base name for the deployment (used as prefix for resources)</summary>
+        public string ServiceName { get; set; } = string.Empty;
+        
+        /// <summary>Human-readable description of the infrastructure</summary>
+        public string Description { get; set; } = string.Empty;
+        
+        /// <summary>Pre-defined architecture pattern (or Custom for manual specification)</summary>
+        public ArchitecturePattern Pattern { get; set; } = ArchitecturePattern.Custom;
+        
+        /// <summary>Output format for generated templates</summary>
+        public InfrastructureFormat Format { get; set; } = InfrastructureFormat.Bicep;
+        
+        /// <summary>Target cloud provider</summary>
+        public CloudProvider Provider { get; set; } = CloudProvider.Azure;
+        
+        /// <summary>Azure region/location for all resources</summary>
+        public string Region { get; set; } = "eastus";
+        
+        /// <summary>Environment tier (dev, staging, prod) - affects sizing and redundancy</summary>
+        public string Environment { get; set; } = "dev";
+        
+        /// <summary>Subscription ID (optional, for resource naming)</summary>
+        public string? SubscriptionId { get; set; }
+        
+        /// <summary>Individual resource specifications (for Custom pattern or overrides)</summary>
+        public List<ResourceSpec> Resources { get; set; } = new();
+        
+        /// <summary>Explicit dependencies between resources (auto-detected when possible)</summary>
+        public List<ResourceDependency> Dependencies { get; set; } = new();
+        
+        /// <summary>Custom tags to apply to all resources</summary>
+        public Dictionary<string, string> Tags { get; set; } = new();
+        
+        /// <summary>Network configuration overrides</summary>
+        public NetworkingConfiguration? NetworkConfig { get; set; }
+        
+        /// <summary>Security configuration overrides</summary>
+        public SecuritySpec? Security { get; set; }
+    }
+
+    /// <summary>
+    /// Specification for a single resource within a composite deployment
+    /// </summary>
+    public class ResourceSpec
+    {
+        /// <summary>Unique identifier within the composite (e.g., "vnet", "aks", "keyvault")</summary>
+        public string Id { get; set; } = string.Empty;
+        
+        /// <summary>Display name for the resource</summary>
+        public string Name { get; set; } = string.Empty;
+        
+        /// <summary>Resource type (maps to ComputePlatform or Azure resource type)</summary>
+        public string ResourceType { get; set; } = string.Empty;
+        
+        /// <summary>Compute platform for this resource</summary>
+        public ComputePlatform Platform { get; set; }
+        
+        /// <summary>Parent resource ID (for hierarchical resources like subnets in VNet)</summary>
+        public string? ParentResourceId { get; set; }
+        
+        /// <summary>Resource-specific configuration as key-value pairs</summary>
+        public Dictionary<string, object> Configuration { get; set; } = new();
+        
+        /// <summary>Custom tags specific to this resource</summary>
+        public Dictionary<string, string> Tags { get; set; } = new();
+        
+        /// <summary>Whether this resource should be created (for conditional resources)</summary>
+        public bool Enabled { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Dependency relationship between two resources
+    /// </summary>
+    public class ResourceDependency
+    {
+        /// <summary>ID of the resource that depends on another</summary>
+        public string SourceResourceId { get; set; } = string.Empty;
+        
+        /// <summary>ID of the resource that must be created first</summary>
+        public string TargetResourceId { get; set; } = string.Empty;
+        
+        /// <summary>Output name from target resource to pass to source</summary>
+        public string? OutputName { get; set; }
+        
+        /// <summary>Input parameter name on source resource to receive the output</summary>
+        public string? InputName { get; set; }
+        
+        /// <summary>Type of dependency</summary>
+        public DependencyType Type { get; set; } = DependencyType.CreationOrder;
+    }
+
+    /// <summary>
+    /// Types of resource dependencies
+    /// </summary>
+    public enum DependencyType
+    {
+        /// <summary>Target must be created before source (implicit resource reference)</summary>
+        CreationOrder,
+        
+        /// <summary>Source uses a specific output from target (explicit output-to-input)</summary>
+        OutputToInput,
+        
+        /// <summary>Source is deployed into target (e.g., AKS into VNet)</summary>
+        DeployedInto,
+        
+        /// <summary>Source references target by resource ID</summary>
+        ResourceReference
+    }
+
+    /// <summary>
+    /// Result of composite infrastructure generation
+    /// </summary>
+    public class CompositeGenerationResult
+    {
+        public bool Success { get; set; }
+        
+        /// <summary>All generated files (main.bicep/main.tf + modules)</summary>
+        public Dictionary<string, string> Files { get; set; } = new();
+        
+        /// <summary>Summary of what was generated</summary>
+        public string Summary { get; set; } = string.Empty;
+        
+        /// <summary>Error message if generation failed</summary>
+        public string? ErrorMessage { get; set; }
+        
+        /// <summary>Per-resource generation results</summary>
+        public List<ResourceGenerationResult> ResourceResults { get; set; } = new();
+        
+        /// <summary>The generated main orchestrator file path (main.bicep or main.tf)</summary>
+        public string MainFilePath { get; set; } = string.Empty;
+        
+        /// <summary>List of generated module paths</summary>
+        public List<string> ModulePaths { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Generation result for a single resource within a composite
+    /// </summary>
+    public class ResourceGenerationResult
+    {
+        public string ResourceId { get; set; } = string.Empty;
+        public string ResourceType { get; set; } = string.Empty;
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+        public string ModulePath { get; set; } = string.Empty;
+        public List<string> OutputNames { get; set; } = new();
     }
 }

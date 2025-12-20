@@ -4,16 +4,21 @@ using System.ComponentModel;
 using System.Text.Json;
 using Platform.Engineering.Copilot.Core.Services.Azure;
 using Platform.Engineering.Copilot.Core.Plugins;
+using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 
 namespace Platform.Engineering.Copilot.Security.Agent.Plugins;
 
 /// <summary>
 /// Security operations plugin for SIEM setup, incident response, threat detection, and security automation.
 /// Complements CompliancePlugin by providing proactive security infrastructure setup.
+/// Split into partial classes for maintainability:
+/// - SecurityPlugin.cs (main plugin, SIEM, incident response)
+/// - SecurityPlugin.AzureArc.cs (Azure Arc security posture and Defender status)
 /// </summary>
-public class SecurityPlugin : BaseSupervisorPlugin
+public partial class SecurityPlugin : BaseSupervisorPlugin
 {
     private readonly AzureMcpClient _azureMcpClient;
+    private readonly IAzureResourceService _azureResourceService;
     
     // Named subscriptions for easier testing and demos
     private static readonly Dictionary<string, string> _namedSubscriptions = new()
@@ -30,9 +35,11 @@ public class SecurityPlugin : BaseSupervisorPlugin
     public SecurityPlugin(
         ILogger<SecurityPlugin> logger,
         Kernel kernel,
-        AzureMcpClient azureMcpClient) : base(logger, kernel)
+        AzureMcpClient azureMcpClient,
+        IAzureResourceService? azureResourceService = null) : base(logger, kernel)
     {
         _azureMcpClient = azureMcpClient ?? throw new ArgumentNullException(nameof(azureMcpClient));
+        _azureResourceService = azureResourceService!; // May be null for backward compatibility
     }
 
     // ========== SUBSCRIPTION LOOKUP HELPER ==========

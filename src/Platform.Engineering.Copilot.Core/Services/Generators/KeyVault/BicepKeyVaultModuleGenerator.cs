@@ -1,63 +1,101 @@
 using System.Text;
 using Platform.Engineering.Copilot.Core.Interfaces;
+using Platform.Engineering.Copilot.Core.Interfaces.TemplateGeneration;
 using Platform.Engineering.Copilot.Core.Models;
+using Platform.Engineering.Copilot.Core.Models.TemplateGeneration;
 
 namespace Platform.Engineering.Copilot.Core.Services.Generators.KeyVault;
 
 /// <summary>
 /// Bicep module generator for Azure Key Vault infrastructure
+/// Implements IResourceModuleGenerator for composition-based generation
+/// Cross-cutting concerns (PE, diagnostics, RBAC) are handled by reusable generators
 /// </summary>
-public class BicepKeyVaultModuleGenerator : IInfrastructureModuleGenerator
+public class BicepKeyVaultModuleGenerator : IResourceModuleGenerator
 {
     public InfrastructureFormat Format => InfrastructureFormat.Bicep;
     public ComputePlatform Platform => ComputePlatform.Security;
     public CloudProvider Provider => CloudProvider.Azure;
+    
+    /// <summary>
+    /// Resource types this generator handles
+    /// </summary>
+    public string[] SupportedResourceTypes => new[] { "keyvault", "key-vault", "vault" };
+    
+    /// <summary>
+    /// Cross-cutting capabilities supported by Key Vault
+    /// </summary>
+    public CrossCuttingType[] SupportedCrossCutting => new[]
+    {
+        CrossCuttingType.PrivateEndpoint,
+        CrossCuttingType.DiagnosticSettings,
+        CrossCuttingType.RBACAssignment
+    };
+    
+    /// <summary>
+    /// Azure resource type for Key Vault
+    /// </summary>
+    public string AzureResourceType => "Microsoft.KeyVault/vaults";
 
-    public Dictionary<string, string> GenerateModule(TemplateGenerationRequest request)
+    /// <summary>
+    /// Generate ONLY the core Key Vault resource - cross-cutting modules are composed by orchestrator
+    /// </summary>
+    public ResourceModuleResult GenerateCoreResource(TemplateGenerationRequest request)
     {
         var files = new Dictionary<string, string>();
         var serviceName = request.ServiceName ?? "keyvault";
-        var infrastructure = request.Infrastructure ?? new InfrastructureSpec();
-        var security = request.Security ?? new SecuritySpec();
-        var observability = request.Observability ?? new ObservabilitySpec();
 
-        // Generate main Key Vault module
-        files["infra/modules/keyvault/main.bicep"] = GenerateMainBicep(request);
-        files["infra/modules/keyvault/key-vault.bicep"] = GenerateKeyVaultBicep(request);
-        
-        if (security.EnablePrivateEndpoint == true)
+        // Generate only core Key Vault module - no PE, diagnostics, or RBAC
+        files["key-vault.bicep"] = GenerateKeyVaultBicep(request);
+        files["main.bicep"] = GenerateCoreMainBicep(request);
+        files["README.md"] = GenerateReadme(request);
+
+        return new ResourceModuleResult
         {
-            files["infra/modules/keyvault/private-endpoint.bicep"] = GeneratePrivateEndpointBicep(request);
-        }
-
-        if (observability.EnableDiagnostics == true)
-        {
-            files["infra/modules/keyvault/diagnostics.bicep"] = GenerateDiagnosticsBicep(request);
-        }
-
-        if (security.RBAC)
-        {
-            files["infra/modules/keyvault/rbac.bicep"] = GenerateRBACBicep(request);
-        }
-
-        // Generate README
-        files["infra/modules/keyvault/README.md"] = GenerateReadme(request);
-
-        return files;
+            Files = files,
+            ResourceReference = "keyVault", // Module name for cross-cutting references
+            ResourceType = "Microsoft.KeyVault/vaults",
+            OutputNames = new List<string>
+            {
+                "keyVaultId",
+                "keyVaultName",
+                "keyVaultUri",
+                "resourceId",
+                "resourceName"
+            },
+            SupportedCrossCutting = new List<CrossCuttingType>
+            {
+                CrossCuttingType.PrivateEndpoint,
+                CrossCuttingType.DiagnosticSettings,
+                CrossCuttingType.RBACAssignment
+            }
+        };
     }
 
-    private string GenerateMainBicep(TemplateGenerationRequest request)
+    /// <summary>
+    /// Legacy GenerateModule - delegates to GenerateCoreResource for composition pattern
+    /// </summary>
+    public Dictionary<string, string> GenerateModule(TemplateGenerationRequest request)
+    {
+        // Delegate to new composition pattern
+        var result = GenerateCoreResource(request);
+        return result.Files;
+    }
+
+    /// <summary>
+    /// Core main.bicep - only KeyVault, no cross-cutting modules
+    /// Cross-cutting modules are composed by the orchestrator
+    /// </summary>
+    private string GenerateCoreMainBicep(TemplateGenerationRequest request)
     {
         var sb = new StringBuilder();
         var serviceName = request.ServiceName ?? "keyvault";
         var infrastructure = request.Infrastructure ?? new InfrastructureSpec();
-        var security = request.Security ?? new SecuritySpec();
-        var observability = request.Observability ?? new ObservabilitySpec();
 
-        sb.AppendLine("// Azure Key Vault Infrastructure Module - FedRAMP Compliant");
-        sb.AppendLine("// Implements: SC-12 (Cryptographic Key Management), SC-28 (Encryption at Rest), AU-2 (Audit Events)");
+        sb.AppendLine("// Azure Key Vault Core Module - FedRAMP Compliant");
+        sb.AppendLine("// Implements: SC-12 (Cryptographic Key Management), SC-28 (Encryption at Rest)");
+        sb.AppendLine("// Cross-cutting concerns (PE, diagnostics, RBAC) are composed separately");
         sb.AppendLine($"// Service: {serviceName}");
-        sb.AppendLine($"// Region: {infrastructure.Region}");
         sb.AppendLine();
 
         // Parameters
@@ -76,31 +114,17 @@ public class BicepKeyVaultModuleGenerator : IInfrastructureModuleGenerator
         sb.AppendLine("@description('Tenant ID for Azure AD')");
         sb.AppendLine("param tenantId string = subscription().tenantId");
         sb.AppendLine();
-        sb.AppendLine("@description('Object ID of the user/service principal to grant access')");
-        sb.AppendLine("param objectId string");
-        sb.AppendLine();
         sb.AppendLine("@description('Key Vault SKU')");
         sb.AppendLine("@allowed(['standard', 'premium'])");
         sb.AppendLine("param skuName string = 'standard'");
         sb.AppendLine();
+        sb.AppendLine("@description('Enable public network access')");
+        sb.AppendLine("param enablePublicNetworkAccess bool = false");
+        sb.AppendLine();
 
-        if (security.EnablePrivateEndpoint == true)
-        {
-            sb.AppendLine("@description('Subnet ID for private endpoint')");
-            sb.AppendLine("param subnetId string");
-            sb.AppendLine();
-        }
-
-        if (observability.EnableDiagnostics == true)
-        {
-            sb.AppendLine("@description('Log Analytics Workspace ID')");
-            sb.AppendLine("param logAnalyticsWorkspaceId string");
-            sb.AppendLine();
-        }
-
-        // Key Vault Module - FedRAMP Compliant
-        sb.AppendLine("// Key Vault");
-        sb.AppendLine("module keyVault 'key-vault.bicep' = {");
+        // Key Vault Module
+        sb.AppendLine("// Key Vault Core Resource");
+        sb.AppendLine("module keyVault './key-vault.bicep' = {");
         sb.AppendLine("  name: '${keyVaultName}-deployment'");
         sb.AppendLine("  params: {");
         sb.AppendLine("    keyVaultName: keyVaultName");
@@ -108,82 +132,25 @@ public class BicepKeyVaultModuleGenerator : IInfrastructureModuleGenerator
         sb.AppendLine("    tenantId: tenantId");
         sb.AppendLine("    skuName: skuName");
         sb.AppendLine("    tags: tags");
-        sb.AppendLine("    enableRbacAuthorization: true  // FedRAMP AC-3 - RBAC for access control");
-        sb.AppendLine("    enableSoftDelete: true  // FedRAMP CP-9 - Recovery capability");
-        sb.AppendLine("    softDeleteRetentionInDays: 90  // FedRAMP AU-11 - Audit retention");
-        sb.AppendLine("    enablePurgeProtection: true  // FedRAMP CP-9 - Prevent permanent deletion");
-        sb.AppendLine($"    publicNetworkAccess: '{(security.EnablePrivateEndpoint == true ? "Disabled" : "Enabled")}'");
-        sb.AppendLine("    enabledForDeployment: true  // FedRAMP CM-3 - Configuration management");
-        sb.AppendLine("    enabledForDiskEncryption: true  // FedRAMP SC-28 - Encryption at rest");
-        sb.AppendLine("    enabledForTemplateDeployment: true  // FedRAMP CM-3 - Configuration management");
+        sb.AppendLine("    enableRbacAuthorization: true  // FedRAMP AC-3");
+        sb.AppendLine("    enableSoftDelete: true  // FedRAMP CP-9");
+        sb.AppendLine("    softDeleteRetentionInDays: 90  // FedRAMP AU-11");
+        sb.AppendLine("    enablePurgeProtection: true  // FedRAMP CP-9");
+        sb.AppendLine("    publicNetworkAccess: enablePublicNetworkAccess ? 'Enabled' : 'Disabled'");
+        sb.AppendLine("    enabledForDeployment: true");
+        sb.AppendLine("    enabledForDiskEncryption: true  // FedRAMP SC-28");
+        sb.AppendLine("    enabledForTemplateDeployment: true");
         sb.AppendLine("  }");
         sb.AppendLine("}");
         sb.AppendLine();
 
-        // RBAC Module (if enabled)
-        if (security.RBAC)
-        {
-            sb.AppendLine("// RBAC Role Assignment");
-            sb.AppendLine("module rbac 'rbac.bicep' = {");
-            sb.AppendLine("  name: '${keyVaultName}-rbac-deployment'");
-            sb.AppendLine("  params: {");
-            sb.AppendLine("    keyVaultName: keyVault.outputs.keyVaultName");
-            sb.AppendLine("    principalId: objectId");
-            sb.AppendLine("  }");
-            sb.AppendLine("  dependsOn: [");
-            sb.AppendLine("    keyVault");
-            sb.AppendLine("  ]");
-            sb.AppendLine("}");
-            sb.AppendLine();
-        }
-
-        // Private Endpoint Module (if enabled)
-        if (security.EnablePrivateEndpoint == true)
-        {
-            sb.AppendLine("// Private Endpoint for Key Vault");
-            sb.AppendLine("module privateEndpoint 'private-endpoint.bicep' = {");
-            sb.AppendLine("  name: '${keyVaultName}-pe-deployment'");
-            sb.AppendLine("  params: {");
-            sb.AppendLine("    privateEndpointName: '${keyVaultName}-pe'");
-            sb.AppendLine("    location: location");
-            sb.AppendLine("    keyVaultId: keyVault.outputs.keyVaultId");
-            sb.AppendLine("    subnetId: subnetId");
-            sb.AppendLine("    tags: tags");
-            sb.AppendLine("  }");
-            sb.AppendLine("  dependsOn: [");
-            sb.AppendLine("    keyVault");
-            sb.AppendLine("  ]");
-            sb.AppendLine("}");
-            sb.AppendLine();
-        }
-
-        // Diagnostics Module (if enabled)
-        if (observability.EnableDiagnostics == true)
-        {
-            sb.AppendLine("// Diagnostic Settings");
-            sb.AppendLine("module diagnostics 'diagnostics.bicep' = {");
-            sb.AppendLine("  name: '${keyVaultName}-diag-deployment'");
-            sb.AppendLine("  params: {");
-            sb.AppendLine("    keyVaultName: keyVault.outputs.keyVaultName");
-            sb.AppendLine("    logAnalyticsWorkspaceId: logAnalyticsWorkspaceId");
-            sb.AppendLine("  }");
-            sb.AppendLine("  dependsOn: [");
-            sb.AppendLine("    keyVault");
-            sb.AppendLine("  ]");
-            sb.AppendLine("}");
-            sb.AppendLine();
-        }
-
         // Outputs
-        sb.AppendLine("// Outputs");
+        sb.AppendLine("// Outputs for cross-cutting module composition");
         sb.AppendLine("output keyVaultId string = keyVault.outputs.keyVaultId");
         sb.AppendLine("output keyVaultName string = keyVault.outputs.keyVaultName");
         sb.AppendLine("output keyVaultUri string = keyVault.outputs.keyVaultUri");
-        
-        if (security.EnablePrivateEndpoint == true)
-        {
-            sb.AppendLine("output privateEndpointId string = privateEndpoint.outputs.privateEndpointId");
-        }
+        sb.AppendLine("output resourceId string = keyVault.outputs.keyVaultId");
+        sb.AppendLine("output resourceName string = keyVault.outputs.keyVaultName");
 
         return sb.ToString();
     }
@@ -243,115 +210,6 @@ public class BicepKeyVaultModuleGenerator : IInfrastructureModuleGenerator
         return sb.ToString();
     }
 
-    private string GeneratePrivateEndpointBicep(TemplateGenerationRequest request)
-    {
-        var sb = new StringBuilder();
-
-        sb.AppendLine("// Private Endpoint for Key Vault");
-        sb.AppendLine();
-        sb.AppendLine("param privateEndpointName string");
-        sb.AppendLine("param location string");
-        sb.AppendLine("param keyVaultId string");
-        sb.AppendLine("param subnetId string");
-        sb.AppendLine("param tags object");
-        sb.AppendLine();
-
-        sb.AppendLine("resource privateEndpoint 'Microsoft.Network/privateEndpoints@2023-04-01' = {");
-        sb.AppendLine("  name: privateEndpointName");
-        sb.AppendLine("  location: location");
-        sb.AppendLine("  tags: tags");
-        sb.AppendLine("  properties: {");
-        sb.AppendLine("    subnet: {");
-        sb.AppendLine("      id: subnetId");
-        sb.AppendLine("    }");
-        sb.AppendLine("    privateLinkServiceConnections: [");
-        sb.AppendLine("      {");
-        sb.AppendLine("        name: '${privateEndpointName}-connection'");
-        sb.AppendLine("        properties: {");
-        sb.AppendLine("          privateLinkServiceId: keyVaultId");
-        sb.AppendLine("          groupIds: ['vault']");
-        sb.AppendLine("        }");
-        sb.AppendLine("      }");
-        sb.AppendLine("    ]");
-        sb.AppendLine("  }");
-        sb.AppendLine("}");
-        sb.AppendLine();
-
-        sb.AppendLine("output privateEndpointId string = privateEndpoint.id");
-
-        return sb.ToString();
-    }
-
-    private string GenerateDiagnosticsBicep(TemplateGenerationRequest request)
-    {
-        var sb = new StringBuilder();
-
-        sb.AppendLine("// Diagnostic Settings for Key Vault");
-        sb.AppendLine();
-        sb.AppendLine("param keyVaultName string");
-        sb.AppendLine("param logAnalyticsWorkspaceId string");
-        sb.AppendLine();
-
-        sb.AppendLine("resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' existing = {");
-        sb.AppendLine("  name: keyVaultName");
-        sb.AppendLine("}");
-        sb.AppendLine();
-
-        sb.AppendLine("resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {");
-        sb.AppendLine("  name: '${keyVaultName}-diagnostics'");
-        sb.AppendLine("  scope: keyVault");
-        sb.AppendLine("  properties: {");
-        sb.AppendLine("    workspaceId: logAnalyticsWorkspaceId");
-        sb.AppendLine("    logs: [");
-        sb.AppendLine("      {");
-        sb.AppendLine("        category: 'AuditEvent'");
-        sb.AppendLine("        enabled: true");
-        sb.AppendLine("      }");
-        sb.AppendLine("    ]");
-        sb.AppendLine("    metrics: [");
-        sb.AppendLine("      {");
-        sb.AppendLine("        category: 'AllMetrics'");
-        sb.AppendLine("        enabled: true");
-        sb.AppendLine("      }");
-        sb.AppendLine("    ]");
-        sb.AppendLine("  }");
-        sb.AppendLine("}");
-
-        return sb.ToString();
-    }
-
-    private string GenerateRBACBicep(TemplateGenerationRequest request)
-    {
-        var sb = new StringBuilder();
-
-        sb.AppendLine("// RBAC Role Assignment for Key Vault");
-        sb.AppendLine();
-        sb.AppendLine("param keyVaultName string");
-        sb.AppendLine("param principalId string");
-        sb.AppendLine();
-
-        sb.AppendLine("resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' existing = {");
-        sb.AppendLine("  name: keyVaultName");
-        sb.AppendLine("}");
-        sb.AppendLine();
-
-        sb.AppendLine("// Key Vault Administrator role");
-        sb.AppendLine("var keyVaultAdministratorRoleId = '00482a5a-887f-4fb3-b363-3b7fe8e74483'");
-        sb.AppendLine();
-
-        sb.AppendLine("resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {");
-        sb.AppendLine("  name: guid(keyVault.id, principalId, keyVaultAdministratorRoleId)");
-        sb.AppendLine("  scope: keyVault");
-        sb.AppendLine("  properties: {");
-        sb.AppendLine("    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultAdministratorRoleId)");
-        sb.AppendLine("    principalId: principalId");
-        sb.AppendLine("    principalType: 'ServicePrincipal'");
-        sb.AppendLine("  }");
-        sb.AppendLine("}");
-
-        return sb.ToString();
-    }
-
     private string GenerateReadme(TemplateGenerationRequest request)
     {
         var sb = new StringBuilder();
@@ -407,7 +265,10 @@ public class BicepKeyVaultModuleGenerator : IInfrastructureModuleGenerator
         return sb.ToString();
     }
 
-    public bool CanHandle(TemplateGenerationRequest request)
+    /// <summary>
+    /// Check if this generator can handle the specified request
+    /// </summary>
+    public bool CanGenerate(TemplateGenerationRequest request)
     {
         var infrastructure = request.Infrastructure;
         if (infrastructure == null) return false;

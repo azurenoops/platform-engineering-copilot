@@ -26,11 +26,25 @@ public class GitHubGatewayService : IGitHubServices
         {
             try
             {
-                _gitHubClient = new GitHubClient(new ProductHeaderValue("supervisor-mcp-server"))
+                // Create GitHubClient with optional custom API endpoint for GitHub Enterprise
+                GitHubClient client;
+                if (!string.IsNullOrEmpty(_options.ApiBaseUrl) && _options.ApiBaseUrl != "https://api.github.com")
                 {
-                    Credentials = new Credentials(_options.AccessToken)
-                };
-                _logger.LogInformation("GitHub client initialized successfully");
+                    // For GitHub Enterprise Server, use the custom endpoint
+                    var uri = new Uri(_options.ApiBaseUrl);
+                    client = new GitHubClient(new ProductHeaderValue("platform-engineering-copilot"), uri);
+                }
+                else
+                {
+                    // For GitHub.com
+                    client = new GitHubClient(new ProductHeaderValue("platform-engineering-copilot"));
+                }
+                
+                client.Credentials = new Credentials(_options.AccessToken);
+                _gitHubClient = client;
+                
+                _logger.LogInformation("GitHub client initialized successfully with API endpoint: {ApiBaseUrl}", 
+                    _options.ApiBaseUrl ?? "https://api.github.com");
             }
             catch (Exception ex)
             {
@@ -756,6 +770,44 @@ public class GitHubGatewayService : IGitHubServices
             return null;
         }
     }
+
+    #endregion
+
+    #region File Operations and Validation
+
+    /// <summary>
+    /// Validates file size against configured MaxFileSizeKb limit
+    /// </summary>
+    /// <param name="fileSizeBytes">File size in bytes</param>
+    /// <returns>True if file is within size limit, false otherwise</returns>
+    public bool ValidateFileSize(long fileSizeBytes)
+    {
+        var maxFileSizeBytes = _options.MaxFileSizeKb * 1024;
+        var isValid = fileSizeBytes <= maxFileSizeBytes;
+
+        if (!isValid)
+        {
+            _logger.LogWarning("File size {FileSizeKb}KB exceeds maximum allowed {MaxFileSizeKb}KB",
+                fileSizeBytes / 1024, _options.MaxFileSizeKb);
+        }
+
+        return isValid;
+    }
+
+    /// <summary>
+    /// Checks if pull request reviews are enabled
+    /// </summary>
+    public bool IsPullRequestReviewEnabled => _options.EnablePrReviews;
+
+    /// <summary>
+    /// Checks if auto-approval is enabled for successful tests
+    /// </summary>
+    public bool IsAutoApproveOnSuccessEnabled => _options.AutoApproveOnSuccess;
+
+    /// <summary>
+    /// Gets the webhook secret for securing GitHub webhooks
+    /// </summary>
+    public string? GetWebhookSecret => _options.WebhookSecret;
 
     #endregion
 

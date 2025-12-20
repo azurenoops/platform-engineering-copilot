@@ -27,6 +27,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IResourceTypeHandler, StorageAccountHandler>();
         services.AddSingleton<IResourceTypeHandler, SqlDatabaseHandler>();
         services.AddSingleton<IResourceTypeHandler, KeyVaultHandler>();
+        services.AddSingleton<IResourceTypeHandler, VirtualMachineHandler>();
+        services.AddSingleton<IResourceTypeHandler, VirtualNetworkHandler>();
+        services.AddSingleton<IResourceTypeHandler, NetworkSecurityGroupHandler>();
+        services.AddSingleton<IResourceTypeHandler, LoadBalancerHandler>();
+        services.AddSingleton<IResourceTypeHandler, CosmosDbHandler>();
         
         // Register Discovery Service
         services.AddScoped<IAzureResourceDiscoveryService, AzureResourceDiscoveryService>();

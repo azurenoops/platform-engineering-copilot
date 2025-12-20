@@ -155,4 +155,17 @@ public interface IEnvironmentTemplateRepository
     /// Used before hard deleting a template to preserve deployment history
     /// </summary>
     Task<int> UnlinkDeploymentsAsync(Guid templateId, CancellationToken cancellationToken = default);
+    
+    // ==================== Expiration Operations ====================
+    
+    /// <summary>
+    /// Get all templates that have expired (ExpiresAt < DateTime.UtcNow)
+    /// </summary>
+    Task<IReadOnlyList<EnvironmentTemplate>> GetExpiredTemplatesAsync(CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Delete all expired templates and their associated files
+    /// Returns the count of deleted templates
+    /// </summary>
+    Task<int> DeleteExpiredTemplatesAsync(CancellationToken cancellationToken = default);
 }

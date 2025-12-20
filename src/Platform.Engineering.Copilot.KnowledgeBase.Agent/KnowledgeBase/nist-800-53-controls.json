@@ -1,0 +1,961 @@
+{
+  "metadata": {
+    "version": "5.1",
+    "lastUpdated": "2025-12-10",
+    "source": "NIST SP 800-53 Rev 5",
+    "description": "Comprehensive NIST 800-53 Rev 5 security controls with Azure implementation guidance"
+  },
+  "controlFamilies": [
+    {
+      "familyId": "AC",
+      "familyName": "Access Control",
+      "description": "Controls that limit information system access to authorized users, processes acting on behalf of authorized users, or devices and other systems.",
+      "controls": [
+        {
+          "controlId": "AC-1",
+          "title": "Policy and Procedures",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Develop, document, and disseminate access control policy and procedures.",
+          "requirements": [
+            "Develop access control policy addressing purpose, scope, roles, responsibilities",
+            "Develop procedures to facilitate implementation",
+            "Review and update policy at organization-defined frequency",
+            "Review and update procedures at organization-defined frequency"
+          ],
+          "azureImplementation": {
+            "services": ["Azure Policy", "Azure Blueprints", "Management Groups"],
+            "guidance": "Use Azure Policy to enforce access control requirements. Document policies in Azure Blueprints for consistent deployment.",
+            "automationCommands": [
+              "az policy definition create --name 'ac-policy' --rules @ac-policy.json",
+              "az blueprint create --name 'security-baseline' --management-group 'org'"
+            ],
+            "azurePolicies": ["Audit usage of custom RBAC rules"]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000001", "CCI-000002"]
+        },
+        {
+          "controlId": "AC-2",
+          "title": "Account Management",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Manage information system accounts, including establishing, activating, modifying, reviewing, disabling, and removing accounts.",
+          "requirements": [
+            "Identify and select account types (individual, shared, group, system, guest, anonymous, emergency, temporary)",
+            "Assign account managers",
+            "Establish conditions for group and role membership",
+            "Specify authorized users and access authorizations",
+            "Require approvals for account creation requests",
+            "Create, enable, modify, disable, and remove accounts per policy",
+            "Monitor use of information system accounts",
+            "Notify account managers when accounts are no longer required, users are terminated/transferred, or usage/need-to-know changes"
+          ],
+          "enhancements": [
+            {
+              "enhancementId": "AC-2(1)",
+              "title": "Automated System Account Management",
+              "description": "Support management of system accounts using automated mechanisms",
+              "azureImplementation": "Use Azure AD automated provisioning, SCIM, and lifecycle workflows"
+            },
+            {
+              "enhancementId": "AC-2(2)",
+              "title": "Automated Temporary and Emergency Account Management",
+              "description": "Automatically remove or disable temporary and emergency accounts after defined period",
+              "azureImplementation": "Configure Azure AD access reviews and conditional access with session limits"
+            },
+            {
+              "enhancementId": "AC-2(3)",
+              "title": "Disable Accounts",
+              "description": "Disable accounts within defined period when accounts have expired, no longer associated with user, or in violation of policy",
+              "azureImplementation": "Use Azure AD Identity Governance for automatic account disabling"
+            },
+            {
+              "enhancementId": "AC-2(4)",
+              "title": "Automated Audit Actions",
+              "description": "Automatically audit account creation, modification, enabling, disabling, and removal actions",
+              "azureImplementation": "Enable Azure AD audit logs, configure diagnostic settings to Log Analytics"
+            },
+            {
+              "enhancementId": "AC-2(5)",
+              "title": "Inactivity Logout",
+              "description": "Require users to log out when defined inactivity period exceeded",
+              "azureImplementation": "Configure conditional access session controls, app session timeout policies"
+            },
+            {
+              "enhancementId": "AC-2(11)",
+              "title": "Usage Conditions",
+              "description": "Enforce usage conditions for information system accounts",
+              "azureImplementation": "Implement conditional access policies based on user risk, device compliance, location"
+            },
+            {
+              "enhancementId": "AC-2(12)",
+              "title": "Account Monitoring for Atypical Usage",
+              "description": "Monitor accounts for atypical usage and report atypical usage",
+              "azureImplementation": "Enable Azure AD Identity Protection, configure risk-based policies and alerts"
+            },
+            {
+              "enhancementId": "AC-2(13)",
+              "title": "Disable Accounts for High-Risk Individuals",
+              "description": "Disable accounts of individuals within defined time period of discovery of significant risk",
+              "azureImplementation": "Configure Azure AD Identity Protection automatic remediation policies"
+            }
+          ],
+          "azureImplementation": {
+            "services": ["Azure AD", "Azure AD PIM", "Azure AD Identity Governance", "Azure AD Access Reviews"],
+            "guidance": "Use Azure AD for centralized identity management. Implement PIM for privileged access. Configure access reviews for periodic account validation.",
+            "automationCommands": [
+              "az ad user create --display-name 'User' --user-principal-name 'user@domain.com' --password 'SecurePass!'",
+              "az ad user update --id <userId> --account-enabled false",
+              "az ad group member add --group <groupId> --member-id <userId>"
+            ],
+            "azurePolicies": [
+              "There should be more than one owner assigned to your subscription",
+              "A maximum of 3 owners should be designated for your subscription",
+              "Deprecated accounts should be removed from your subscription",
+              "Deprecated accounts with owner permissions should be removed from your subscription"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000015", "CCI-000016", "CCI-000017", "CCI-000018"]
+        },
+        {
+          "controlId": "AC-3",
+          "title": "Access Enforcement",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Enforce approved authorizations for logical access to information and system resources in accordance with applicable access control policies.",
+          "requirements": [
+            "Enforce approved authorizations for logical access",
+            "Access control based on identity and defined access control lists",
+            "Implement access control mechanisms (RBAC, ABAC, MAC, DAC)"
+          ],
+          "azureImplementation": {
+            "services": ["Azure RBAC", "Azure AD Conditional Access", "Azure Policy", "NSGs", "Azure Firewall"],
+            "guidance": "Implement Azure RBAC for resource access control. Use Conditional Access for identity-based access. Apply NSGs and Azure Firewall for network access control.",
+            "automationCommands": [
+              "az role assignment create --assignee <userId> --role 'Reader' --scope /subscriptions/<subId>",
+              "az network nsg rule create --name 'Allow-HTTPS' --nsg-name <nsg> --priority 100 --access Allow --protocol Tcp --destination-port-ranges 443"
+            ],
+            "azurePolicies": [
+              "Role-Based Access Control (RBAC) should be used on Kubernetes Services",
+              "Azure RBAC should be used for Data Explorer clusters"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000213", "CCI-000214"]
+        },
+        {
+          "controlId": "AC-4",
+          "title": "Information Flow Enforcement",
+          "priority": "P1",
+          "baselineImpact": { "low": false, "moderate": true, "high": true },
+          "description": "Enforce approved authorizations for controlling the flow of information within the system and between interconnected systems based on defined policies.",
+          "requirements": [
+            "Enforce information flow control using security policies",
+            "Control information flow between security domains",
+            "Implement flow control mechanisms for cross-domain solutions"
+          ],
+          "azureImplementation": {
+            "services": ["NSGs", "Azure Firewall", "Azure Front Door", "Application Gateway WAF", "Private Link"],
+            "guidance": "Use NSGs for network segmentation. Azure Firewall for centralized flow control. Private Link for private connectivity to Azure services.",
+            "automationCommands": [
+              "az network nsg create --name 'prod-nsg' --resource-group <rg>",
+              "az network firewall create --name 'hub-firewall' --resource-group <rg> --vnet-name <vnet>"
+            ],
+            "azurePolicies": [
+              "Network interfaces should not have public IPs",
+              "Subnets should be associated with a Network Security Group",
+              "All network ports should be restricted on network security groups associated to your virtual machine"
+            ]
+          },
+          "fedRAMPBaseline": "Moderate, High",
+          "dodImpactLevel": "IL4, IL5, IL6",
+          "cciMapping": ["CCI-001368", "CCI-001414"]
+        },
+        {
+          "controlId": "AC-5",
+          "title": "Separation of Duties",
+          "priority": "P1",
+          "baselineImpact": { "low": false, "moderate": true, "high": true },
+          "description": "Separate duties of individuals to prevent malevolent activity without collusion.",
+          "requirements": [
+            "Identify and document duties requiring separation",
+            "Define system access authorizations to support separation of duties"
+          ],
+          "azureImplementation": {
+            "services": ["Azure RBAC", "Azure AD PIM", "Management Groups"],
+            "guidance": "Use custom RBAC roles to enforce separation. Require multiple approvals for critical operations via PIM.",
+            "automationCommands": [
+              "az role definition create --role-definition @custom-role.json"
+            ],
+            "azurePolicies": [
+              "There should be more than one owner assigned to your subscription"
+            ]
+          },
+          "fedRAMPBaseline": "Moderate, High",
+          "dodImpactLevel": "IL4, IL5, IL6",
+          "cciMapping": ["CCI-000225", "CCI-000226"]
+        },
+        {
+          "controlId": "AC-6",
+          "title": "Least Privilege",
+          "priority": "P1",
+          "baselineImpact": { "low": false, "moderate": true, "high": true },
+          "description": "Employ the principle of least privilege, allowing only authorized accesses for users which are necessary to accomplish assigned tasks.",
+          "requirements": [
+            "Allow only authorized access necessary for assigned tasks",
+            "Restrict privileged accounts to those requiring them",
+            "Authorize access based on job functions"
+          ],
+          "enhancements": [
+            {
+              "enhancementId": "AC-6(1)",
+              "title": "Authorize Access to Security Functions",
+              "description": "Explicitly authorize access to security functions and security-relevant information",
+              "azureImplementation": "Use Azure AD PIM for just-in-time privileged access to security functions"
+            },
+            {
+              "enhancementId": "AC-6(2)",
+              "title": "Non-Privileged Access for Non-Security Functions",
+              "description": "Require users to use non-privileged accounts when accessing non-security functions",
+              "azureImplementation": "Enforce separate accounts for admin vs. standard work using Azure AD"
+            },
+            {
+              "enhancementId": "AC-6(5)",
+              "title": "Privileged Accounts",
+              "description": "Restrict privileged accounts to specific personnel or roles",
+              "azureImplementation": "Use Azure AD PIM to limit and time-box privileged access"
+            },
+            {
+              "enhancementId": "AC-6(7)",
+              "title": "Review of User Privileges",
+              "description": "Review user privileges at defined frequency to validate need",
+              "azureImplementation": "Configure Azure AD Access Reviews for periodic privilege validation"
+            },
+            {
+              "enhancementId": "AC-6(9)",
+              "title": "Log Use of Privileged Functions",
+              "description": "Log execution of privileged functions",
+              "azureImplementation": "Enable Azure AD audit logs and sign-in logs to Log Analytics"
+            },
+            {
+              "enhancementId": "AC-6(10)",
+              "title": "Prohibit Non-Privileged Users from Executing Privileged Functions",
+              "description": "Prevent non-privileged users from executing privileged functions",
+              "azureImplementation": "Use Azure RBAC to explicitly deny privileged operations for non-privileged users"
+            }
+          ],
+          "azureImplementation": {
+            "services": ["Azure AD PIM", "Azure RBAC", "Azure AD Access Reviews", "Conditional Access"],
+            "guidance": "Implement just-in-time privileged access with PIM. Use custom roles with minimal permissions. Review privileges regularly.",
+            "automationCommands": [
+              "az ad pim role activate --role 'Global Administrator' --justification 'Emergency access'",
+              "az role assignment list --assignee <userId> --all"
+            ],
+            "azurePolicies": [
+              "A maximum of 3 owners should be designated for your subscription",
+              "Management ports should be closed on your virtual machines"
+            ]
+          },
+          "fedRAMPBaseline": "Moderate, High",
+          "dodImpactLevel": "IL4, IL5, IL6",
+          "cciMapping": ["CCI-000225", "CCI-002234", "CCI-002235"]
+        },
+        {
+          "controlId": "AC-7",
+          "title": "Unsuccessful Logon Attempts",
+          "priority": "P2",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Enforce a limit of consecutive invalid logon attempts and automatically lock account/node for defined period or until unlocked by administrator.",
+          "requirements": [
+            "Enforce limit of consecutive invalid logon attempts within time period",
+            "Automatically lock account when maximum attempts exceeded",
+            "Maintain lockout until released by administrator or after defined time period"
+          ],
+          "azureImplementation": {
+            "services": ["Azure AD Smart Lockout", "Azure AD Identity Protection"],
+            "guidance": "Configure Azure AD Smart Lockout with appropriate thresholds. Enable Identity Protection for risk-based lockout.",
+            "automationCommands": [
+              "az ad app update --id <appId> --set 'passwordCredentials[0].endDateTime=2024-12-31T00:00:00Z'"
+            ],
+            "azurePolicies": []
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000044", "CCI-000045"]
+        },
+        {
+          "controlId": "AC-17",
+          "title": "Remote Access",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Establish and document usage restrictions, configuration/connection requirements, and implementation guidance for each type of remote access allowed.",
+          "requirements": [
+            "Establish usage restrictions for remote access",
+            "Document configuration requirements for remote access",
+            "Implement connection requirements for remote access",
+            "Authorize remote access before allowing connection"
+          ],
+          "enhancements": [
+            {
+              "enhancementId": "AC-17(1)",
+              "title": "Monitoring and Control",
+              "description": "Employ automated mechanisms to monitor and control remote access methods",
+              "azureImplementation": "Use Azure Monitor, Microsoft Sentinel for remote access monitoring"
+            },
+            {
+              "enhancementId": "AC-17(2)",
+              "title": "Protection of Confidentiality and Integrity Using Encryption",
+              "description": "Implement cryptographic mechanisms to protect confidentiality and integrity of remote access sessions",
+              "azureImplementation": "Enforce TLS 1.2+ for all remote access, use Azure VPN with IPsec"
+            },
+            {
+              "enhancementId": "AC-17(3)",
+              "title": "Managed Access Control Points",
+              "description": "Route remote accesses through authorized and managed access control points",
+              "azureImplementation": "Use Azure Bastion, Azure Firewall, or Application Gateway for managed access"
+            },
+            {
+              "enhancementId": "AC-17(4)",
+              "title": "Privileged Commands and Access",
+              "description": "Authorize execution of privileged commands and access to security-relevant information via remote access only for defined needs",
+              "azureImplementation": "Use Azure AD PIM combined with Conditional Access for remote privileged access"
+            }
+          ],
+          "azureImplementation": {
+            "services": ["Azure Bastion", "Azure VPN Gateway", "ExpressRoute", "Conditional Access", "Azure AD"],
+            "guidance": "Use Azure Bastion for secure RDP/SSH without public IPs. Implement VPN for site-to-site connectivity. Enforce MFA for all remote access via Conditional Access.",
+            "automationCommands": [
+              "az network bastion create --name <bastion> --public-ip-address <pip> --resource-group <rg> --vnet-name <vnet>",
+              "az network vnet-gateway create --name <gw> --resource-group <rg> --vnet <vnet> --gateway-type Vpn --vpn-type RouteBased"
+            ],
+            "azurePolicies": [
+              "Management ports of virtual machines should be protected with just-in-time network access control",
+              "Virtual machines should be connected to a virtual network"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000067", "CCI-000068", "CCI-001453"]
+        }
+      ]
+    },
+    {
+      "familyId": "AU",
+      "familyName": "Audit and Accountability",
+      "description": "Controls that create, protect, and retain information system audit records to enable monitoring, analysis, investigation, and reporting.",
+      "controls": [
+        {
+          "controlId": "AU-2",
+          "title": "Event Logging",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Identify the types of events that the system is capable of logging in support of the audit function.",
+          "requirements": [
+            "Identify event types for logging",
+            "Coordinate logging requirements with other organizations",
+            "Provide rationale for event types selected",
+            "Review and update event types logged"
+          ],
+          "azureImplementation": {
+            "services": ["Azure Monitor", "Log Analytics", "Azure Activity Log", "Diagnostic Settings"],
+            "guidance": "Enable diagnostic settings for all resources. Configure Activity Log to capture control plane events. Use Log Analytics for centralized log management.",
+            "automationCommands": [
+              "az monitor diagnostic-settings create --name 'audit-logs' --resource <resourceId> --logs '[{\"category\": \"AuditEvent\", \"enabled\": true}]' --workspace <workspaceId>"
+            ],
+            "azurePolicies": [
+              "Azure Monitor should collect activity logs from all regions",
+              "Azure subscriptions should have a log profile for Activity Log"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000169", "CCI-000172"]
+        },
+        {
+          "controlId": "AU-3",
+          "title": "Content of Audit Records",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Ensure that audit records contain information that establishes the type of event, when the event occurred, where the event occurred, source of event, outcome of event, and identity of subjects/objects involved.",
+          "requirements": [
+            "Audit records contain: event type, time, location, source, outcome, identity"
+          ],
+          "azureImplementation": {
+            "services": ["Azure Monitor", "Log Analytics", "Microsoft Sentinel"],
+            "guidance": "Azure audit logs automatically include required fields. Use Log Analytics queries to verify record completeness.",
+            "automationCommands": [
+              "az monitor activity-log list --start-time 2024-01-01 --output table"
+            ],
+            "azurePolicies": []
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000131", "CCI-000132", "CCI-000133", "CCI-000134", "CCI-000135"]
+        },
+        {
+          "controlId": "AU-6",
+          "title": "Audit Record Review, Analysis, and Reporting",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Review and analyze information system audit records for indications of inappropriate or unusual activity and report findings to defined personnel or roles.",
+          "requirements": [
+            "Review and analyze audit records at defined frequency",
+            "Report findings to appropriate personnel",
+            "Adjust review frequency based on risk"
+          ],
+          "azureImplementation": {
+            "services": ["Microsoft Sentinel", "Azure Monitor Alerts", "Log Analytics"],
+            "guidance": "Deploy Microsoft Sentinel for SIEM/SOAR capabilities. Configure alert rules for suspicious activity. Create workbooks for regular review.",
+            "automationCommands": [
+              "az sentinel alert-rule create --name 'suspicious-login' --resource-group <rg> --workspace-name <ws>"
+            ],
+            "azurePolicies": [
+              "Azure Defender for servers should be enabled",
+              "Microsoft Defender for Cloud should be enabled"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000156", "CCI-000157"]
+        },
+        {
+          "controlId": "AU-9",
+          "title": "Protection of Audit Information",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Protect audit information and audit logging tools from unauthorized access, modification, and deletion.",
+          "requirements": [
+            "Protect audit information from unauthorized access",
+            "Protect audit information from unauthorized modification",
+            "Protect audit information from unauthorized deletion"
+          ],
+          "azureImplementation": {
+            "services": ["Azure RBAC", "Resource Locks", "Immutable Storage", "Log Analytics"],
+            "guidance": "Use RBAC to restrict access to Log Analytics. Apply resource locks to prevent deletion. Use immutable storage for compliance archives.",
+            "automationCommands": [
+              "az lock create --name 'DoNotDelete' --resource-group <rg> --lock-type CanNotDelete",
+              "az storage container immutability-policy create --account-name <sa> --container-name <container> --period 365"
+            ],
+            "azurePolicies": [
+              "Storage accounts should have infrastructure encryption",
+              "Secure transfer to storage accounts should be enabled"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000163", "CCI-000164", "CCI-000165"]
+        },
+        {
+          "controlId": "AU-12",
+          "title": "Audit Record Generation",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Provide audit record generation capability for the event types the system is capable of auditing and allow authorized personnel to select which event types are to be logged.",
+          "requirements": [
+            "Provide audit record generation capability",
+            "Allow selection of event types to audit",
+            "Generate audit records for selected events"
+          ],
+          "azureImplementation": {
+            "services": ["Azure Monitor", "Diagnostic Settings", "Log Analytics", "Event Hubs"],
+            "guidance": "Enable diagnostic settings on all resources. Configure categories for audit events. Stream to Log Analytics for analysis.",
+            "automationCommands": [
+              "az monitor diagnostic-settings create --name 'all-logs' --resource <resourceId> --logs '[{\"category\": \"Administrative\", \"enabled\": true}]' --workspace <workspaceId>"
+            ],
+            "azurePolicies": [
+              "Diagnostic logs in Azure Key Vault should be enabled",
+              "Diagnostic logs in virtual machine scale sets should be enabled"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000169", "CCI-000171", "CCI-000172"]
+        }
+      ]
+    },
+    {
+      "familyId": "IA",
+      "familyName": "Identification and Authentication",
+      "description": "Controls that verify the identity of users, processes, and devices as a prerequisite to allowing access to organizational information systems.",
+      "controls": [
+        {
+          "controlId": "IA-2",
+          "title": "Identification and Authentication (Organizational Users)",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Uniquely identify and authenticate organizational users and associate that unique identification with processes acting on behalf of those users.",
+          "requirements": [
+            "Uniquely identify and authenticate users",
+            "Associate identity with user-initiated processes"
+          ],
+          "enhancements": [
+            {
+              "enhancementId": "IA-2(1)",
+              "title": "Multi-Factor Authentication to Privileged Accounts",
+              "description": "Implement MFA for access to privileged accounts",
+              "azureImplementation": "Enforce MFA via Conditional Access for all privileged roles",
+              "dodRequired": true,
+              "fedRAMPRequired": true
+            },
+            {
+              "enhancementId": "IA-2(2)",
+              "title": "Multi-Factor Authentication to Non-Privileged Accounts",
+              "description": "Implement MFA for access to non-privileged accounts",
+              "azureImplementation": "Enforce MFA via Conditional Access for all users",
+              "dodRequired": true,
+              "fedRAMPRequired": true
+            },
+            {
+              "enhancementId": "IA-2(6)",
+              "title": "Access to Accounts — Separate Device",
+              "description": "Implement MFA using a separate device from system accessing",
+              "azureImplementation": "Use Microsoft Authenticator app, hardware tokens, or phone-based MFA",
+              "dodRequired": true,
+              "fedRAMPRequired": false
+            },
+            {
+              "enhancementId": "IA-2(8)",
+              "title": "Access to Accounts — Replay Resistant",
+              "description": "Implement replay-resistant authentication mechanisms",
+              "azureImplementation": "Azure AD uses replay-resistant tokens by default with FIDO2, Windows Hello",
+              "dodRequired": true,
+              "fedRAMPRequired": true
+            },
+            {
+              "enhancementId": "IA-2(12)",
+              "title": "Acceptance of PIV Credentials",
+              "description": "Accept and verify PIV credentials",
+              "azureImplementation": "Configure Azure AD Certificate-Based Authentication for PIV/CAC",
+              "dodRequired": true,
+              "fedRAMPRequired": false
+            }
+          ],
+          "azureImplementation": {
+            "services": ["Azure AD", "Conditional Access", "MFA", "Azure AD Certificate-Based Auth"],
+            "guidance": "Configure Azure AD as identity provider. Enable MFA for all users. Support CAC/PIV for DoD environments.",
+            "automationCommands": [
+              "az ad user list --filter \"userType eq 'Member'\" --output table"
+            ],
+            "azurePolicies": [
+              "MFA should be enabled on accounts with owner permissions on your subscription",
+              "MFA should be enabled on accounts with write permissions on your subscription",
+              "MFA should be enabled on accounts with read permissions on your subscription"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000764", "CCI-000765", "CCI-000766", "CCI-000767"]
+        },
+        {
+          "controlId": "IA-5",
+          "title": "Authenticator Management",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Manage information system authenticators by verifying identity, establishing initial content, ensuring sufficient strength, distributing, storing, and protecting authenticators.",
+          "requirements": [
+            "Verify identity before distributing authenticators",
+            "Establish initial authenticator content",
+            "Ensure authenticators have sufficient strength",
+            "Establish administrative procedures for initial distribution, lost/compromised, damaged, and revocation"
+          ],
+          "azureImplementation": {
+            "services": ["Azure AD", "Azure Key Vault", "Azure AD Password Protection"],
+            "guidance": "Enforce strong password policies. Enable Azure AD Password Protection. Store secrets in Key Vault.",
+            "automationCommands": [
+              "az ad app credential reset --id <appId> --append --credential-description 'Rotated credential'"
+            ],
+            "azurePolicies": []
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000185", "CCI-000186", "CCI-000187"]
+        }
+      ]
+    },
+    {
+      "familyId": "SC",
+      "familyName": "System and Communications Protection",
+      "description": "Controls that monitor, control, and protect organizational communications at external boundaries and key internal boundaries.",
+      "controls": [
+        {
+          "controlId": "SC-7",
+          "title": "Boundary Protection",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Monitor and control communications at external managed interfaces to the system and at key internal managed interfaces within the system.",
+          "requirements": [
+            "Monitor and control communications at external boundaries",
+            "Implement subnetworks for publicly accessible components",
+            "Connect to external networks only through managed interfaces"
+          ],
+          "enhancements": [
+            {
+              "enhancementId": "SC-7(3)",
+              "title": "Access Points",
+              "description": "Limit the number of external network connections to the system",
+              "azureImplementation": "Use hub-spoke topology with centralized Azure Firewall"
+            },
+            {
+              "enhancementId": "SC-7(4)",
+              "title": "External Telecommunications Services",
+              "description": "Implement a managed interface for each external telecommunication service",
+              "azureImplementation": "Use ExpressRoute or VPN Gateway for external connectivity"
+            },
+            {
+              "enhancementId": "SC-7(5)",
+              "title": "Deny by Default — Allow by Exception",
+              "description": "Deny network traffic by default and allow by exception",
+              "azureImplementation": "Configure NSGs and Azure Firewall with default deny rules"
+            },
+            {
+              "enhancementId": "SC-7(8)",
+              "title": "Route Traffic to Authenticated Proxy Servers",
+              "description": "Route internal communications traffic to external networks through authenticated proxy servers",
+              "azureImplementation": "Use Azure Firewall with TLS inspection or third-party proxy"
+            }
+          ],
+          "azureImplementation": {
+            "services": ["Azure Firewall", "NSGs", "Application Gateway", "Azure Front Door", "DDoS Protection"],
+            "guidance": "Deploy Azure Firewall at hub for centralized traffic control. Use NSGs for micro-segmentation. Enable DDoS protection.",
+            "automationCommands": [
+              "az network firewall create --name <fw> --resource-group <rg> --location <location>",
+              "az network nsg create --name <nsg> --resource-group <rg>"
+            ],
+            "azurePolicies": [
+              "Subnets should be associated with a Network Security Group",
+              "Internet-facing virtual machines should be protected with network security groups"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-001094", "CCI-001097", "CCI-001098"]
+        },
+        {
+          "controlId": "SC-8",
+          "title": "Transmission Confidentiality and Integrity",
+          "priority": "P1",
+          "baselineImpact": { "low": false, "moderate": true, "high": true },
+          "description": "Protect the confidentiality and integrity of transmitted information.",
+          "requirements": [
+            "Protect confidentiality of transmitted information",
+            "Protect integrity of transmitted information",
+            "Implement cryptographic mechanisms or physical protection"
+          ],
+          "enhancements": [
+            {
+              "enhancementId": "SC-8(1)",
+              "title": "Cryptographic Protection",
+              "description": "Implement cryptographic mechanisms to protect information during transmission",
+              "azureImplementation": "Enforce TLS 1.2+ for all services, use Private Link for internal traffic"
+            }
+          ],
+          "azureImplementation": {
+            "services": ["TLS/SSL", "Private Link", "VPN Gateway", "ExpressRoute"],
+            "guidance": "Enforce TLS 1.2+ minimum. Use Private Link for Azure service access. ExpressRoute for dedicated connectivity.",
+            "automationCommands": [
+              "az storage account update --name <sa> --min-tls-version TLS1_2"
+            ],
+            "azurePolicies": [
+              "FTPS only should be required in your API App",
+              "HTTPS only should be enabled for your web app",
+              "Secure transfer to storage accounts should be enabled"
+            ]
+          },
+          "fedRAMPBaseline": "Moderate, High",
+          "dodImpactLevel": "IL4, IL5, IL6",
+          "cciMapping": ["CCI-001184", "CCI-001185", "CCI-001186"]
+        },
+        {
+          "controlId": "SC-12",
+          "title": "Cryptographic Key Establishment and Management",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Establish and manage cryptographic keys when cryptography is employed within the system in accordance with defined key management requirements.",
+          "requirements": [
+            "Establish cryptographic keys per requirements",
+            "Manage cryptographic keys per requirements",
+            "Meet FIPS 140 validation requirements"
+          ],
+          "azureImplementation": {
+            "services": ["Azure Key Vault", "Azure Key Vault Managed HSM", "Customer-Managed Keys"],
+            "guidance": "Use Key Vault for all key management. Use Managed HSM for FIPS 140-2 Level 3. Enable soft-delete and purge protection.",
+            "automationCommands": [
+              "az keyvault create --name <kv> --resource-group <rg> --enable-soft-delete true --enable-purge-protection true",
+              "az keyvault key create --vault-name <kv> --name <keyName> --kty RSA --size 2048"
+            ],
+            "azurePolicies": [
+              "Key Vault keys should have an expiration date",
+              "Key Vault secrets should have an expiration date",
+              "Azure Key Vault should have firewall enabled"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-001188", "CCI-002421"]
+        },
+        {
+          "controlId": "SC-13",
+          "title": "Cryptographic Protection",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Implement FIPS-validated or NSA-approved cryptography in accordance with applicable laws, policies, and standards.",
+          "requirements": [
+            "Use FIPS 140 validated cryptography",
+            "Use NSA-approved cryptography for classified information"
+          ],
+          "azureImplementation": {
+            "services": ["Azure Key Vault Managed HSM", "FIPS 140-2 Validated Modules"],
+            "guidance": "Azure services use FIPS 140-2 validated cryptographic modules. Use Managed HSM for Level 3. Enable encryption at rest with CMK.",
+            "automationCommands": [],
+            "azurePolicies": []
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-002421", "CCI-002422"]
+        },
+        {
+          "controlId": "SC-28",
+          "title": "Protection of Information at Rest",
+          "priority": "P1",
+          "baselineImpact": { "low": false, "moderate": true, "high": true },
+          "description": "Protect the confidentiality and integrity of information at rest.",
+          "requirements": [
+            "Protect confidentiality of information at rest",
+            "Protect integrity of information at rest",
+            "Use cryptographic mechanisms"
+          ],
+          "enhancements": [
+            {
+              "enhancementId": "SC-28(1)",
+              "title": "Cryptographic Protection",
+              "description": "Implement cryptographic mechanisms to prevent unauthorized disclosure and modification",
+              "azureImplementation": "Enable encryption at rest for all storage, use CMK for IL5/IL6"
+            }
+          ],
+          "azureImplementation": {
+            "services": ["Azure Storage Encryption", "Azure Disk Encryption", "SQL TDE", "Customer-Managed Keys"],
+            "guidance": "All Azure storage is encrypted by default. Use CMK for enhanced control. Enable TDE for SQL databases.",
+            "automationCommands": [
+              "az storage account update --name <sa> --encryption-key-source Microsoft.Keyvault --encryption-key-vault <kvUri> --encryption-key-name <keyName>",
+              "az sql db tde set --resource-group <rg> --server <server> --database <db> --status Enabled"
+            ],
+            "azurePolicies": [
+              "Storage accounts should use customer-managed key for encryption",
+              "SQL servers should use customer-managed keys to encrypt data at rest",
+              "Virtual machines should encrypt temp disks, caches, and data flows between Compute and Storage resources"
+            ]
+          },
+          "fedRAMPBaseline": "Moderate, High",
+          "dodImpactLevel": "IL4, IL5, IL6",
+          "cciMapping": ["CCI-001199", "CCI-002475", "CCI-002476"]
+        }
+      ]
+    },
+    {
+      "familyId": "CM",
+      "familyName": "Configuration Management",
+      "description": "Controls that establish and maintain baseline configurations and inventories of organizational systems throughout the system development life cycle.",
+      "controls": [
+        {
+          "controlId": "CM-2",
+          "title": "Baseline Configuration",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Develop, document, and maintain under configuration control, a current baseline configuration of the information system.",
+          "requirements": [
+            "Develop and document baseline configuration",
+            "Maintain baseline under configuration control",
+            "Update baseline as required"
+          ],
+          "azureImplementation": {
+            "services": ["Azure Policy", "Azure Blueprints", "Azure Resource Manager Templates", "Terraform"],
+            "guidance": "Define baseline configurations in Azure Policy. Use Blueprints for repeatable deployments. Store IaC in version control.",
+            "automationCommands": [
+              "az policy assignment create --policy <policyId> --scope /subscriptions/<subId>",
+              "az blueprint publish --blueprint-name <blueprint> --version '1.0'"
+            ],
+            "azurePolicies": [
+              "Audit virtual machines without disaster recovery configured",
+              "Deploy default Microsoft IaaSAntimalware extension for Windows Server"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000366", "CCI-001499"]
+        },
+        {
+          "controlId": "CM-6",
+          "title": "Configuration Settings",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Establish and document configuration settings for components using settings that reflect the most restrictive mode consistent with operational requirements.",
+          "requirements": [
+            "Establish configuration settings",
+            "Document configuration settings",
+            "Implement configuration settings",
+            "Monitor and control changes to settings"
+          ],
+          "azureImplementation": {
+            "services": ["Azure Policy", "Azure Automation", "Guest Configuration", "Azure Security Center"],
+            "guidance": "Use Azure Policy Guest Configuration for OS settings. Apply security baselines via Azure Security Center.",
+            "automationCommands": [
+              "az policy assignment create --policy 'audit-password-complexity' --scope /subscriptions/<subId>"
+            ],
+            "azurePolicies": [
+              "Windows machines should meet requirements for 'Security Settings - Account Policies'",
+              "Linux machines should meet requirements for 'Security Settings'"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000366", "CCI-000368", "CCI-001551"]
+        },
+        {
+          "controlId": "CM-7",
+          "title": "Least Functionality",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Configure the system to provide only mission-essential capabilities and prohibit or restrict the use of non-essential functions, ports, protocols, and services.",
+          "requirements": [
+            "Configure to provide essential capabilities only",
+            "Prohibit/restrict non-essential functions",
+            "Review periodically to identify unnecessary capabilities"
+          ],
+          "azureImplementation": {
+            "services": ["NSGs", "Azure Firewall", "Azure Policy", "JIT VM Access"],
+            "guidance": "Use NSGs to restrict ports. Enable JIT VM access for management ports. Disable unnecessary services via policy.",
+            "automationCommands": [
+              "az network nsg rule create --name 'DenyAll' --nsg-name <nsg> --priority 4096 --access Deny --direction Inbound",
+              "az security jit-policy create --name <policy> --resource-group <rg>"
+            ],
+            "azurePolicies": [
+              "Management ports should be closed on your virtual machines",
+              "All network ports should be restricted on network security groups associated to your virtual machine"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000381", "CCI-000382", "CCI-001762"]
+        },
+        {
+          "controlId": "CM-8",
+          "title": "System Component Inventory",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Develop and document an inventory of system components that accurately reflects the current system, includes all components within the authorization boundary, and is at the level of granularity necessary for tracking and reporting.",
+          "requirements": [
+            "Develop and document component inventory",
+            "Include all components within authorization boundary",
+            "Update inventory as changes occur",
+            "Track and report on inventory status"
+          ],
+          "azureImplementation": {
+            "services": ["Azure Resource Graph", "Azure Inventory", "Azure Monitor", "Microsoft Defender for Cloud"],
+            "guidance": "Use Azure Resource Graph for real-time inventory queries. Enable Defender for Cloud for asset inventory.",
+            "automationCommands": [
+              "az graph query -q \"Resources | project name, type, location, resourceGroup | limit 100\"",
+              "az security assessment list --output table"
+            ],
+            "azurePolicies": []
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000366", "CCI-001499"]
+        }
+      ]
+    },
+    {
+      "familyId": "SI",
+      "familyName": "System and Information Integrity",
+      "description": "Controls that identify, report, and correct system flaws, provide protection from malicious code, and monitor system security alerts and advisories.",
+      "controls": [
+        {
+          "controlId": "SI-2",
+          "title": "Flaw Remediation",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Identify, report, and correct system flaws. Install security-relevant software and firmware updates within defined time frames.",
+          "requirements": [
+            "Identify and report system flaws",
+            "Correct system flaws",
+            "Install security-relevant updates within defined timeframe",
+            "Incorporate flaw remediation into change management"
+          ],
+          "azureImplementation": {
+            "services": ["Azure Update Management", "Microsoft Defender for Cloud", "Azure Automation"],
+            "guidance": "Enable Azure Update Management for automated patching. Use Defender for Cloud for vulnerability assessment.",
+            "automationCommands": [
+              "az vm update --resource-group <rg> --name <vm> --set osProfile.linuxConfiguration.patchSettings.patchMode=AutomaticByPlatform"
+            ],
+            "azurePolicies": [
+              "System updates should be installed on your machines",
+              "Vulnerabilities in security configuration on your machines should be remediated"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-000366", "CCI-001227"]
+        },
+        {
+          "controlId": "SI-3",
+          "title": "Malicious Code Protection",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Implement malicious code protection mechanisms at entry and exit points and workstations, servers, and mobile devices.",
+          "requirements": [
+            "Implement malicious code protection at entry/exit points",
+            "Update protection mechanisms when new releases available",
+            "Configure to perform periodic scans and real-time scans",
+            "Address detection actions (block, quarantine, alert)"
+          ],
+          "azureImplementation": {
+            "services": ["Microsoft Defender for Endpoint", "Microsoft Defender for Cloud", "Microsoft Antimalware"],
+            "guidance": "Deploy Microsoft Defender for Endpoint on all VMs. Enable Defender for Cloud for threat detection.",
+            "automationCommands": [
+              "az vm extension set --name MicrosoftMonitoringAgent --publisher Microsoft.EnterpriseCloud.Monitoring --vm-name <vm> --resource-group <rg>"
+            ],
+            "azurePolicies": [
+              "Microsoft IaaSAntimalware extension should be deployed on Windows servers",
+              "Endpoint protection solution should be installed on virtual machine scale sets"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-001239", "CCI-001240", "CCI-001241"]
+        },
+        {
+          "controlId": "SI-4",
+          "title": "System Monitoring",
+          "priority": "P1",
+          "baselineImpact": { "low": true, "moderate": true, "high": true },
+          "description": "Monitor the system to detect attacks and indicators of potential attacks, unauthorized connections, and unusual activity.",
+          "requirements": [
+            "Monitor system for attacks and indicators",
+            "Identify unauthorized use of the system",
+            "Invoke monitoring capability in accordance with governing documents",
+            "Analyze detected events and anomalies"
+          ],
+          "azureImplementation": {
+            "services": ["Microsoft Sentinel", "Azure Monitor", "Microsoft Defender for Cloud", "Network Watcher"],
+            "guidance": "Deploy Microsoft Sentinel for SIEM/SOAR. Configure Azure Monitor alerts. Enable Network Watcher for network monitoring.",
+            "automationCommands": [
+              "az sentinel onboarding-state create --resource-group <rg> --workspace-name <ws> --customer-managed-key false"
+            ],
+            "azurePolicies": [
+              "Azure Defender for servers should be enabled",
+              "Network Watcher should be enabled"
+            ]
+          },
+          "fedRAMPBaseline": "All baselines",
+          "dodImpactLevel": "IL2, IL4, IL5, IL6",
+          "cciMapping": ["CCI-001263", "CCI-001264", "CCI-001265"]
+        }
+      ]
+    }
+  ]
+}
