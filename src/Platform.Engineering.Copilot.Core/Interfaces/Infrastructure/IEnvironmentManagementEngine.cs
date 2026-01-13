@@ -189,5 +189,69 @@ namespace Platform.Engineering.Copilot.Core.Interfaces.Infrastructure
         Task<List<EnvironmentSummary>> ListEnvironmentsAsync(
             EnvironmentFilter filter,
             CancellationToken cancellationToken = default);
+        
+        /// <summary>
+        /// List all environments with optional filtering by subscription and resource group
+        /// </summary>
+        /// <param name="subscriptionId">Optional subscription ID filter</param>
+        /// <param name="resourceGroup">Optional resource group filter</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>List of environment statuses</returns>
+        Task<List<EnvironmentStatus>> ListEnvironmentsAsync(
+            string? subscriptionId = null,
+            string? resourceGroup = null,
+            CancellationToken cancellationToken = default);
+        
+        // ========== DEPLOYMENT STRATEGIES ==========
+        
+        /// <summary>
+        /// Execute blue-green deployment strategy
+        /// </summary>
+        /// <param name="request">Blue-green deployment configuration</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Blue-green deployment result</returns>
+        Task<BlueGreenDeploymentResult> ExecuteBlueGreenDeploymentAsync(
+            BlueGreenDeploymentRequest request,
+            CancellationToken cancellationToken = default);
+        
+        /// <summary>
+        /// Execute canary deployment with traffic shifting
+        /// </summary>
+        /// <param name="request">Canary deployment configuration</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Canary deployment result with metrics</returns>
+        Task<CanaryDeploymentResult> ExecuteCanaryDeploymentAsync(
+            CanaryDeploymentRequest request,
+            CancellationToken cancellationToken = default);
+        
+        /// <summary>
+        /// Execute rolling update deployment
+        /// </summary>
+        /// <param name="request">Rolling update configuration</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Rolling update result with instance status</returns>
+        Task<RollingUpdateResult> ExecuteRollingUpdateAsync(
+            RollingUpdateRequest request,
+            CancellationToken cancellationToken = default);
+        
+        // ========== DRIFT DETECTION ==========
+        
+        /// <summary>
+        /// Detect configuration drift for an environment
+        /// </summary>
+        /// <param name="environmentName">Environment to check</param>
+        /// <param name="resourceGroup">Resource group name</param>
+        /// <param name="compareToEnvironment">Optional environment to compare against</param>
+        /// <param name="compareToResourceGroup">Resource group of comparison environment</param>
+        /// <param name="subscriptionId">Optional subscription ID</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Drift detection result with differences</returns>
+        Task<DriftDetectionResult> DetectDriftAsync(
+            string environmentName,
+            string resourceGroup,
+            string? compareToEnvironment = null,
+            string? compareToResourceGroup = null,
+            string? subscriptionId = null,
+            CancellationToken cancellationToken = default);
     }
 }

@@ -1,0 +1,271 @@
+@page "/environments"
+@inject EnvironmentApiService EnvironmentApi
+@inject NavigationManager Navigation
+@inject IToastService ToastService
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-0">Provisioned Environments</h4>
+        <small class="text-muted">Manage deployed environments across subscriptions</small>
+    </div>
+    <a href="environments/create" class="btn btn-primary">
+        <i class="fa fa-rocket me-1"></i>Provision New Environment
+    </a>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Status</label>
+                <select class="form-select" @bind="_selectedStatus">
+                    <option value="">All Statuses</option>
+                    <option value="Provisioning">Provisioning</option>
+                    <option value="Running">Running</option>
+                    <option value="Updating">Updating</option>
+                    <option value="Failed">Failed</option>
+                    <option value="Deleted">Deleted</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Drift Status</label>
+                <select class="form-select" @bind="_hasDriftFilter">
+                    <option value="">All</option>
+                    <option value="true">Has Drift</option>
+                    <option value="false">No Drift</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-secondary" @onclick="LoadEnvironments">
+                    <i class="fa fa-filter me-1"></i>Filter
+                </button>
+            </div>
+            <div class="col-md-5 d-flex align-items-end justify-content-end">
+                <button class="btn btn-outline-warning me-2" @onclick="DetectAllDrift" disabled="@_loading">
+                    <i class="fa fa-exchange-alt me-1"></i>Detect Drift
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_environments?.Count > 0)
+{
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Template</th>
+                        <th>Resource Group</th>
+                        <th>Status</th>
+                        <th>Drift</th>
+                        <th>Cost/mo</th>
+                        <th>Expires</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var env in _environments)
+                    {
+                        <tr>
+                            <td>
+                                <a href="environments/@env.Id" class="fw-bold">@env.DisplayName</a>
+                                <div class="text-muted small">@env.Name</div>
+                            </td>
+                            <td>@env.TemplateName</td>
+                            <td>
+                                <span class="text-muted small">@env.ResourceGroup</span>
+                                <div class="text-muted small">@env.Location</div>
+                            </td>
+                            <td>
+                                <span class="status-badge @GetStatusClass(env.Status)">
+                                    @env.Status
+                                </span>
+                            </td>
+                            <td>
+                                @if (env.HasDrift)
+                                {
+                                    <span class="badge bg-warning text-dark">
+                                        <i class="fa fa-exclamation-triangle me-1"></i>@env.DriftCount items
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-success">
+                                        <i class="fa fa-check me-1"></i>None
+                                    </span>
+                                }
+                            </td>
+                            <td>@env.EstimatedMonthlyCost.ToString("C0")</td>
+                            <td>
+                                @if (env.ExpiresAt.HasValue)
+                                {
+                                    var days = (env.ExpiresAt.Value - DateTime.UtcNow).TotalDays;
+                                    <span class="@(days < 7 ? "text-danger fw-bold" : "")">
+                                        @env.ExpiresAt.Value.ToLocalTime().ToString("MMM dd")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Never</span>
+                                }
+                            </td>
+                            <td>
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                        Actions
+                                    </button>
+                                    <ul class="dropdown-menu">
+                                        <li><a class="dropdown-item" href="environments/@env.Id"><i class="fa fa-eye me-2"></i>View Details</a></li>
+                                        <li><a class="dropdown-item" href="#" @onclick="() => DetectDrift(env.Id)" @onclick:preventDefault><i class="fa fa-search me-2"></i>Detect Drift</a></li>
+                                        @if (env.HasDrift)
+                                        {
+                                            <li><a class="dropdown-item" href="#" @onclick="() => RemediateDrift(env.Id)" @onclick:preventDefault><i class="fa fa-wrench me-2"></i>Remediate</a></li>
+                                        }
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><a class="dropdown-item text-danger" href="#" @onclick="() => DeleteEnvironment(env)" @onclick:preventDefault><i class="fa fa-trash me-2"></i>Delete</a></li>
+                                    </ul>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="empty-state">
+                <i class="fa fa-server"></i>
+                <h5>No environments found</h5>
+                <p class="text-muted">Provision your first environment from a template</p>
+                <a href="environments/create" class="btn btn-primary">
+                    <i class="fa fa-rocket me-1"></i>Provision Environment
+                </a>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private List<EnvironmentListItem>? _environments;
+    private string _selectedStatus = "";
+    private string _hasDriftFilter = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEnvironments();
+    }
+
+    private async Task LoadEnvironments()
+    {
+        _loading = true;
+        try
+        {
+            bool? hasDrift = string.IsNullOrEmpty(_hasDriftFilter) ? null : bool.Parse(_hasDriftFilter);
+            
+            _environments = await EnvironmentApi.GetEnvironmentsAsync(
+                status: string.IsNullOrEmpty(_selectedStatus) ? null : _selectedStatus,
+                hasDrift: hasDrift
+            );
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load environments: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task DetectDrift(string environmentId)
+    {
+        try
+        {
+            var result = await EnvironmentApi.DetectDriftAsync(environmentId);
+            if (result?.Success == true)
+            {
+                if (result.HasDrift)
+                    ToastService.ShowWarning($"Detected {result.DriftCount} drift items");
+                else
+                    ToastService.ShowSuccess("No drift detected");
+                await LoadEnvironments();
+            }
+            else
+            {
+                ToastService.ShowError("Failed to detect drift");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task DetectAllDrift()
+    {
+        ToastService.ShowInfo("Checking drift for all environments...");
+        // Implementation would loop through environments
+        await LoadEnvironments();
+    }
+
+    private async Task RemediateDrift(string environmentId)
+    {
+        try
+        {
+            var result = await EnvironmentApi.RemediateDriftAsync(environmentId);
+            if (result?.Success == true)
+            {
+                ToastService.ShowSuccess($"Remediated {result.ItemsRemediated} items");
+                await LoadEnvironments();
+            }
+            else
+            {
+                ToastService.ShowError($"Failed to remediate: {string.Join(", ", result?.Errors ?? new List<string>())}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteEnvironment(EnvironmentListItem env)
+    {
+        try
+        {
+            await EnvironmentApi.DeleteEnvironmentAsync(env.Id);
+            ToastService.ShowSuccess($"Environment {env.DisplayName} deleted");
+            await LoadEnvironments();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to delete: {ex.Message}");
+        }
+    }
+
+    private string GetStatusClass(string status) => status.ToLower() switch
+    {
+        "running" => "running",
+        "provisioning" => "provisioning",
+        "failed" => "failed",
+        "deleted" => "deleted",
+        _ => ""
+    };
+}

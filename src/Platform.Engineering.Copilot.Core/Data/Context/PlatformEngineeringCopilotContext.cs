@@ -1,14 +1,36 @@
 using Microsoft.EntityFrameworkCore;
 using Platform.Engineering.Copilot.Compliance.Core.Data.Entities;
-
-// TODO: These entities should be moved to Core if needed, or this DbContext should be in Compliance.Agent
-// using Platform.Engineering.Copilot.Compliance.Core.Data.Entities;
 using Platform.Engineering.Copilot.Core.Data.Entities;
 
 namespace Platform.Engineering.Copilot.Core.Data.Context;
 
 /// <summary>
-/// Environment Management Database Context
+/// Platform Engineering Copilot Database Context.
+/// 
+/// ═══════════════════════════════════════════════════════════════════════════════
+/// TWO TEMPLATE SYSTEMS - IMPORTANT ARCHITECTURAL DISTINCTION
+/// ═══════════════════════════════════════════════════════════════════════════════
+/// 
+/// 1. IAC TEMPLATES (Infrastructure Agent) - AI-Generated, Temporary
+///    ─────────────────────────────────────────────────────────────────────────
+///    • Entity: InfrastructureTemplate, TemplateVersion, TemplateFile
+///    • Service: TemplateStorageService → IInfrastructureTemplateRepository
+///    • Purpose: AI generates custom Bicep/ARM/Terraform based on user requests
+///    • Lifecycle: TEMPORARY - 30 minute expiry by default, auto-cleaned
+///    • Use Case: "Create a storage account with private endpoints and geo-redundancy"
+///    • Flow: User request → AI generates → Store temporarily → User deploys → Expires
+/// 
+/// 2. SERVICE TEMPLATES (Environment Agent) - Pre-Approved, Permanent
+///    ─────────────────────────────────────────────────────────────────────────
+///    • Entity: ServiceTemplateEntity, ServiceTemplateAuditEntity
+///    • Service: ServiceTemplateCatalogService → IServiceTemplateRepository (future)
+///    • Purpose: Platform team pre-approves infrastructure patterns for self-service
+///    • Lifecycle: PERMANENT - versioned catalog with approval workflow
+///    • Use Case: "Provision a production-ready AKS cluster from the approved template"
+///    • Flow: Platform team creates → Approval workflow → Published → Developers provision
+///    • Tracking: ProvisionedEnvironmentEntity tracks deployed instances with drift detection
+/// 
+/// ═══════════════════════════════════════════════════════════════════════════════
 /// </summary>
 public class PlatformEngineeringCopilotContext : DbContext
 {
@@ -17,44 +39,72 @@ public class PlatformEngineeringCopilotContext : DbContext
     {
     }
 
-    // Environment Templates
-    public DbSet<EnvironmentTemplate> EnvironmentTemplates { get; set; }
+    #region ══════════════════════════════════════════════════════════════════════
+    //  IAC TEMPLATES (Infrastructure Agent)
+    //  AI-generated Bicep/ARM/Terraform with 30-minute expiry
+    //  Service: TemplateStorageService → IInfrastructureTemplateRepository
+    #endregion
+    
+    /// <summary>AI-generated IaC templates (temporary, 30-min expiry)</summary>
+    public DbSet<InfrastructureTemplate> InfrastructureTemplates { get; set; }
+    
+    /// <summary>Version history for IaC templates</summary>
     public DbSet<TemplateVersion> TemplateVersions { get; set; }
+    
+    /// <summary>Individual files within multi-file IaC templates</summary>
     public DbSet<TemplateFile> TemplateFiles { get; set; }
 
-    // Environment Deployments
-    public DbSet<EnvironmentDeployment> EnvironmentDeployments { get; set; }
+    #region ══════════════════════════════════════════════════════════════════════
+    //  IAC DEPLOYMENT TRACKING (Infrastructure Agent)
+    //  Tracks deployments of AI-generated templates
+    #endregion
+    
+    /// <summary>Deployment records for IaC template deployments</summary>
+    public DbSet<InfrastructureDeployment> InfrastructureDeployments { get; set; }
+    
+    /// <summary>Deployment action history (start, stop, scale, etc.)</summary>
     public DbSet<DeploymentHistory> DeploymentHistory { get; set; }
 
-    // Scaling
-    public DbSet<ScalingPolicy> ScalingPolicies { get; set; }
-    public DbSet<ScalingEvent> ScalingEvents { get; set; }
+    #region ══════════════════════════════════════════════════════════════════════
+    //  SERVICE TEMPLATES (Environment Agent) 
+    //  Pre-approved infrastructure patterns with approval workflow
+    //  Service: ServiceTemplateCatalogService
+    #endregion
+    
+    /// <summary>Pre-approved service templates (permanent, versioned catalog)</summary>
+    public DbSet<ServiceTemplateEntity> ServiceTemplates { get; set; }
+    
+    /// <summary>Audit log for service template changes</summary>
+    public DbSet<ServiceTemplateAuditEntity> ServiceTemplateAuditLogs { get; set; }
+    
+    /// <summary>Environments provisioned from service templates (with drift detection)</summary>
+    public DbSet<ProvisionedEnvironmentEntity> ProvisionedEnvironments { get; set; }
+    
+    /// <summary>Individual Azure resources within provisioned environments</summary>
+    public DbSet<DeployedResourceEntity> DeployedResources { get; set; }
+    
+    /// <summary>Configuration drift items detected in provisioned environments</summary>
+    public DbSet<DriftItemEntity> DriftItems { get; set; }
+    
+    /// <summary>Audit log for provisioned environment changes</summary>
+    public DbSet<EnvironmentAuditEntity> EnvironmentAuditLogs { get; set; }
 
-    // Metrics
-    public DbSet<EnvironmentMetrics> EnvironmentMetrics { get; set; }
+    #region ══════════════════════════════════════════════════════════════════════
+    //  SHARED INFRASTRUCTURE
+    #endregion
 
     // Agent Configuration
     public DbSet<AgentConfiguration> AgentConfigurations { get; set; }
 
-    // Semantic Processing
+    // Semantic Processing (Chat intent recognition)
     public DbSet<SemanticIntent> SemanticIntents { get; set; }
     public DbSet<IntentFeedback> IntentFeedback { get; set; }
     public DbSet<IntentPattern> IntentPatterns { get; set; }
 
-    // Enhanced Environment Management
-    public DbSet<EnvironmentLifecycle> EnvironmentLifecycles { get; set; }
-    public DbSet<EnvironmentActivity> EnvironmentActivities { get; set; }
-    public DbSet<EnvironmentCostTracking> EnvironmentCostTrackings { get; set; }
-    public DbSet<EnvironmentClone> EnvironmentClones { get; set; }
-    public DbSet<EnvironmentSynchronization> EnvironmentSynchronizations { get; set; }
-
-    // Navy Flankspeed ServiceCreation
-    // TODO: Uncomment when ServiceCreationRequest model is implemented
-    // public DbSet<ServiceCreationRequest> ServiceCreationRequests { get; set; }
-
     // Governance and Approval Workflows
     public DbSet<ApprovalWorkflowEntity> ApprovalWorkflows { get; set; }
 
+    // Compliance (NIST 800-53)
     public DbSet<ComplianceAssessment> ComplianceAssessments { get; set; }
     public DbSet<ComplianceFinding> ComplianceFindings { get; set; }
 
@@ -66,25 +116,23 @@ public class PlatformEngineeringCopilotContext : DbContext
         base.OnModelCreating(modelBuilder);
 
         // Configure entity relationships and constraints
-        ConfigureEnvironmentTemplates(modelBuilder);
-        ConfigureEnvironmentDeployments(modelBuilder);
-        ConfigureScalingPolicies(modelBuilder);
-        ConfigureMetricsAndCompliance(modelBuilder);
+        ConfigureInfrastructureTemplates(modelBuilder);
+        ConfigureInfrastructureDeployments(modelBuilder);
         ConfigureSemanticIntents(modelBuilder);
-        ConfigureEnvironmentLifecycle(modelBuilder);
         ConfigureApprovalWorkflows(modelBuilder);
         ConfigureComplianceAssessments(modelBuilder);
         ConfigureAuditLogs(modelBuilder);
         ConfigureAgentConfigurations(modelBuilder);
-        //ConfigureServiceCreationRequests(modelBuilder);
+        ConfigureServiceTemplates(modelBuilder);
+        ConfigureProvisionedEnvironments(modelBuilder);
 
         // Configure indexes for performance
         ConfigureIndexes(modelBuilder);
     }
 
-    private static void ConfigureEnvironmentTemplates(ModelBuilder modelBuilder)
+    private static void ConfigureInfrastructureTemplates(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<EnvironmentTemplate>(entity =>
+        modelBuilder.Entity<InfrastructureTemplate>(entity =>
         {
             entity.HasIndex(e => e.Name).IsUnique();
             entity.HasIndex(e => new { e.TemplateType, e.DeploymentTier });
@@ -102,9 +150,9 @@ public class PlatformEngineeringCopilotContext : DbContext
         });
     }
 
-    private static void ConfigureEnvironmentDeployments(ModelBuilder modelBuilder)
+    private static void ConfigureInfrastructureDeployments(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<EnvironmentDeployment>(entity =>
+        modelBuilder.Entity<InfrastructureDeployment>(entity =>
         {
             entity.HasIndex(e => e.Name);
             entity.HasIndex(e => new { e.EnvironmentType, e.Status });
@@ -125,34 +173,6 @@ public class PlatformEngineeringCopilotContext : DbContext
             entity.HasIndex(e => new { e.DeploymentId, e.StartedAt });
             entity.HasIndex(e => e.Action);
             entity.HasIndex(e => e.Status);
-        });
-    }
-
-    private static void ConfigureScalingPolicies(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<ScalingPolicy>(entity =>
-        {
-            entity.HasIndex(e => new { e.DeploymentId, e.PolicyType });
-            entity.HasIndex(e => e.IsActive);
-
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("GETUTCDATE()");
-        });
-
-        modelBuilder.Entity<ScalingEvent>(entity =>
-        {
-            entity.HasIndex(e => new { e.PolicyId, e.CreatedAt });
-            entity.HasIndex(e => e.EventType);
-            entity.HasIndex(e => e.Status);
-        });
-    }
-
-    private static void ConfigureMetricsAndCompliance(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<EnvironmentMetrics>(entity =>
-        {
-            entity.HasIndex(e => new { e.DeploymentId, e.MetricType, e.Timestamp });
-            entity.HasIndex(e => new { e.MetricName, e.Timestamp });
         });
     }
 
@@ -182,72 +202,6 @@ public class PlatformEngineeringCopilotContext : DbContext
 
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("GETUTCDATE()");
-        });
-    }
-
-    private static void ConfigureEnvironmentLifecycle(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<EnvironmentLifecycle>(entity =>
-        {
-            entity.HasIndex(e => new { e.LifecycleType, e.Status });
-            entity.HasIndex(e => e.OwnerTeam);
-            entity.HasIndex(e => e.Project);
-            entity.HasIndex(e => e.ScheduledEndTime);
-            entity.HasIndex(e => e.LastActivityAt);
-
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("GETUTCDATE()");
-        });
-
-        modelBuilder.Entity<EnvironmentActivity>(entity =>
-        {
-            entity.HasIndex(e => new { e.EnvironmentLifecycleId, e.Timestamp });
-            entity.HasIndex(e => e.ActivityType);
-            entity.HasIndex(e => e.UserId);
-        });
-
-        modelBuilder.Entity<EnvironmentCostTracking>(entity =>
-        {
-            entity.HasIndex(e => new { e.EnvironmentLifecycleId, e.Date });
-            entity.HasIndex(e => e.Date);
-            entity.HasIndex(e => e.DailyCost);
-        });
-
-        modelBuilder.Entity<EnvironmentClone>(entity =>
-        {
-            entity.HasIndex(e => new { e.SourceEnvironmentId, e.TargetEnvironmentId });
-            entity.HasIndex(e => e.Status);
-            entity.HasIndex(e => e.StartedAt);
-
-            // Configure foreign keys to avoid cascade path conflicts in SQL Server
-            entity.HasOne(e => e.SourceEnvironment)
-                .WithMany()
-                .HasForeignKey(e => e.SourceEnvironmentId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne(e => e.TargetEnvironment)
-                .WithMany()
-                .HasForeignKey(e => e.TargetEnvironmentId)
-                .OnDelete(DeleteBehavior.NoAction);
-        });
-
-        modelBuilder.Entity<EnvironmentSynchronization>(entity =>
-        {
-            entity.HasIndex(e => new { e.SourceEnvironmentId, e.TargetEnvironmentId });
-            entity.HasIndex(e => e.SyncType);
-            entity.HasIndex(e => e.IsActive);
-            entity.HasIndex(e => e.NextSyncAt);
-
-            // Configure foreign keys to avoid cascade path conflicts in SQL Server
-            entity.HasOne(e => e.SourceEnvironment)
-                .WithMany()
-                .HasForeignKey(e => e.SourceEnvironmentId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne(e => e.TargetEnvironment)
-                .WithMany()
-                .HasForeignKey(e => e.TargetEnvironmentId)
-                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 
@@ -462,25 +416,128 @@ public class PlatformEngineeringCopilotContext : DbContext
         });
     }
 
+    /// <summary>
+    /// Configure Platform Engineering Service Templates
+    /// (Pre-approved infrastructure patterns for self-service provisioning by developers)
+    /// </summary>
+    private static void ConfigureServiceTemplates(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ServiceTemplateEntity>(entity =>
+        {
+            // Unique constraint on Name + Version
+            entity.HasIndex(e => new { e.Name, e.Version }).IsUnique();
+
+            // Indexes for common queries
+            entity.HasIndex(e => e.Category);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.CreatedBy);
+            entity.HasIndex(e => new { e.Category, e.Status });
+
+            // Default values
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+            entity.Property(e => e.RequiresApproval).HasDefaultValue(true);
+            entity.Property(e => e.EnforceCompliance).HasDefaultValue(true);
+            entity.Property(e => e.DeploymentCount).HasDefaultValue(0);
+            entity.Property(e => e.GitAutoSync).HasDefaultValue(true);
+            entity.Property(e => e.GitSyncIntervalMinutes).HasDefaultValue(15);
+        });
+
+        modelBuilder.Entity<ServiceTemplateAuditEntity>(entity =>
+        {
+            entity.HasIndex(e => e.Timestamp);
+            entity.HasIndex(e => new { e.EntityType, e.EntityId });
+            entity.HasIndex(e => e.PerformedBy);
+            entity.HasIndex(e => e.Action);
+
+            entity.Property(e => e.Timestamp).HasDefaultValueSql("GETUTCDATE()");
+        });
+    }
+
+    /// <summary>
+    /// Configure Provisioned Environments (environments created from Service Templates)
+    /// </summary>
+    private static void ConfigureProvisionedEnvironments(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ProvisionedEnvironmentEntity>(entity =>
+        {
+            // Indexes for common queries
+            entity.HasIndex(e => e.Name);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.TemplateId);
+            entity.HasIndex(e => e.SubscriptionId);
+            entity.HasIndex(e => e.ResourceGroup);
+            entity.HasIndex(e => e.CreatedBy);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.OwnerEmail);
+            entity.HasIndex(e => e.HasDrift);
+            entity.HasIndex(e => e.ExpiresAt);
+            entity.HasIndex(e => new { e.SubscriptionId, e.ResourceGroup });
+            entity.HasIndex(e => new { e.Status, e.HasDrift });
+
+            // Default values
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+            entity.Property(e => e.Status).HasDefaultValue("Provisioning");
+            entity.Property(e => e.HasDrift).HasDefaultValue(false);
+            entity.Property(e => e.DriftCount).HasDefaultValue(0);
+            entity.Property(e => e.AutoDelete).HasDefaultValue(false);
+            entity.Property(e => e.IsDeleted).HasDefaultValue(false);
+
+            // Soft delete filter
+            entity.HasQueryFilter(e => !e.IsDeleted);
+
+            // Relationships
+            entity.HasOne(e => e.Template)
+                .WithMany(t => t.ProvisionedEnvironments)
+                .HasForeignKey(e => e.TemplateId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.ClonedFrom)
+                .WithMany(e => e.ClonedEnvironments)
+                .HasForeignKey(e => e.ClonedFromId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<DeployedResourceEntity>(entity =>
+        {
+            entity.HasIndex(e => e.ProvisionedEnvironmentId);
+            entity.HasIndex(e => e.ResourceType);
+            entity.HasIndex(e => e.ProvisioningState);
+
+            entity.Property(e => e.DeployedAt).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasOne(e => e.ProvisionedEnvironment)
+                .WithMany()
+                .HasForeignKey(e => e.ProvisionedEnvironmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DriftItemEntity>(entity =>
+        {
+            entity.HasIndex(e => e.ProvisionedEnvironmentId);
+            entity.HasIndex(e => e.Severity);
+            entity.HasIndex(e => e.IsRemediated);
+            entity.HasIndex(e => new { e.ProvisionedEnvironmentId, e.IsRemediated });
+
+            entity.Property(e => e.DetectedAt).HasDefaultValueSql("GETUTCDATE()");
+            entity.Property(e => e.DriftType).HasDefaultValue("Configuration");
+            entity.Property(e => e.Severity).HasDefaultValue("Warning");
+            entity.Property(e => e.CanAutoRemediate).HasDefaultValue(false);
+            entity.Property(e => e.IsRemediated).HasDefaultValue(false);
+
+            entity.HasOne(e => e.ProvisionedEnvironment)
+                .WithMany()
+                .HasForeignKey(e => e.ProvisionedEnvironmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
     private static void ConfigureIndexes(ModelBuilder modelBuilder)
     {
         // Additional composite indexes for common query patterns
-        modelBuilder.Entity<EnvironmentDeployment>()
+        modelBuilder.Entity<InfrastructureDeployment>()
             .HasIndex(e => new { e.SubscriptionId, e.ResourceGroupName, e.Status })
-            .HasDatabaseName("IX_EnvironmentDeployments_Subscription_ResourceGroup_Status");
-
-        modelBuilder.Entity<EnvironmentMetrics>()
-            .HasIndex(e => new { e.DeploymentId, e.MetricType, e.Timestamp })
-            .HasDatabaseName("IX_EnvironmentMetrics_Deployment_Type_Time");
-
-        // Enhanced Environment Management indexes
-        modelBuilder.Entity<EnvironmentLifecycle>()
-            .HasIndex(e => new { e.OwnerTeam, e.Project, e.Status })
-            .HasDatabaseName("IX_EnvironmentLifecycles_Team_Project_Status");
-
-        modelBuilder.Entity<EnvironmentCostTracking>()
-            .HasIndex(e => new { e.Date, e.DailyCost })
-            .HasDatabaseName("IX_EnvironmentCostTrackings_Date_Cost");
+            .HasDatabaseName("IX_InfrastructureDeployments_Subscription_ResourceGroup_Status");
 
         // Approval Workflows indexes
         modelBuilder.Entity<ApprovalWorkflowEntity>()
@@ -517,7 +574,7 @@ public class PlatformEngineeringCopilotContext : DbContext
     {
         var entries = ChangeTracker
             .Entries()
-            .Where(e => e.Entity is EnvironmentTemplate or EnvironmentDeployment or ScalingPolicy or IntentPattern or AgentConfiguration &&
+            .Where(e => e.Entity is InfrastructureTemplate or InfrastructureDeployment or IntentPattern or AgentConfiguration or ServiceTemplateEntity or ProvisionedEnvironmentEntity &&
                        (e.State == EntityState.Added || e.State == EntityState.Modified));
 
         foreach (var entityEntry in entries)

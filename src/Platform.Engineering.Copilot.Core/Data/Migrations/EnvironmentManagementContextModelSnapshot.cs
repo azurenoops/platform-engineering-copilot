@@ -218,6 +218,89 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.ToTable("ComplianceFindings");
                 });
 
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.AgentConfiguration", b =>
+                {
+                    b.Property<int>("AgentConfigurationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AgentName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConfigurationJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("Dependencies")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DisplayOrder")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("HealthStatus")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("Unknown");
+
+                    b.Property<string>("IconName")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTime?>("LastExecutedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("AgentConfigurationId");
+
+                    b.HasIndex("AgentName")
+                        .IsUnique();
+
+                    b.HasIndex("Category");
+
+                    b.HasIndex("IsEnabled");
+
+                    b.HasIndex("Category", "IsEnabled", "DisplayOrder");
+
+                    b.ToTable("AgentConfigurations");
+                });
+
             modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.ApprovalWorkflowEntity", b =>
                 {
                     b.Property<string>("Id")
@@ -241,7 +324,7 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT")
-                        .HasDefaultValueSql("datetime('now')");
+                        .HasDefaultValueSql("GETUTCDATE()");
 
                     b.Property<string>("DecisionsJson")
                         .IsRequired()
@@ -516,6 +599,60 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.ToTable("AuditLogs");
                 });
 
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.DeployedResourceEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("DeployedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("Location")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ProvisionedEnvironmentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProvisioningState")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResourceId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sku")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProvisionedEnvironmentId");
+
+                    b.HasIndex("ProvisioningState");
+
+                    b.HasIndex("ResourceType");
+
+                    b.ToTable("DeployedResources");
+                });
+
             modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.DeploymentHistory", b =>
                 {
                     b.Property<Guid>("Id")
@@ -566,180 +703,90 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.ToTable("DeploymentHistory");
                 });
 
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentActivity", b =>
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.DriftItemEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("ActivityType")
+                    b.Property<string>("ActualValue")
                         .IsRequired()
-                        .HasMaxLength(50)
+                        .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Description")
+                    b.Property<bool>("CanAutoRemediate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime>("DetectedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("DriftType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("Configuration");
+
+                    b.Property<string>("ExpectedValue")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsRemediated")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("PropertyPath")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ProvisionedEnvironmentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RemediatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RemediatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResourceId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResourceName")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("EnvironmentLifecycleId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ErrorMessage")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Metadata")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Status")
+                    b.Property<string>("Severity")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("UserId")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("UserName")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ActivityType");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("EnvironmentLifecycleId", "Timestamp");
-
-                    b.ToTable("EnvironmentActivities");
-                });
-
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentClone", b =>
-                {
-                    b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CloneOperationLog")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CloneType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("DataMaskingRules")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ErrorDetails")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ExcludedResources")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("IncludeData")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("IncludeSecrets")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("InitiatedBy")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("MaskSensitiveData")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("Progress")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid>("SourceEnvironmentId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("StartedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("TargetEnvironmentId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("Warning");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("StartedAt");
+                    b.HasIndex("IsRemediated");
 
-                    b.HasIndex("Status");
+                    b.HasIndex("ProvisionedEnvironmentId");
 
-                    b.HasIndex("TargetEnvironmentId");
+                    b.HasIndex("Severity");
 
-                    b.HasIndex("SourceEnvironmentId", "TargetEnvironmentId");
+                    b.HasIndex("ProvisionedEnvironmentId", "IsRemediated");
 
-                    b.ToTable("EnvironmentClones");
+                    b.ToTable("EnvironmentDriftItems");
                 });
 
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentCostTracking", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("BillingResourceGroup")
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CostBreakdown")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("CumulativeCost")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(10)
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("DailyCost")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTime>("Date")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("EnvironmentLifecycleId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("SubscriptionId")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DailyCost");
-
-                    b.HasIndex("Date");
-
-                    b.HasIndex("Date", "DailyCost")
-                        .HasDatabaseName("IX_EnvironmentCostTrackings_Date_Cost");
-
-                    b.HasIndex("EnvironmentLifecycleId", "Date");
-
-                    b.ToTable("EnvironmentCostTrackings");
-                });
-
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentDeployment", b =>
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.InfrastructureDeployment", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -847,230 +894,12 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.HasIndex("EnvironmentType", "Status");
 
                     b.HasIndex("SubscriptionId", "ResourceGroupName", "Status")
-                        .HasDatabaseName("IX_EnvironmentDeployments_Subscription_ResourceGroup_Status");
+                        .HasDatabaseName("IX_InfrastructureDeployments_Subscription_ResourceGroup_Status");
 
-                    b.ToTable("EnvironmentDeployments");
+                    b.ToTable("InfrastructureDeployments");
                 });
 
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentLifecycle", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("AutoDestroyPolicy")
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CostCenter")
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("CostThreshold")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("EnvironmentId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("InactivityThresholdHours")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("LastActivityAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("LifecycleType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("NotificationEmails")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("NotificationHours")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("NotifyBeforeDestroy")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("OwnerTeam")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Project")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("ScheduledEndTime")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("ScheduledStartTime")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EnvironmentId");
-
-                    b.HasIndex("LastActivityAt");
-
-                    b.HasIndex("OwnerTeam");
-
-                    b.HasIndex("Project");
-
-                    b.HasIndex("ScheduledEndTime");
-
-                    b.HasIndex("LifecycleType", "Status");
-
-                    b.HasIndex("OwnerTeam", "Project", "Status")
-                        .HasDatabaseName("IX_EnvironmentLifecycles_Team_Project_Status");
-
-                    b.ToTable("EnvironmentLifecycles");
-                });
-
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentMetrics", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("DeploymentId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Labels")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("MetricName")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("MetricType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Source")
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Unit")
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("Value")
-                        .HasColumnType("decimal(18,4)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MetricName", "Timestamp");
-
-                    b.HasIndex("DeploymentId", "MetricType", "Timestamp")
-                        .HasDatabaseName("IX_EnvironmentMetrics_Deployment_Type_Time");
-
-                    b.ToTable("EnvironmentMetrics");
-                });
-
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentSynchronization", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ConflictResolution")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("IsBidirectional")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("LastSyncAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("LastSyncLog")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("LastSyncStatus")
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("NextSyncAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("SourceEnvironmentId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("SyncFrequency")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("SyncRules")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("SyncType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("TargetEnvironmentId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("NextSyncAt");
-
-                    b.HasIndex("SyncType");
-
-                    b.HasIndex("TargetEnvironmentId");
-
-                    b.HasIndex("SourceEnvironmentId", "TargetEnvironmentId");
-
-                    b.ToTable("EnvironmentSynchronizations");
-                });
-
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentTemplate", b =>
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.InfrastructureTemplate", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -1113,15 +942,15 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.Property<bool>("DisasterRecoverySupported")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("FilesCount")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Format")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("HighAvailabilitySupported")
@@ -1176,8 +1005,6 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("ExpiresAt");
-
                     b.HasIndex("IsActive");
 
                     b.HasIndex("Name")
@@ -1185,7 +1012,7 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
 
                     b.HasIndex("TemplateType", "DeploymentTier");
 
-                    b.ToTable("EnvironmentTemplates");
+                    b.ToTable("InfrastructureTemplates");
                 });
 
             modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.IntentFeedback", b =>
@@ -1295,73 +1122,22 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.ToTable("IntentPatterns");
                 });
 
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.ScalingEvent", b =>
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.ProvisionedEnvironmentEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("TEXT");
+                    b.Property<decimal?>("ActualMonthlyCost")
+                        .HasColumnType("decimal(18,2)");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<TimeSpan?>("Duration")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ErrorMessage")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("EventType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("NewReplicas")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid>("PolicyId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("PreviousReplicas")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Trigger")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("TriggerDetails")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EventType");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("PolicyId", "CreatedAt");
-
-                    b.ToTable("ScalingEvents");
-                });
-
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.ScalingPolicy", b =>
-                {
-                    b.Property<Guid>("Id")
+                    b.Property<bool>("AutoDelete")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
+
+                    b.Property<Guid?>("ClonedFromId")
                         .HasColumnType("TEXT");
-
-                    b.Property<bool>("AutoScalingEnabled")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("CostOptimizationEnabled")
-                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -1370,68 +1146,152 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
 
                     b.Property<string>("CreatedBy")
                         .IsRequired()
-                        .HasMaxLength(100)
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("CustomMetrics")
+                    b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("DeploymentId")
+                    b.Property<string>("DeletedBy")
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("IsActive")
+                    b.Property<string>("DeployedResourcesJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("DeploymentDurationMinutes")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("MaxReplicas")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("DeploymentId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
 
-                    b.Property<int>("MinReplicas")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DriftCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("DriftItemsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("EstimatedMonthlyCost")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("HasDrift")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime?>("LastDriftCheck")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Location")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("PolicyType")
+                    b.Property<string>("OwnerEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ParameterValuesJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResourceGroup")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("Provisioning");
+
+                    b.Property<string>("StatusMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SubscriptionId")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("ScaleDownCooldown")
+                    b.Property<string>("TagsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TemplateId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TemplateName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TemplateVersion")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("ScaleUpCooldown")
-                        .IsRequired()
-                        .HasMaxLength(20)
+                    b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Schedule")
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
-
-                    b.Property<int>("TargetCpuUtilization")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TargetMemoryUtilization")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("TrafficBasedScalingEnabled")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT")
-                        .HasDefaultValueSql("GETUTCDATE()");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("IsActive");
+                    b.HasIndex("ClonedFromId");
 
-                    b.HasIndex("DeploymentId", "PolicyType");
+                    b.HasIndex("CreatedAt");
 
-                    b.ToTable("ScalingPolicies");
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("HasDrift");
+
+                    b.HasIndex("Name");
+
+                    b.HasIndex("OwnerEmail");
+
+                    b.HasIndex("ResourceGroup");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.HasIndex("TemplateId");
+
+                    b.HasIndex("Status", "HasDrift");
+
+                    b.HasIndex("SubscriptionId", "ResourceGroup");
+
+                    b.ToTable("ProvisionedEnvironments");
                 });
 
             modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.SemanticIntent", b =>
@@ -1495,6 +1355,248 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.HasIndex("UserId", "CreatedAt");
 
                     b.ToTable("SemanticIntents");
+                });
+
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.ServiceTemplateAuditEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NewValuesJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OldValuesJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PerformedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ServiceTemplateId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("Timestamp")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Action");
+
+                    b.HasIndex("PerformedBy");
+
+                    b.HasIndex("ServiceTemplateId");
+
+                    b.HasIndex("Timestamp");
+
+                    b.HasIndex("EntityType", "EntityId");
+
+                    b.ToTable("ServiceTemplateAuditLog");
+                });
+
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.ServiceTemplateEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AdditionalFilesJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AiSelectionHint")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApprovalComments")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApprovalSource")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApprovedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ComplianceFrameworks")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("DefaultExpirationDays")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DefaultTagsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DeploymentCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("EnforceCompliance")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("ExternalApprovalId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExternalApprovalUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("GitAutoSync")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("GitBranch")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GitCommitSha")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GitPath")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GitRepositoryUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("GitSyncIntervalMinutes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(15);
+
+                    b.Property<string>("GuardrailsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Keywords")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastDeployedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSyncedFromGit")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MainTemplateContent")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ParametersJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("RequiresApproval")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UseCases")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VersionHistoryJson")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Category");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("Category", "Status");
+
+                    b.HasIndex("Name", "Version")
+                        .IsUnique();
+
+                    b.ToTable("ServiceTemplates");
                 });
 
             modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.TemplateFile", b =>
@@ -1597,9 +1699,20 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.Navigation("Assessment");
                 });
 
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.DeployedResourceEntity", b =>
+                {
+                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.ProvisionedEnvironmentEntity", "ProvisionedEnvironment")
+                        .WithMany()
+                        .HasForeignKey("ProvisionedEnvironmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ProvisionedEnvironment");
+                });
+
             modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.DeploymentHistory", b =>
                 {
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentDeployment", "Deployment")
+                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.InfrastructureDeployment", "Deployment")
                         .WithMany("History")
                         .HasForeignKey("DeploymentId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1608,95 +1721,24 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.Navigation("Deployment");
                 });
 
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentActivity", b =>
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.DriftItemEntity", b =>
                 {
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentLifecycle", "EnvironmentLifecycle")
-                        .WithMany("Activities")
-                        .HasForeignKey("EnvironmentLifecycleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("EnvironmentLifecycle");
-                });
-
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentClone", b =>
-                {
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentDeployment", "SourceEnvironment")
+                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.ProvisionedEnvironmentEntity", "ProvisionedEnvironment")
                         .WithMany()
-                        .HasForeignKey("SourceEnvironmentId")
+                        .HasForeignKey("ProvisionedEnvironmentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentDeployment", "TargetEnvironment")
-                        .WithMany()
-                        .HasForeignKey("TargetEnvironmentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("SourceEnvironment");
-
-                    b.Navigation("TargetEnvironment");
+                    b.Navigation("ProvisionedEnvironment");
                 });
 
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentCostTracking", b =>
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.InfrastructureDeployment", b =>
                 {
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentLifecycle", "EnvironmentLifecycle")
-                        .WithMany("CostTrackings")
-                        .HasForeignKey("EnvironmentLifecycleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("EnvironmentLifecycle");
-                });
-
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentDeployment", b =>
-                {
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentTemplate", "Template")
+                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.InfrastructureTemplate", "Template")
                         .WithMany("Deployments")
                         .HasForeignKey("TemplateId");
 
                     b.Navigation("Template");
-                });
-
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentLifecycle", b =>
-                {
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentDeployment", "Environment")
-                        .WithMany()
-                        .HasForeignKey("EnvironmentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Environment");
-                });
-
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentMetrics", b =>
-                {
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentDeployment", "Deployment")
-                        .WithMany("Metrics")
-                        .HasForeignKey("DeploymentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Deployment");
-                });
-
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentSynchronization", b =>
-                {
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentDeployment", "SourceEnvironment")
-                        .WithMany()
-                        .HasForeignKey("SourceEnvironmentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentDeployment", "TargetEnvironment")
-                        .WithMany()
-                        .HasForeignKey("TargetEnvironmentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("SourceEnvironment");
-
-                    b.Navigation("TargetEnvironment");
                 });
 
             modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.IntentFeedback", b =>
@@ -1710,31 +1752,36 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.Navigation("Intent");
                 });
 
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.ScalingEvent", b =>
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.ProvisionedEnvironmentEntity", b =>
                 {
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.ScalingPolicy", "Policy")
-                        .WithMany("ScalingEvents")
-                        .HasForeignKey("PolicyId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.ProvisionedEnvironmentEntity", "ClonedFrom")
+                        .WithMany("ClonedEnvironments")
+                        .HasForeignKey("ClonedFromId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.ServiceTemplateEntity", "Template")
+                        .WithMany("ProvisionedEnvironments")
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Policy");
+                    b.Navigation("ClonedFrom");
+
+                    b.Navigation("Template");
                 });
 
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.ScalingPolicy", b =>
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.ServiceTemplateAuditEntity", b =>
                 {
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentDeployment", "Deployment")
-                        .WithMany("ScalingPolicies")
-                        .HasForeignKey("DeploymentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.ServiceTemplateEntity", "ServiceTemplate")
+                        .WithMany("AuditEntries")
+                        .HasForeignKey("ServiceTemplateId");
 
-                    b.Navigation("Deployment");
+                    b.Navigation("ServiceTemplate");
                 });
 
             modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.TemplateFile", b =>
                 {
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentTemplate", "Template")
+                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.InfrastructureTemplate", "Template")
                         .WithMany("Files")
                         .HasForeignKey("TemplateId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1745,7 +1792,7 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
 
             modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.TemplateVersion", b =>
                 {
-                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentTemplate", "Template")
+                    b.HasOne("Platform.Engineering.Copilot.Core.Data.Entities.InfrastructureTemplate", "Template")
                         .WithMany("Versions")
                         .HasForeignKey("TemplateId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1759,23 +1806,12 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.Navigation("Findings");
                 });
 
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentDeployment", b =>
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.InfrastructureDeployment", b =>
                 {
                     b.Navigation("History");
-
-                    b.Navigation("Metrics");
-
-                    b.Navigation("ScalingPolicies");
                 });
 
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentLifecycle", b =>
-                {
-                    b.Navigation("Activities");
-
-                    b.Navigation("CostTrackings");
-                });
-
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.EnvironmentTemplate", b =>
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.InfrastructureTemplate", b =>
                 {
                     b.Navigation("Deployments");
 
@@ -1784,14 +1820,21 @@ namespace Platform.Engineering.Copilot.Core.Data.Migrations
                     b.Navigation("Versions");
                 });
 
-            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.ScalingPolicy", b =>
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.ProvisionedEnvironmentEntity", b =>
                 {
-                    b.Navigation("ScalingEvents");
+                    b.Navigation("ClonedEnvironments");
                 });
 
             modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.SemanticIntent", b =>
                 {
                     b.Navigation("Feedback");
+                });
+
+            modelBuilder.Entity("Platform.Engineering.Copilot.Core.Data.Entities.ServiceTemplateEntity", b =>
+                {
+                    b.Navigation("AuditEntries");
+
+                    b.Navigation("ProvisionedEnvironments");
                 });
 #pragma warning restore 612, 618
         }

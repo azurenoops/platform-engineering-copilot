@@ -7,16 +7,16 @@ namespace Platform.Engineering.Copilot.Core.Data.Repositories;
 
 /// <summary>
 /// EF Core implementation of environment deployment repository.
-/// Manages EnvironmentDeployments and related DeploymentHistory and EnvironmentMetrics.
+/// Manages InfrastructureDeployments and related DeploymentHistory and EnvironmentMetrics.
 /// </summary>
-public class EnvironmentDeploymentRepository : IEnvironmentDeploymentRepository
+public class InfrastructureDeploymentRepository : IInfrastructureDeploymentRepository
 {
     private readonly PlatformEngineeringCopilotContext _context;
-    private readonly ILogger<EnvironmentDeploymentRepository> _logger;
+    private readonly ILogger<InfrastructureDeploymentRepository> _logger;
 
-    public EnvironmentDeploymentRepository(
+    public InfrastructureDeploymentRepository(
         PlatformEngineeringCopilotContext context,
-        ILogger<EnvironmentDeploymentRepository> logger)
+        ILogger<InfrastructureDeploymentRepository> logger)
     {
         _context = context;
         _logger = logger;
@@ -24,89 +24,87 @@ public class EnvironmentDeploymentRepository : IEnvironmentDeploymentRepository
 
     // ==================== Deployment Operations ====================
 
-    public async Task<EnvironmentDeployment?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<InfrastructureDeployment?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentDeployments
+        return await _context.InfrastructureDeployments
             .FirstOrDefaultAsync(d => d.Id == id && !d.IsDeleted, cancellationToken);
     }
 
-    public async Task<EnvironmentDeployment?> GetByIdWithRelatedAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<InfrastructureDeployment?> GetByIdWithRelatedAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentDeployments
+        return await _context.InfrastructureDeployments
             .Include(d => d.Template)
             .Include(d => d.History)
-            .Include(d => d.Metrics)
-            .Include(d => d.ScalingPolicies)
             .FirstOrDefaultAsync(d => d.Id == id && !d.IsDeleted, cancellationToken);
     }
 
-    public async Task<EnvironmentDeployment?> GetByNameAndResourceGroupAsync(string name, string resourceGroup, CancellationToken cancellationToken = default)
+    public async Task<InfrastructureDeployment?> GetByNameAndResourceGroupAsync(string name, string resourceGroup, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentDeployments
+        return await _context.InfrastructureDeployments
             .FirstOrDefaultAsync(d => d.Name == name && d.ResourceGroupName == resourceGroup && !d.IsDeleted, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<EnvironmentDeployment>> GetAllActiveAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InfrastructureDeployment>> GetAllActiveAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentDeployments
+        return await _context.InfrastructureDeployments
             .Include(d => d.Template)
             .Where(d => !d.IsDeleted)
             .OrderByDescending(d => d.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<EnvironmentDeployment>> GetByTypeAsync(string environmentType, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InfrastructureDeployment>> GetByTypeAsync(string environmentType, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentDeployments
+        return await _context.InfrastructureDeployments
             .Include(d => d.Template)
             .Where(d => d.EnvironmentType == environmentType && !d.IsDeleted)
             .OrderByDescending(d => d.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<EnvironmentDeployment>> GetByResourceGroupAsync(string resourceGroup, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InfrastructureDeployment>> GetByResourceGroupAsync(string resourceGroup, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentDeployments
+        return await _context.InfrastructureDeployments
             .Include(d => d.Template)
             .Where(d => d.ResourceGroupName == resourceGroup && !d.IsDeleted)
             .OrderByDescending(d => d.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<EnvironmentDeployment>> GetByStatusAsync(DeploymentStatus status, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InfrastructureDeployment>> GetByStatusAsync(DeploymentStatus status, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentDeployments
+        return await _context.InfrastructureDeployments
             .Include(d => d.Template)
             .Where(d => d.Status == status && !d.IsDeleted)
             .OrderByDescending(d => d.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<EnvironmentDeployment>> GetBySubscriptionAsync(string subscriptionId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InfrastructureDeployment>> GetBySubscriptionAsync(string subscriptionId, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentDeployments
+        return await _context.InfrastructureDeployments
             .Include(d => d.Template)
             .Where(d => d.SubscriptionId == subscriptionId && !d.IsDeleted)
             .OrderByDescending(d => d.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<EnvironmentDeployment>> GetWithActivePollingAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InfrastructureDeployment>> GetWithActivePollingAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentDeployments
+        return await _context.InfrastructureDeployments
             .Where(d => d.IsPollingActive && !d.IsDeleted)
             .OrderBy(d => d.LastPolledAt)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<EnvironmentDeployment>> SearchAsync(
+    public async Task<IReadOnlyList<InfrastructureDeployment>> SearchAsync(
         string? environmentType = null,
         string? resourceGroup = null,
         DeploymentStatus? status = null,
         string? subscriptionId = null,
         CancellationToken cancellationToken = default)
     {
-        var query = _context.EnvironmentDeployments
+        var query = _context.InfrastructureDeployments
             .Include(d => d.Template)
             .Where(d => !d.IsDeleted);
 
@@ -137,51 +135,51 @@ public class EnvironmentDeploymentRepository : IEnvironmentDeploymentRepository
 
     public async Task<bool> ExistsAsync(string name, string resourceGroup, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentDeployments
+        return await _context.InfrastructureDeployments
             .AnyAsync(d => d.Name == name && d.ResourceGroupName == resourceGroup && !d.IsDeleted, cancellationToken);
     }
 
     public async Task<int> CountActiveAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentDeployments
+        return await _context.InfrastructureDeployments
             .CountAsync(d => !d.IsDeleted, cancellationToken);
     }
 
     public async Task<int> CountByStatusAsync(DeploymentStatus status, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentDeployments
+        return await _context.InfrastructureDeployments
             .CountAsync(d => d.Status == status && !d.IsDeleted, cancellationToken);
     }
 
-    public async Task<EnvironmentDeployment> AddAsync(EnvironmentDeployment deployment, CancellationToken cancellationToken = default)
+    public async Task<InfrastructureDeployment> AddAsync(InfrastructureDeployment deployment, CancellationToken cancellationToken = default)
     {
         deployment.Id = deployment.Id == Guid.Empty ? Guid.NewGuid() : deployment.Id;
         deployment.CreatedAt = DateTime.UtcNow;
         deployment.UpdatedAt = DateTime.UtcNow;
 
-        _context.EnvironmentDeployments.Add(deployment);
+        _context.InfrastructureDeployments.Add(deployment);
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogDebug("Created EnvironmentDeployment {DeploymentId}: {DeploymentName}", deployment.Id, deployment.Name);
+        _logger.LogDebug("Created InfrastructureDeployment {DeploymentId}: {DeploymentName}", deployment.Id, deployment.Name);
 
         return deployment;
     }
 
-    public async Task<EnvironmentDeployment> UpdateAsync(EnvironmentDeployment deployment, CancellationToken cancellationToken = default)
+    public async Task<InfrastructureDeployment> UpdateAsync(InfrastructureDeployment deployment, CancellationToken cancellationToken = default)
     {
         deployment.UpdatedAt = DateTime.UtcNow;
 
-        _context.EnvironmentDeployments.Update(deployment);
+        _context.InfrastructureDeployments.Update(deployment);
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogDebug("Updated EnvironmentDeployment {DeploymentId}: {DeploymentName}", deployment.Id, deployment.Name);
+        _logger.LogDebug("Updated InfrastructureDeployment {DeploymentId}: {DeploymentName}", deployment.Id, deployment.Name);
 
         return deployment;
     }
 
     public async Task<bool> UpdateStatusAsync(Guid deploymentId, DeploymentStatus status, CancellationToken cancellationToken = default)
     {
-        var deployment = await _context.EnvironmentDeployments.FindAsync(new object[] { deploymentId }, cancellationToken);
+        var deployment = await _context.InfrastructureDeployments.FindAsync(new object[] { deploymentId }, cancellationToken);
         if (deployment == null)
         {
             _logger.LogWarning("Deployment {DeploymentId} not found for status update", deploymentId);
@@ -206,7 +204,7 @@ public class EnvironmentDeploymentRepository : IEnvironmentDeploymentRepository
         TimeSpan? estimatedTimeRemaining = null,
         CancellationToken cancellationToken = default)
     {
-        var deployment = await _context.EnvironmentDeployments.FindAsync(new object[] { deploymentId }, cancellationToken);
+        var deployment = await _context.InfrastructureDeployments.FindAsync(new object[] { deploymentId }, cancellationToken);
         if (deployment == null)
         {
             _logger.LogWarning("Deployment {DeploymentId} not found for polling status update", deploymentId);
@@ -238,7 +236,7 @@ public class EnvironmentDeploymentRepository : IEnvironmentDeploymentRepository
 
     public async Task<bool> SoftDeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var deployment = await _context.EnvironmentDeployments.FindAsync(new object[] { id }, cancellationToken);
+        var deployment = await _context.InfrastructureDeployments.FindAsync(new object[] { id }, cancellationToken);
         if (deployment == null)
             return false;
 
@@ -248,16 +246,14 @@ public class EnvironmentDeploymentRepository : IEnvironmentDeploymentRepository
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogDebug("Soft deleted EnvironmentDeployment {DeploymentId}", id);
+        _logger.LogDebug("Soft deleted InfrastructureDeployment {DeploymentId}", id);
         return true;
     }
 
     public async Task<bool> HardDeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var deployment = await _context.EnvironmentDeployments
+        var deployment = await _context.InfrastructureDeployments
             .Include(d => d.History)
-            .Include(d => d.Metrics)
-            .Include(d => d.ScalingPolicies)
             .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
 
         if (deployment == null)
@@ -269,20 +265,10 @@ public class EnvironmentDeploymentRepository : IEnvironmentDeploymentRepository
             _context.DeploymentHistory.RemoveRange(deployment.History);
         }
 
-        if (deployment.Metrics.Any())
-        {
-            _context.EnvironmentMetrics.RemoveRange(deployment.Metrics);
-        }
-
-        if (deployment.ScalingPolicies.Any())
-        {
-            _context.ScalingPolicies.RemoveRange(deployment.ScalingPolicies);
-        }
-
-        _context.EnvironmentDeployments.Remove(deployment);
+        _context.InfrastructureDeployments.Remove(deployment);
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogDebug("Hard deleted EnvironmentDeployment {DeploymentId} with all related entities", id);
+        _logger.LogDebug("Hard deleted InfrastructureDeployment {DeploymentId} with all related entities", id);
         return true;
     }
 
@@ -342,118 +328,5 @@ public class EnvironmentDeploymentRepository : IEnvironmentDeploymentRepository
         };
 
         return await AddHistoryAsync(history, cancellationToken);
-    }
-
-    // ==================== Environment Metrics Operations ====================
-
-    public async Task<IReadOnlyList<EnvironmentMetrics>> GetMetricsAsync(
-        Guid deploymentId,
-        DateTime? startTime = null,
-        DateTime? endTime = null,
-        string? metricType = null,
-        CancellationToken cancellationToken = default)
-    {
-        var query = _context.EnvironmentMetrics
-            .Where(m => m.DeploymentId == deploymentId);
-
-        if (startTime.HasValue)
-        {
-            query = query.Where(m => m.Timestamp >= startTime.Value);
-        }
-
-        if (endTime.HasValue)
-        {
-            query = query.Where(m => m.Timestamp <= endTime.Value);
-        }
-
-        if (!string.IsNullOrEmpty(metricType))
-        {
-            query = query.Where(m => m.MetricType == metricType);
-        }
-
-        return await query
-            .OrderByDescending(m => m.Timestamp)
-            .ToListAsync(cancellationToken);
-    }
-
-    public async Task<Dictionary<string, MetricsSummary>> GetMetricsSummaryAsync(Guid deploymentId, CancellationToken cancellationToken = default)
-    {
-        var metrics = await _context.EnvironmentMetrics
-            .Where(m => m.DeploymentId == deploymentId)
-            .GroupBy(m => m.MetricType)
-            .Select(g => new
-            {
-                MetricType = g.Key,
-                Count = g.Count(),
-                AvgValue = g.Average(m => m.Value),
-                MinValue = g.Min(m => m.Value),
-                MaxValue = g.Max(m => m.Value),
-                LastTimestamp = g.Max(m => m.Timestamp)
-            })
-            .ToListAsync(cancellationToken);
-
-        var summary = new Dictionary<string, MetricsSummary>();
-        foreach (var metric in metrics)
-        {
-            summary[metric.MetricType] = new MetricsSummary
-            {
-                Count = metric.Count,
-                AvgValue = metric.AvgValue,
-                MinValue = metric.MinValue,
-                MaxValue = metric.MaxValue,
-                LastTimestamp = metric.LastTimestamp
-            };
-        }
-
-        return summary;
-    }
-
-    public async Task<EnvironmentMetrics> AddMetricAsync(EnvironmentMetrics metric, CancellationToken cancellationToken = default)
-    {
-        metric.Id = metric.Id == Guid.Empty ? Guid.NewGuid() : metric.Id;
-        metric.Timestamp = metric.Timestamp == default ? DateTime.UtcNow : metric.Timestamp;
-
-        _context.EnvironmentMetrics.Add(metric);
-        await _context.SaveChangesAsync(cancellationToken);
-
-        _logger.LogDebug("Added EnvironmentMetric {MetricId} for deployment {DeploymentId}: {MetricType}/{MetricName}", 
-            metric.Id, metric.DeploymentId, metric.MetricType, metric.MetricName);
-
-        return metric;
-    }
-
-    public async Task<IReadOnlyList<EnvironmentMetrics>> AddMetricsAsync(IEnumerable<EnvironmentMetrics> metrics, CancellationToken cancellationToken = default)
-    {
-        var metricList = metrics.ToList();
-        foreach (var metric in metricList)
-        {
-            metric.Id = metric.Id == Guid.Empty ? Guid.NewGuid() : metric.Id;
-            metric.Timestamp = metric.Timestamp == default ? DateTime.UtcNow : metric.Timestamp;
-        }
-
-        await _context.EnvironmentMetrics.AddRangeAsync(metricList, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
-
-        _logger.LogDebug("Added {Count} EnvironmentMetrics", metricList.Count);
-
-        return metricList;
-    }
-
-    public async Task<int> DeleteMetricsOlderThanAsync(Guid deploymentId, DateTime cutoffDate, CancellationToken cancellationToken = default)
-    {
-        var oldMetrics = await _context.EnvironmentMetrics
-            .Where(m => m.DeploymentId == deploymentId && m.Timestamp < cutoffDate)
-            .ToListAsync(cancellationToken);
-
-        if (!oldMetrics.Any())
-            return 0;
-
-        _context.EnvironmentMetrics.RemoveRange(oldMetrics);
-        await _context.SaveChangesAsync(cancellationToken);
-
-        _logger.LogDebug("Deleted {Count} metrics older than {CutoffDate} for deployment {DeploymentId}", 
-            oldMetrics.Count, cutoffDate, deploymentId);
-
-        return oldMetrics.Count;
     }
 }

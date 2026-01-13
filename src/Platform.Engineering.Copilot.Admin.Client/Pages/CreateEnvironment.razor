@@ -1,0 +1,536 @@
+@page "/environments/create"
+@inject EnvironmentApiService EnvironmentApi
+@inject TemplateApiService TemplateApi
+@inject NavigationManager Navigation
+@inject IToastService ToastService
+
+<div class="mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="environments">Environments</a></li>
+            <li class="breadcrumb-item active">Provision New Environment</li>
+        </ol>
+    </nav>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading service templates...</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fa fa-rocket me-2"></i>Provision New Environment
+                </div>
+                <div class="card-body">
+                    <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+                        <DataAnnotationsValidator />
+
+                        <!-- Step 1: Select Service Template -->
+                        <h6 class="mb-3"><i class="fa fa-cube me-2"></i>1. Select Service Template</h6>
+                        
+                        <div class="mb-4">
+                            <label class="form-label">Service Template <span class="text-danger">*</span></label>
+                            <InputSelect class="form-select" @bind-Value="_model.TemplateId" @bind-Value:after="OnTemplateChangedAsync">
+                                <option value="">Select a service template...</option>
+                                @foreach (var template in _templates)
+                                {
+                                    <option value="@template.Id">@template.DisplayName (@template.Category)</option>
+                                }
+                            </InputSelect>
+                            <ValidationMessage For="@(() => _model.TemplateId)" />
+                        </div>
+
+                        @if (_selectedTemplate != null)
+                        {
+                            <div class="alert alert-info mb-4">
+                                <strong>@_selectedTemplate.DisplayName</strong> (v@_selectedTemplate.Version)
+                                <p class="mb-0 mt-2 small">@_selectedTemplate.Description</p>
+                            </div>
+                        }
+
+                        <hr class="my-4" />
+
+                        <!-- Step 2: Environment Details -->
+                        <h6 class="mb-3"><i class="fa fa-server me-2"></i>2. Environment Details</h6>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Environment Name <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="_model.EnvironmentName" 
+                                           placeholder="e.g., dev-team-alpha" />
+                                <ValidationMessage For="@(() => _model.EnvironmentName)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Display Name</label>
+                                <InputText class="form-control" @bind-Value="_model.DisplayName" 
+                                           placeholder="e.g., Team Alpha Dev Environment" />
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <InputTextArea class="form-control" rows="2" @bind-Value="_model.Description" />
+                        </div>
+
+                        @if (_selectedTemplate?.Parameters != null && _selectedTemplate.Parameters.Count > 0)
+                        {
+                            <hr class="my-4" />
+
+                            <!-- Template Parameters -->
+                            <h6 class="mb-3"><i class="fa fa-sliders me-2"></i>Template Parameters (@_selectedTemplate.Parameters.Count)</h6>
+
+                            <div class="row">
+                                @foreach (var param in _selectedTemplate.Parameters)
+                                {
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">
+                                            @(param.DisplayName ?? param.Name)
+                                            @if (param.Required)
+                                            {
+                                                <span class="text-danger">*</span>
+                                            }
+                                        </label>
+                                        
+                                        @if (param.Type == "Boolean")
+                                        {
+                                            <div class="form-check">
+                                                <input type="checkbox" class="form-check-input" 
+                                                       id="param_@param.Name"
+                                                       checked="@GetBoolParameterValue(param.Name, param.DefaultValue)"
+                                                       @onchange="e => SetParameterValue(param.Name, e.Value)" />
+                                                <label class="form-check-label" for="param_@param.Name">
+                                                    @param.Description
+                                                </label>
+                                            </div>
+                                        }
+                                        else if (param.Type == "Choice" && param.AllowedValues != null && param.AllowedValues.Count > 0)
+                                        {
+                                            <select class="form-select" 
+                                                    @onchange="e => SetParameterValue(param.Name, e.Value)">
+                                                @foreach (var val in param.AllowedValues)
+                                                {
+                                                    <option value="@val" selected="@(GetStringParameterValue(param.Name, param.DefaultValue) == val?.ToString())">@val</option>
+                                                }
+                                            </select>
+                                            @if (!string.IsNullOrEmpty(param.Description))
+                                            {
+                                                <small class="text-muted">@param.Description</small>
+                                            }
+                                        }
+                                        else if (param.Type == "Number")
+                                        {
+                                            <input type="number" class="form-control"
+                                                   value="@GetNumberParameterValue(param.Name, param.DefaultValue)"
+                                                   @onchange="e => SetParameterValue(param.Name, e.Value)"
+                                                   placeholder="@param.Description" />
+                                            @if (!string.IsNullOrEmpty(param.Description))
+                                            {
+                                                <small class="text-muted">@param.Description</small>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <input type="text" class="form-control"
+                                                   value="@GetStringParameterValue(param.Name, param.DefaultValue)"
+                                                   @onchange="e => SetParameterValue(param.Name, e.Value)"
+                                                   placeholder="@param.Description" />
+                                            @if (!string.IsNullOrEmpty(param.Description))
+                                            {
+                                                <small class="text-muted">@param.Description</small>
+                                            }
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        <hr class="my-4" />
+
+                        <!-- Step 3: Azure Resources -->
+                        <h6 class="mb-3"><i class="fa fa-cloud me-2"></i>3. Azure Resources</h6>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Subscription ID <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="_model.SubscriptionId" 
+                                           placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+                                <ValidationMessage For="@(() => _model.SubscriptionId)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Resource Group <span class="text-danger">*</span></label>
+                                <InputText class="form-control" @bind-Value="_model.ResourceGroup" 
+                                           placeholder="e.g., rg-dev-team-alpha" />
+                                <ValidationMessage For="@(() => _model.ResourceGroup)" />
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Location</label>
+                                <InputSelect class="form-select" @bind-Value="_model.Location">
+                                    <option value="eastus">East US</option>
+                                    <option value="eastus2">East US 2</option>
+                                    <option value="westus">West US</option>
+                                    <option value="westus2">West US 2</option>
+                                    <option value="centralus">Central US</option>
+                                    <option value="usgovvirginia">US Gov Virginia</option>
+                                    <option value="usgovarizona">US Gov Arizona</option>
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Owner Email</label>
+                                <InputText class="form-control" type="email" @bind-Value="_model.OwnerEmail" 
+                                           placeholder="owner@example.com" />
+                            </div>
+                        </div>
+
+                        <hr class="my-4" />
+
+                        <!-- Step 4: Lifecycle -->
+                        <h6 class="mb-3"><i class="fa fa-clock me-2"></i>4. Lifecycle Settings</h6>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Expiration Date</label>
+                                <InputDate class="form-control" @bind-Value="_expirationDate" />
+                                <small class="text-muted">Leave empty for no expiration</small>
+                            </div>
+                            <div class="col-md-6 d-flex align-items-end">
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="_model.AutoDelete" id="autoDelete" />
+                                    <label class="form-check-label" for="autoDelete">
+                                        Auto-delete on expiration
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="my-4" />
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-success" disabled="@(_provisioning || string.IsNullOrEmpty(_model.TemplateId))">
+                                @if (_provisioning)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                    <span>Provisioning...</span>
+                                }
+                                else
+                                {
+                                    <i class="fa fa-rocket me-1"></i>
+                                    <span>Provision Environment</span>
+                                }
+                            </button>
+                            <a href="environments" class="btn btn-outline-secondary">
+                                <i class="fa fa-times me-1"></i>Cancel
+                            </a>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fa fa-info-circle me-2"></i>Provisioning Info
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0">
+                        <li class="mb-2">Select a template that matches your requirements</li>
+                        <li class="mb-2">Environment names must be unique within a subscription</li>
+                        <li class="mb-2">Resource group will be created if it doesn't exist</li>
+                        <li class="mb-2">Set expiration for temporary environments</li>
+                        <li>Provisioning typically takes 5-15 minutes</li>
+                    </ul>
+                </div>
+            </div>
+
+            @if (_selectedTemplate != null)
+            {
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fa fa-cube me-2"></i>Template Details
+                    </div>
+                    <div class="card-body">
+                        <dl class="mb-0">
+                            <dt>Format</dt>
+                            <dd>@_selectedTemplate.Format</dd>
+                            
+                            <dt>Category</dt>
+                            <dd>@_selectedTemplate.Category</dd>
+                            
+                            <dt>Version</dt>
+                            <dd>@_selectedTemplate.Version</dd>
+                            
+                            <dt>Deployments</dt>
+                            <dd>@_selectedTemplate.DeploymentCount environments</dd>
+                            
+                            @if (_selectedTemplate.DefaultExpirationDays.HasValue)
+                            {
+                                <dt>Default Expiration</dt>
+                                <dd>@_selectedTemplate.DefaultExpirationDays days</dd>
+                            }
+                        </dl>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? TemplateId { get; set; }
+
+    private bool _loading = true;
+    private bool _provisioning;
+    private List<TemplateListItem> _templates = new();
+    private TemplateDetail? _selectedTemplate;
+    private CreateEnvironmentModel _model = new()
+    {
+        Location = "eastus"
+    };
+    private DateTime? _expirationDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _templates = await TemplateApi.GetTemplatesAsync(status: "Published");
+            
+            // Pre-select template if provided in query
+            if (!string.IsNullOrEmpty(TemplateId))
+            {
+                _model.TemplateId = TemplateId;
+                await LoadTemplateDetails(TemplateId);
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load templates: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnTemplateChangedAsync()
+    {
+        if (!string.IsNullOrEmpty(_model.TemplateId))
+        {
+            await LoadTemplateDetails(_model.TemplateId);
+        }
+        else
+        {
+            _selectedTemplate = null;
+            _model.Parameters = null;
+        }
+    }
+
+    private async Task LoadTemplateDetails(string templateId)
+    {
+        try
+        {
+            _selectedTemplate = await TemplateApi.GetTemplateAsync(templateId);
+            
+            // Initialize parameters dictionary with defaults
+            _model.Parameters = new Dictionary<string, object>();
+            if (_selectedTemplate?.Parameters != null)
+            {
+                foreach (var param in _selectedTemplate.Parameters)
+                {
+                    if (param.DefaultValue != null)
+                    {
+                        _model.Parameters[param.Name] = param.DefaultValue;
+                    }
+                }
+            }
+            
+            // Set default expiration if template has one
+            if (_selectedTemplate?.DefaultExpirationDays.HasValue == true)
+            {
+                _expirationDate = DateTime.Today.AddDays(_selectedTemplate.DefaultExpirationDays.Value);
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load template details: {ex.Message}");
+        }
+    }
+
+    private void SetParameterValue(string name, object? value)
+    {
+        _model.Parameters ??= new Dictionary<string, object>();
+        if (value != null)
+        {
+            _model.Parameters[name] = value;
+        }
+    }
+
+    private string GetStringParameterValue(string name, object? defaultValue)
+    {
+        try
+        {
+            if (_model.Parameters?.TryGetValue(name, out var val) == true)
+            {
+                return val?.ToString() ?? string.Empty;
+            }
+            if (defaultValue == null) return string.Empty;
+            
+            // Handle JsonElement from System.Text.Json deserialization
+            if (defaultValue is System.Text.Json.JsonElement je)
+            {
+                return je.ValueKind == System.Text.Json.JsonValueKind.String 
+                    ? je.GetString() ?? string.Empty 
+                    : je.ToString();
+            }
+            return defaultValue.ToString() ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private bool GetBoolParameterValue(string name, object? defaultValue)
+    {
+        try
+        {
+            if (_model.Parameters?.TryGetValue(name, out var val) == true)
+            {
+                if (val is bool b) return b;
+                if (bool.TryParse(val?.ToString(), out var parsed)) return parsed;
+            }
+            if (defaultValue == null) return false;
+            
+            // Handle JsonElement
+            if (defaultValue is System.Text.Json.JsonElement je)
+            {
+                if (je.ValueKind == System.Text.Json.JsonValueKind.True) return true;
+                if (je.ValueKind == System.Text.Json.JsonValueKind.False) return false;
+                if (bool.TryParse(je.ToString(), out var jp)) return jp;
+                return false;
+            }
+            
+            if (defaultValue is bool db) return db;
+            if (bool.TryParse(defaultValue.ToString(), out var dp)) return dp;
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private int? GetNumberParameterValue(string name, object? defaultValue)
+    {
+        try
+        {
+            if (_model.Parameters?.TryGetValue(name, out var val) == true)
+            {
+                if (val is int i) return i;
+                if (int.TryParse(val?.ToString(), out var parsed)) return parsed;
+            }
+            if (defaultValue == null) return null;
+            
+            // Handle JsonElement
+            if (defaultValue is System.Text.Json.JsonElement je)
+            {
+                if (je.ValueKind == System.Text.Json.JsonValueKind.Number)
+                {
+                    return je.TryGetInt32(out var ji) ? ji : null;
+                }
+                if (int.TryParse(je.ToString(), out var jp)) return jp;
+                return null;
+            }
+            
+            if (defaultValue is int di) return di;
+            if (int.TryParse(defaultValue.ToString(), out var dp)) return dp;
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        // Client-side validation
+        var validationErrors = new List<string>();
+        
+        if (string.IsNullOrWhiteSpace(_model.TemplateId))
+            validationErrors.Add("Please select a service template");
+        
+        if (string.IsNullOrWhiteSpace(_model.EnvironmentName))
+            validationErrors.Add("Environment Name is required");
+        
+        if (string.IsNullOrWhiteSpace(_model.SubscriptionId))
+            validationErrors.Add("Subscription ID is required");
+        
+        if (string.IsNullOrWhiteSpace(_model.ResourceGroup))
+            validationErrors.Add("Resource Group is required");
+        
+        // Check required template parameters
+        if (_selectedTemplate?.Parameters != null)
+        {
+            foreach (var param in _selectedTemplate.Parameters.Where(p => p.Required))
+            {
+                var hasValue = _model.Parameters?.TryGetValue(param.Name, out var val) == true 
+                    && val != null 
+                    && !string.IsNullOrWhiteSpace(val.ToString());
+                
+                if (!hasValue)
+                {
+                    validationErrors.Add($"'{param.DisplayName ?? param.Name}' is required");
+                }
+            }
+        }
+        
+        if (validationErrors.Any())
+        {
+            foreach (var error in validationErrors)
+            {
+                ToastService.ShowWarning(error);
+            }
+            return;
+        }
+        
+        _provisioning = true;
+        try
+        {
+            _model.ExpiresAt = _expirationDate?.ToUniversalTime();
+            _model.RequestedBy = "admin";
+
+            var result = await EnvironmentApi.CreateEnvironmentAsync(_model);
+            
+            if (result?.Success == true)
+            {
+                ToastService.ShowSuccess($"Environment provisioning started: {result.EnvironmentName}");
+                Navigation.NavigateTo($"environments/{result.EnvironmentId}");
+            }
+            else
+            {
+                var errors = string.Join(", ", result?.Errors ?? new List<string> { "Unknown error" });
+                ToastService.ShowError($"Provisioning failed: {errors}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to provision: {ex.Message}");
+        }
+        finally
+        {
+            _provisioning = false;
+        }
+    }
+}

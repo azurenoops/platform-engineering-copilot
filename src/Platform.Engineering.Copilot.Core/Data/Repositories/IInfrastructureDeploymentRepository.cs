@@ -4,63 +4,63 @@ namespace Platform.Engineering.Copilot.Core.Data.Repositories;
 
 /// <summary>
 /// Repository interface for environment deployment operations.
-/// Manages EnvironmentDeployments (deployment records) and related entities:
+/// Manages InfrastructureDeployments (deployment records) and related entities:
 /// - DeploymentHistory (audit trail of deployment actions)
 /// - EnvironmentMetrics (performance/usage metrics for deployments)
 /// </summary>
-public interface IEnvironmentDeploymentRepository
+public interface IInfrastructureDeploymentRepository
 {
     // ==================== Deployment Operations ====================
     
     /// <summary>
     /// Get a deployment by ID
     /// </summary>
-    Task<EnvironmentDeployment?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<InfrastructureDeployment?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get a deployment by ID with all related data (Template, History, Metrics)
     /// </summary>
-    Task<EnvironmentDeployment?> GetByIdWithRelatedAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<InfrastructureDeployment?> GetByIdWithRelatedAsync(Guid id, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get a deployment by name and resource group
     /// </summary>
-    Task<EnvironmentDeployment?> GetByNameAndResourceGroupAsync(string name, string resourceGroup, CancellationToken cancellationToken = default);
+    Task<InfrastructureDeployment?> GetByNameAndResourceGroupAsync(string name, string resourceGroup, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get all active deployments (not soft-deleted)
     /// </summary>
-    Task<IReadOnlyList<EnvironmentDeployment>> GetAllActiveAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InfrastructureDeployment>> GetAllActiveAsync(CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get deployments by environment type
     /// </summary>
-    Task<IReadOnlyList<EnvironmentDeployment>> GetByTypeAsync(string environmentType, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InfrastructureDeployment>> GetByTypeAsync(string environmentType, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get deployments by resource group
     /// </summary>
-    Task<IReadOnlyList<EnvironmentDeployment>> GetByResourceGroupAsync(string resourceGroup, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InfrastructureDeployment>> GetByResourceGroupAsync(string resourceGroup, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get deployments by status
     /// </summary>
-    Task<IReadOnlyList<EnvironmentDeployment>> GetByStatusAsync(DeploymentStatus status, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InfrastructureDeployment>> GetByStatusAsync(DeploymentStatus status, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get deployments by subscription
     /// </summary>
-    Task<IReadOnlyList<EnvironmentDeployment>> GetBySubscriptionAsync(string subscriptionId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InfrastructureDeployment>> GetBySubscriptionAsync(string subscriptionId, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get deployments with active polling
     /// </summary>
-    Task<IReadOnlyList<EnvironmentDeployment>> GetWithActivePollingAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InfrastructureDeployment>> GetWithActivePollingAsync(CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Search deployments with multiple filters
     /// </summary>
-    Task<IReadOnlyList<EnvironmentDeployment>> SearchAsync(
+    Task<IReadOnlyList<InfrastructureDeployment>> SearchAsync(
         string? environmentType = null,
         string? resourceGroup = null,
         DeploymentStatus? status = null,
@@ -85,12 +85,12 @@ public interface IEnvironmentDeploymentRepository
     /// <summary>
     /// Add a new deployment
     /// </summary>
-    Task<EnvironmentDeployment> AddAsync(EnvironmentDeployment deployment, CancellationToken cancellationToken = default);
+    Task<InfrastructureDeployment> AddAsync(InfrastructureDeployment deployment, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Update an existing deployment
     /// </summary>
-    Task<EnvironmentDeployment> UpdateAsync(EnvironmentDeployment deployment, CancellationToken cancellationToken = default);
+    Task<InfrastructureDeployment> UpdateAsync(InfrastructureDeployment deployment, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Update deployment status
@@ -147,48 +147,4 @@ public interface IEnvironmentDeploymentRepository
         string? details = null,
         string? errorMessage = null,
         CancellationToken cancellationToken = default);
-    
-    // ==================== Environment Metrics Operations ====================
-    
-    /// <summary>
-    /// Get metrics for a deployment
-    /// </summary>
-    Task<IReadOnlyList<EnvironmentMetrics>> GetMetricsAsync(
-        Guid deploymentId,
-        DateTime? startTime = null,
-        DateTime? endTime = null,
-        string? metricType = null,
-        CancellationToken cancellationToken = default);
-    
-    /// <summary>
-    /// Get metrics summary with aggregations
-    /// </summary>
-    Task<Dictionary<string, MetricsSummary>> GetMetricsSummaryAsync(Guid deploymentId, CancellationToken cancellationToken = default);
-    
-    /// <summary>
-    /// Add a metric entry
-    /// </summary>
-    Task<EnvironmentMetrics> AddMetricAsync(EnvironmentMetrics metric, CancellationToken cancellationToken = default);
-    
-    /// <summary>
-    /// Add multiple metric entries
-    /// </summary>
-    Task<IReadOnlyList<EnvironmentMetrics>> AddMetricsAsync(IEnumerable<EnvironmentMetrics> metrics, CancellationToken cancellationToken = default);
-    
-    /// <summary>
-    /// Delete old metrics (for cleanup/archival)
-    /// </summary>
-    Task<int> DeleteMetricsOlderThanAsync(Guid deploymentId, DateTime cutoffDate, CancellationToken cancellationToken = default);
-}
-
-/// <summary>
-/// Summary of metrics for a specific metric type
-/// </summary>
-public class MetricsSummary
-{
-    public int Count { get; set; }
-    public decimal AvgValue { get; set; }
-    public decimal MinValue { get; set; }
-    public decimal MaxValue { get; set; }
-    public DateTime? LastTimestamp { get; set; }
 }

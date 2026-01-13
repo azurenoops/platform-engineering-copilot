@@ -92,8 +92,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAzureSecurityConfigurationService, AzureSecurityConfigurationService>();
         
         // Register Repository services (required by Storage services)
-        services.AddScoped<IEnvironmentTemplateRepository, EnvironmentTemplateRepository>();
-        services.AddScoped<IEnvironmentDeploymentRepository, EnvironmentDeploymentRepository>();
+        services.AddScoped<IInfrastructureTemplateRepository, InfrastructureTemplateRepository>();
+        services.AddScoped<IInfrastructureDeploymentRepository, InfrastructureDeploymentRepository>();
         services.AddScoped<IComplianceAssessmentRepository, ComplianceAssessmentRepository>();
         
         // Register Template Storage Service (required by domain services)

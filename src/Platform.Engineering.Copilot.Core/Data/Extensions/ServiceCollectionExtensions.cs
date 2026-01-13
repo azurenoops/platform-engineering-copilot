@@ -68,9 +68,11 @@ public static class ServiceCollectionExtensions
         });
 
         // Add repository services
-        services.AddScoped<Repositories.IEnvironmentTemplateRepository, Repositories.EnvironmentTemplateRepository>();
-        services.AddScoped<Repositories.IEnvironmentDeploymentRepository, Repositories.EnvironmentDeploymentRepository>();
+        services.AddScoped<Repositories.IInfrastructureTemplateRepository, Repositories.InfrastructureTemplateRepository>();
+        services.AddScoped<Repositories.IInfrastructureDeploymentRepository, Repositories.InfrastructureDeploymentRepository>();
         services.AddScoped<Repositories.IComplianceAssessmentRepository, Repositories.ComplianceAssessmentRepository>();
+        services.AddScoped<Repositories.IServiceTemplateRepository, Repositories.ServiceTemplateRepository>();
+        services.AddScoped<Repositories.IProvisionedEnvironmentRepository, Repositories.ProvisionedEnvironmentRepository>();
         
         // Semantic Intent Repository and Service (real implementations)
         services.AddScoped<Platform.Engineering.Copilot.Core.Data.Repositories.ISemanticIntentRepository, 
@@ -95,9 +97,11 @@ public static class ServiceCollectionExtensions
         });
 
         // Add repository services
-        services.AddScoped<Repositories.IEnvironmentTemplateRepository, Repositories.EnvironmentTemplateRepository>();
-        services.AddScoped<Repositories.IEnvironmentDeploymentRepository, Repositories.EnvironmentDeploymentRepository>();
+        services.AddScoped<Repositories.IInfrastructureTemplateRepository, Repositories.InfrastructureTemplateRepository>();
+        services.AddScoped<Repositories.IInfrastructureDeploymentRepository, Repositories.InfrastructureDeploymentRepository>();
         services.AddScoped<Repositories.IComplianceAssessmentRepository, Repositories.ComplianceAssessmentRepository>();
+        services.AddScoped<Repositories.IServiceTemplateRepository, Repositories.ServiceTemplateRepository>();
+        services.AddScoped<Repositories.IProvisionedEnvironmentRepository, Repositories.ProvisionedEnvironmentRepository>();
         
         // Semantic Intent Repository and Service (real implementations)
         services.AddScoped<Platform.Engineering.Copilot.Core.Data.Repositories.ISemanticIntentRepository, 

@@ -75,7 +75,7 @@ public class TemplateCleanupBackgroundService : BackgroundService
         try
         {
             using var scope = _serviceProvider.CreateScope();
-            var templateRepository = scope.ServiceProvider.GetRequiredService<IEnvironmentTemplateRepository>();
+            var templateRepository = scope.ServiceProvider.GetRequiredService<IInfrastructureTemplateRepository>();
             
             var deletedCount = await templateRepository.DeleteExpiredTemplatesAsync(cancellationToken);
             

@@ -17,7 +17,7 @@ public static class DatabaseSeeder
         await context.Database.EnsureCreatedAsync();
 
         // Seed environment templates
-        await SeedEnvironmentTemplatesAsync(context);
+        await SeedInfrastructureTemplatesAsync(context);
 
         // Seed intent patterns
         await SeedIntentPatternsAsync(context);
@@ -25,14 +25,14 @@ public static class DatabaseSeeder
         await context.SaveChangesAsync();
     }
 
-    private static async Task SeedEnvironmentTemplatesAsync(PlatformEngineeringCopilotContext context)
+    private static async Task SeedInfrastructureTemplatesAsync(PlatformEngineeringCopilotContext context)
     {
-        if (await context.EnvironmentTemplates.AnyAsync())
+        if (await context.InfrastructureTemplates.AnyAsync())
             return;
 
         var templates = new[]
         {
-            new EnvironmentTemplate
+            new InfrastructureTemplate
             {
                 Id = Guid.NewGuid(),
                 Name = "Basic Microservice",
@@ -78,7 +78,7 @@ public static class DatabaseSeeder
                 IsActive = true,
                 IsPublic = true
             },
-            new EnvironmentTemplate
+            new InfrastructureTemplate
             {
                 Id = Guid.NewGuid(),
                 Name = "Enterprise Web Application",
@@ -131,7 +131,7 @@ public static class DatabaseSeeder
                 IsActive = true,
                 IsPublic = true
             },
-            new EnvironmentTemplate
+            new InfrastructureTemplate
             {
                 Id = Guid.NewGuid(),
                 Name = "ML Platform",
@@ -183,7 +183,7 @@ public static class DatabaseSeeder
             }
         };
 
-        await context.EnvironmentTemplates.AddRangeAsync(templates);
+        await context.InfrastructureTemplates.AddRangeAsync(templates);
     }
 
     private static async Task SeedIntentPatternsAsync(PlatformEngineeringCopilotContext context)

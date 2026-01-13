@@ -11,17 +11,17 @@ namespace Platform.Engineering.Copilot.Core.Data.Services;
 
 /// <summary>
 /// Template storage service implementation using Repository pattern.
-/// Manages EnvironmentTemplates (service templates for Environment Agent deployments)
+/// Manages InfrastructureTemplates (service templates for Environment Agent deployments)
 /// and their associated TemplateFiles (individual files that make up a template).
 /// </summary>
 public class TemplateStorageService : ITemplateStorageService
 {
-    private readonly IEnvironmentTemplateRepository _templateRepository;
+    private readonly IInfrastructureTemplateRepository _templateRepository;
     private readonly ILogger<TemplateStorageService> _logger;
     private readonly int _expirationMinutes;
 
     public TemplateStorageService(
-        IEnvironmentTemplateRepository templateRepository,
+        IInfrastructureTemplateRepository templateRepository,
         IConfiguration configuration,
         ILogger<TemplateStorageService> logger)
     {
@@ -30,7 +30,7 @@ public class TemplateStorageService : ITemplateStorageService
         _expirationMinutes = configuration.GetValue("TemplateExpiration:ExpirationMinutes", 30);
     }
 
-    public async Task<CoreModels.EnvironmentTemplate> StoreTemplateAsync(string name, object template, CancellationToken cancellationToken = default)
+    public async Task<CoreModels.InfrastructureTemplate> StoreTemplateAsync(string name, object template, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Storing template: {TemplateName}", name);
 
@@ -49,7 +49,7 @@ public class TemplateStorageService : ITemplateStorageService
         // Extract template properties and files
         var (templateData, files) = ExtractTemplateDataAndFiles(template);
         
-        var newTemplate = new DataEntities.EnvironmentTemplate
+        var newTemplate = new DataEntities.InfrastructureTemplate
         {
             Id = Guid.NewGuid(),
             Name = name,
@@ -120,7 +120,7 @@ public class TemplateStorageService : ITemplateStorageService
             ?? throw new InvalidOperationException($"Failed to load newly created template {newTemplate.Id}");
     }
 
-    public async Task<List<CoreModels.EnvironmentTemplate>> ListAllTemplatesAsync(CancellationToken cancellationToken = default)
+    public async Task<List<CoreModels.InfrastructureTemplate>> ListAllTemplatesAsync(CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Listing all active templates");
 
@@ -129,7 +129,7 @@ public class TemplateStorageService : ITemplateStorageService
         return entities.Select(MapToDto).ToList();
     }
 
-    public async Task<CoreModels.EnvironmentTemplate?> GetTemplateByNameAsync(string name, CancellationToken cancellationToken = default)
+    public async Task<CoreModels.InfrastructureTemplate?> GetTemplateByNameAsync(string name, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Getting template: {TemplateName}", name);
 
@@ -144,7 +144,7 @@ public class TemplateStorageService : ITemplateStorageService
         return entity != null ? MapToDto(entity) : null;
     }
 
-    public async Task<CoreModels.EnvironmentTemplate?> GetTemplateByIdAsync(string id, CancellationToken cancellationToken = default)
+    public async Task<CoreModels.InfrastructureTemplate?> GetTemplateByIdAsync(string id, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Getting template by ID: {TemplateId}", id);
 
@@ -234,7 +234,7 @@ public class TemplateStorageService : ITemplateStorageService
         return pushResult;
     }
 
-    public async Task<CoreModels.EnvironmentTemplate> UpdateTemplateAsync(string name, object template, CancellationToken cancellationToken = default)
+    public async Task<CoreModels.InfrastructureTemplate> UpdateTemplateAsync(string name, object template, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Updating template: {TemplateName}", name);
 
@@ -287,7 +287,7 @@ public class TemplateStorageService : ITemplateStorageService
         return MapToDto(existingTemplate);
     }
 
-    public async Task<List<CoreModels.EnvironmentTemplate>> GetTemplatesByTypeAsync(string templateType, CancellationToken cancellationToken = default)
+    public async Task<List<CoreModels.InfrastructureTemplate>> GetTemplatesByTypeAsync(string templateType, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Getting templates by type: {TemplateType}", templateType);
 
@@ -312,7 +312,7 @@ public class TemplateStorageService : ITemplateStorageService
         return entities.Select(MapVersionToDto).ToList();
     }
 
-    public async Task<List<CoreModels.EnvironmentTemplate>> GetTemplatesByConversationIdAsync(string conversationId, CancellationToken cancellationToken = default)
+    public async Task<List<CoreModels.InfrastructureTemplate>> GetTemplatesByConversationIdAsync(string conversationId, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Getting templates for conversation: {ConversationId}", conversationId);
         
@@ -323,7 +323,7 @@ public class TemplateStorageService : ITemplateStorageService
         return templates.Select(MapToDto).ToList();
     }
 
-    public async Task<CoreModels.EnvironmentTemplate?> GetLatestTemplateAsync(CancellationToken cancellationToken = default)
+    public async Task<CoreModels.InfrastructureTemplate?> GetLatestTemplateAsync(CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Getting latest template");
         
@@ -434,7 +434,7 @@ public class TemplateStorageService : ITemplateStorageService
         object actualTemplate = template;
 
         // Extract template data from the actual template object
-        if (actualTemplate is CoreModels.EnvironmentTemplate envTemplate)
+        if (actualTemplate is CoreModels.InfrastructureTemplate envTemplate)
         {
             templateData.Description = envTemplate.Description ?? "Generated template";
             templateData.TemplateType = envTemplate.TemplateType ?? "microservice";
@@ -594,11 +594,11 @@ public class TemplateStorageService : ITemplateStorageService
     }
 
     /// <summary>
-    /// Maps Data Entity to Core DTO for EnvironmentTemplate
+    /// Maps Data Entity to Core DTO for InfrastructureTemplate
     /// </summary>
-    private static CoreModels.EnvironmentTemplate MapToDto(DataEntities.EnvironmentTemplate entity)
+    private static CoreModels.InfrastructureTemplate MapToDto(DataEntities.InfrastructureTemplate entity)
     {
-        return new CoreModels.EnvironmentTemplate
+        return new CoreModels.InfrastructureTemplate
         {
             Id = entity.Id,
             Name = entity.Name,

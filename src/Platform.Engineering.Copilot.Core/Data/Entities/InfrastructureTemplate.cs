@@ -4,10 +4,24 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace Platform.Engineering.Copilot.Core.Data.Entities;
 
 /// <summary>
-/// Environment template entity for storing reusable infrastructure templates
+/// IAC TEMPLATE (Infrastructure Agent) - AI-Generated, Temporary
+/// ═══════════════════════════════════════════════════════════════════════════════
+/// 
+/// Purpose: Stores AI-generated Bicep/ARM/Terraform templates created on-demand.
+/// 
+/// Lifecycle: TEMPORARY - Default 30-minute expiry, auto-cleaned by TemplateCleanupBackgroundService.
+/// 
+/// Service Chain: TemplateStorageService → IInfrastructureTemplateRepository → This Entity
+/// 
+/// Use Case: User says "Create a storage account with private endpoints" → 
+///           AI generates custom IaC → Stored here → User deploys → Template expires
+/// 
+/// ─────────────────────────────────────────────────────────────────────────────
+/// DO NOT CONFUSE WITH: ServiceTemplateEntity (pre-approved, permanent catalog)
+/// ─────────────────────────────────────────────────────────────────────────────
 /// </summary>
-[Table("EnvironmentTemplates")]
-public class EnvironmentTemplate
+[Table("InfrastructureTemplates")]
+public class InfrastructureTemplate
 {
     [Key]
     public Guid Id { get; set; }
@@ -100,7 +114,7 @@ public class EnvironmentTemplate
     public TemplateFile? EntryPointFile => Files?.FirstOrDefault(f => f.IsEntryPoint);
     
     // Navigation properties
-    public virtual ICollection<EnvironmentDeployment> Deployments { get; set; } = new List<EnvironmentDeployment>();
+    public virtual ICollection<InfrastructureDeployment> Deployments { get; set; } = new List<InfrastructureDeployment>();
     public virtual ICollection<TemplateVersion> Versions { get; set; } = new List<TemplateVersion>();
     public virtual ICollection<TemplateFile> Files { get; set; } = new List<TemplateFile>();
 }
@@ -136,7 +150,7 @@ public class TemplateVersion
     
     // Navigation properties
     [ForeignKey("TemplateId")]
-    public virtual EnvironmentTemplate Template { get; set; } = null!;
+    public virtual InfrastructureTemplate Template { get; set; } = null!;
 }
 
 /// <summary>
@@ -175,5 +189,5 @@ public class TemplateFile
     
     // Navigation properties
     [ForeignKey("TemplateId")]
-    public virtual EnvironmentTemplate Template { get; set; } = null!;
+    public virtual InfrastructureTemplate Template { get; set; } = null!;
 }

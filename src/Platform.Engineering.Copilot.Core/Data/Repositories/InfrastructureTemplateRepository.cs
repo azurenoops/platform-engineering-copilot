@@ -8,14 +8,14 @@ namespace Platform.Engineering.Copilot.Core.Data.Repositories;
 /// <summary>
 /// EF Core implementation of environment template repository
 /// </summary>
-public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
+public class InfrastructureTemplateRepository : IInfrastructureTemplateRepository
 {
     private readonly PlatformEngineeringCopilotContext _context;
-    private readonly ILogger<EnvironmentTemplateRepository> _logger;
+    private readonly ILogger<InfrastructureTemplateRepository> _logger;
 
-    public EnvironmentTemplateRepository(
+    public InfrastructureTemplateRepository(
         PlatformEngineeringCopilotContext context,
-        ILogger<EnvironmentTemplateRepository> logger)
+        ILogger<InfrastructureTemplateRepository> logger)
     {
         _context = context;
         _logger = logger;
@@ -23,74 +23,74 @@ public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
 
     // ==================== Template Operations ====================
 
-    public async Task<EnvironmentTemplate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<InfrastructureTemplate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentTemplates
+        return await _context.InfrastructureTemplates
             .Include(t => t.Files)
             .Include(t => t.Versions)
             .FirstOrDefaultAsync(t => t.Id == id && t.IsActive, cancellationToken);
     }
 
-    public async Task<EnvironmentTemplate?> GetByIdWithFilesAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<InfrastructureTemplate?> GetByIdWithFilesAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentTemplates
+        return await _context.InfrastructureTemplates
             .Include(t => t.Files)
             .FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
     }
 
-    public async Task<EnvironmentTemplate?> GetActiveByNameAsync(string name, CancellationToken cancellationToken = default)
+    public async Task<InfrastructureTemplate?> GetActiveByNameAsync(string name, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentTemplates
+        return await _context.InfrastructureTemplates
             .Include(t => t.Files)
             .Include(t => t.Versions)
             .FirstOrDefaultAsync(t => t.Name == name && t.IsActive, cancellationToken);
     }
 
-    public Task<EnvironmentTemplate?> GetByNameAsync(string name, CancellationToken cancellationToken = default)
+    public Task<InfrastructureTemplate?> GetByNameAsync(string name, CancellationToken cancellationToken = default)
     {
         // Alias for GetActiveByNameAsync
         return GetActiveByNameAsync(name, cancellationToken);
     }
 
-    public async Task<EnvironmentTemplate?> GetLatestAsync(CancellationToken cancellationToken = default)
+    public async Task<InfrastructureTemplate?> GetLatestAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentTemplates
+        return await _context.InfrastructureTemplates
             .Include(t => t.Files)
             .Where(t => t.IsActive)
             .OrderByDescending(t => t.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<EnvironmentTemplate>> GetByConversationIdAsync(string conversationId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InfrastructureTemplate>> GetByConversationIdAsync(string conversationId, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentTemplates
+        return await _context.InfrastructureTemplates
             .Include(t => t.Files)
             .Where(t => t.IsActive && t.Tags != null && t.Tags.Contains(conversationId))
             .OrderByDescending(t => t.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<EnvironmentTemplate>> GetAllActiveAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InfrastructureTemplate>> GetAllActiveAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentTemplates
+        return await _context.InfrastructureTemplates
             .Where(t => t.IsActive)
             .OrderBy(t => t.Name)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<EnvironmentTemplate>> GetByTypeAsync(string templateType, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InfrastructureTemplate>> GetByTypeAsync(string templateType, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentTemplates
+        return await _context.InfrastructureTemplates
             .Where(t => t.IsActive && t.TemplateType == templateType)
             .OrderBy(t => t.Name)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<EnvironmentTemplate>> SearchByTagsAsync(string searchTerm, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InfrastructureTemplate>> SearchByTagsAsync(string searchTerm, CancellationToken cancellationToken = default)
     {
         var normalizedSearch = searchTerm.ToLowerInvariant();
         
-        return await _context.EnvironmentTemplates
+        return await _context.InfrastructureTemplates
             .Where(t => t.IsActive && 
                        t.Tags != null && 
                        t.Tags.ToLower().Contains(normalizedSearch))
@@ -98,11 +98,11 @@ public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<EnvironmentTemplate>> SearchAsync(string searchTerm, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InfrastructureTemplate>> SearchAsync(string searchTerm, CancellationToken cancellationToken = default)
     {
         var normalizedSearch = searchTerm.ToLowerInvariant();
         
-        return await _context.EnvironmentTemplates
+        return await _context.InfrastructureTemplates
             .Where(t => t.IsActive && 
                        (t.Name.ToLower().Contains(normalizedSearch) ||
                         (t.Description != null && t.Description.ToLower().Contains(normalizedSearch)) ||
@@ -111,40 +111,40 @@ public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<EnvironmentTemplate>> GetSoftDeletedByNameAsync(string name, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InfrastructureTemplate>> GetSoftDeletedByNameAsync(string name, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentTemplates
+        return await _context.InfrastructureTemplates
             .Where(t => t.Name == name && !t.IsActive)
             .ToListAsync(cancellationToken);
     }
 
     public async Task<bool> ExistsActiveAsync(string name, CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentTemplates
+        return await _context.InfrastructureTemplates
             .AnyAsync(t => t.Name == name && t.IsActive, cancellationToken);
     }
 
     public async Task<int> CountActiveAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.EnvironmentTemplates
+        return await _context.InfrastructureTemplates
             .CountAsync(t => t.IsActive, cancellationToken);
     }
 
-    public async Task<EnvironmentTemplate> AddAsync(EnvironmentTemplate template, CancellationToken cancellationToken = default)
+    public async Task<InfrastructureTemplate> AddAsync(InfrastructureTemplate template, CancellationToken cancellationToken = default)
     {
         template.Id = template.Id == Guid.Empty ? Guid.NewGuid() : template.Id;
         template.CreatedAt = DateTime.UtcNow;
         template.UpdatedAt = DateTime.UtcNow;
 
-        _context.EnvironmentTemplates.Add(template);
+        _context.InfrastructureTemplates.Add(template);
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogDebug("Created EnvironmentTemplate {TemplateId}: {TemplateName}", template.Id, template.Name);
+        _logger.LogDebug("Created InfrastructureTemplate {TemplateId}: {TemplateName}", template.Id, template.Name);
 
         return template;
     }
 
-    public Task<EnvironmentTemplate> CreateAsync(EnvironmentTemplate template, CancellationToken cancellationToken = default)
+    public Task<InfrastructureTemplate> CreateAsync(InfrastructureTemplate template, CancellationToken cancellationToken = default)
     {
         // Alias for AddAsync
         return AddAsync(template, cancellationToken);
@@ -152,7 +152,7 @@ public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
 
     public async Task CleanupSoftDeletedByNameAsync(string name, CancellationToken cancellationToken = default)
     {
-        var softDeletedTemplates = await _context.EnvironmentTemplates
+        var softDeletedTemplates = await _context.InfrastructureTemplates
             .Where(t => t.Name == name && !t.IsActive)
             .ToListAsync(cancellationToken);
 
@@ -174,27 +174,27 @@ public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
             _context.TemplateFiles.RemoveRange(files);
         }
 
-        _context.EnvironmentTemplates.RemoveRange(softDeletedTemplates);
+        _context.InfrastructureTemplates.RemoveRange(softDeletedTemplates);
         await _context.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Cleaned up {Count} soft-deleted template(s)", softDeletedTemplates.Count);
     }
 
-    public async Task<EnvironmentTemplate> UpdateAsync(EnvironmentTemplate template, CancellationToken cancellationToken = default)
+    public async Task<InfrastructureTemplate> UpdateAsync(InfrastructureTemplate template, CancellationToken cancellationToken = default)
     {
         template.UpdatedAt = DateTime.UtcNow;
 
-        _context.EnvironmentTemplates.Update(template);
+        _context.InfrastructureTemplates.Update(template);
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogDebug("Updated EnvironmentTemplate {TemplateId}: {TemplateName}", template.Id, template.Name);
+        _logger.LogDebug("Updated InfrastructureTemplate {TemplateId}: {TemplateName}", template.Id, template.Name);
 
         return template;
     }
 
     public async Task<bool> SoftDeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var template = await _context.EnvironmentTemplates.FindAsync(new object[] { id }, cancellationToken);
+        var template = await _context.InfrastructureTemplates.FindAsync(new object[] { id }, cancellationToken);
         if (template == null)
             return false;
 
@@ -203,13 +203,13 @@ public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogDebug("Soft deleted EnvironmentTemplate {TemplateId}", id);
+        _logger.LogDebug("Soft deleted InfrastructureTemplate {TemplateId}", id);
         return true;
     }
 
     public async Task<bool> HardDeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var template = await _context.EnvironmentTemplates
+        var template = await _context.InfrastructureTemplates
             .Include(t => t.Files)
             .FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
             
@@ -222,16 +222,16 @@ public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
             _context.TemplateFiles.RemoveRange(template.Files);
         }
 
-        _context.EnvironmentTemplates.Remove(template);
+        _context.InfrastructureTemplates.Remove(template);
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogDebug("Hard deleted EnvironmentTemplate {TemplateId} with {FileCount} files", id, template.Files.Count);
+        _logger.LogDebug("Hard deleted InfrastructureTemplate {TemplateId} with {FileCount} files", id, template.Files.Count);
         return true;
     }
 
     public async Task<int> HardDeleteRangeAsync(IEnumerable<Guid> ids, CancellationToken cancellationToken = default)
     {
-        var templates = await _context.EnvironmentTemplates
+        var templates = await _context.InfrastructureTemplates
             .Include(t => t.Files)
             .Where(t => ids.Contains(t.Id))
             .ToListAsync(cancellationToken);
@@ -246,10 +246,10 @@ public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
             _context.TemplateFiles.RemoveRange(allFiles);
         }
 
-        _context.EnvironmentTemplates.RemoveRange(templates);
+        _context.InfrastructureTemplates.RemoveRange(templates);
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogDebug("Hard deleted {Count} EnvironmentTemplates", templates.Count);
+        _logger.LogDebug("Hard deleted {Count} InfrastructureTemplates", templates.Count);
         return templates.Count;
     }
 
@@ -344,7 +344,7 @@ public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
 
     public async Task<int> UnlinkDeploymentsAsync(Guid templateId, CancellationToken cancellationToken = default)
     {
-        var deployments = await _context.EnvironmentDeployments
+        var deployments = await _context.InfrastructureDeployments
             .Where(d => d.TemplateId == templateId)
             .ToListAsync(cancellationToken);
 
@@ -364,10 +364,10 @@ public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
 
     // ==================== Expiration Operations ====================
 
-    public async Task<IReadOnlyList<EnvironmentTemplate>> GetExpiredTemplatesAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InfrastructureTemplate>> GetExpiredTemplatesAsync(CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
-        return await _context.EnvironmentTemplates
+        return await _context.InfrastructureTemplates
             .Include(t => t.Files)
             .Where(t => t.ExpiresAt != null && t.ExpiresAt < now)
             .ToListAsync(cancellationToken);
@@ -376,7 +376,7 @@ public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
     public async Task<int> DeleteExpiredTemplatesAsync(CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
-        var expiredTemplates = await _context.EnvironmentTemplates
+        var expiredTemplates = await _context.InfrastructureTemplates
             .Include(t => t.Files)
             .Where(t => t.ExpiresAt != null && t.ExpiresAt < now)
             .ToListAsync(cancellationToken);
@@ -412,7 +412,7 @@ public class EnvironmentTemplateRepository : IEnvironmentTemplateRepository
         }
 
         // Delete the templates
-        _context.EnvironmentTemplates.RemoveRange(expiredTemplates);
+        _context.InfrastructureTemplates.RemoveRange(expiredTemplates);
         await _context.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Successfully deleted {Count} expired templates with {FileCount} files", 

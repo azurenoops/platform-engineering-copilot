@@ -57,8 +57,32 @@ namespace Platform.Engineering.Copilot.Core.Models.EnvironmentManagement
     public class EnvironmentCreationRequest
     {
         public string Name { get; set; } = string.Empty;
+        
+        /// <summary>Alias for Name property</summary>
+        public string EnvironmentName
+        {
+            get => Name;
+            set => Name = value;
+        }
+        
         public EnvironmentType Type { get; set; }
+        
+        /// <summary>Alias for Type property (accepts string)</summary>
+        public string EnvironmentType
+        {
+            get => Type.ToString();
+            set => Type = Enum.TryParse<EnvironmentType>(value, true, out var t) ? t : EnvironmentManagement.EnvironmentType.Unknown;
+        }
+        
         public string ResourceGroup { get; set; } = string.Empty;
+        
+        /// <summary>Alias for ResourceGroup property</summary>
+        public string ResourceGroupName
+        {
+            get => ResourceGroup;
+            set => ResourceGroup = value;
+        }
+        
         public string Location { get; set; } = "eastus";
         public string? SubscriptionId { get; set; }
         public int? NodeCount { get; set; }
@@ -83,11 +107,36 @@ namespace Platform.Engineering.Copilot.Core.Models.EnvironmentManagement
     public class EnvironmentCloneRequest
     {
         public string SourceEnvironment { get; set; } = string.Empty;
+        
+        /// <summary>Alias for SourceEnvironment</summary>
+        public string SourceEnvironmentName
+        {
+            get => SourceEnvironment;
+            set => SourceEnvironment = value;
+        }
+        
         public string SourceResourceGroup { get; set; } = string.Empty;
         public List<string> TargetEnvironments { get; set; } = new();
+        
+        /// <summary>Alias for TargetEnvironments</summary>
+        public List<string> TargetEnvironmentNames
+        {
+            get => TargetEnvironments;
+            set => TargetEnvironments = value;
+        }
+        
         public string TargetResourceGroup { get; set; } = string.Empty;
-        public string TargetLocation { get; set; } = string.Empty;
+        public string? TargetLocation { get; set; }
+        public string? SubscriptionId { get; set; }
         public bool PreserveData { get; set; } = false;
+        
+        /// <summary>Alias for PreserveData</summary>
+        public bool IncludeData
+        {
+            get => PreserveData;
+            set => PreserveData = value;
+        }
+        
         public bool IncludePipelines { get; set; } = true;
         public bool CloneConfiguration { get; set; } = true;
         public Dictionary<string, string>? ConfigurationOverrides { get; set; }
@@ -457,5 +506,132 @@ namespace Platform.Engineering.Copilot.Core.Models.EnvironmentManagement
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
         public bool IsActive { get; set; } = true;
+    }
+
+    // ========== DEPLOYMENT STRATEGY MODELS ==========
+    
+    /// <summary>
+    /// Scaling type for environment scaling operations
+    /// </summary>
+    public enum ScaleType
+    {
+        Horizontal,
+        Vertical
+    }
+
+    /// <summary>
+    /// Request for blue-green deployment
+    /// </summary>
+    public class BlueGreenDeploymentRequest
+    {
+        public string EnvironmentName { get; set; } = string.Empty;
+        public string ResourceGroup { get; set; } = string.Empty;
+        public string? SubscriptionId { get; set; }
+        public string? Image { get; set; }
+        public string? Version { get; set; }
+        public bool RunSmokeTests { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Result of blue-green deployment
+    /// </summary>
+    public class BlueGreenDeploymentResult
+    {
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+        public string? BlueEnvironment { get; set; }
+        public string? GreenEnvironment { get; set; }
+        public string? ActiveEnvironment { get; set; }
+        public bool SmokeTestsPassed { get; set; }
+    }
+
+    /// <summary>
+    /// Request for canary deployment
+    /// </summary>
+    public class CanaryDeploymentRequest
+    {
+        public string EnvironmentName { get; set; } = string.Empty;
+        public string ResourceGroup { get; set; } = string.Empty;
+        public string? SubscriptionId { get; set; }
+        public string? Image { get; set; }
+        public string? Version { get; set; }
+        public int InitialTrafficPercentage { get; set; } = 10;
+        public bool EnableAutoRollback { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Result of canary deployment
+    /// </summary>
+    public class CanaryDeploymentResult
+    {
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+        public int CurrentTrafficPercentage { get; set; }
+        public CanaryMetrics? Metrics { get; set; }
+    }
+
+    /// <summary>
+    /// Metrics for canary deployment monitoring
+    /// </summary>
+    public class CanaryMetrics
+    {
+        public double? ErrorRate { get; set; }
+        public int? Latency { get; set; }
+        public int? RequestCount { get; set; }
+    }
+
+    /// <summary>
+    /// Request for rolling update deployment
+    /// </summary>
+    public class RollingUpdateRequest
+    {
+        public string EnvironmentName { get; set; } = string.Empty;
+        public string ResourceGroup { get; set; } = string.Empty;
+        public string? SubscriptionId { get; set; }
+        public string? Image { get; set; }
+        public string? Version { get; set; }
+        public bool EnableAutoRollback { get; set; } = true;
+        public int MaxUnavailable { get; set; } = 1;
+        public int MaxSurge { get; set; } = 1;
+    }
+
+    /// <summary>
+    /// Result of rolling update deployment
+    /// </summary>
+    public class RollingUpdateResult
+    {
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+        public int TotalInstances { get; set; }
+        public int InstancesUpdated { get; set; }
+        public int FailedInstances { get; set; }
+    }
+
+    // ========== DRIFT DETECTION MODELS ==========
+
+    /// <summary>
+    /// Result of configuration drift detection
+    /// </summary>
+    public class DriftDetectionResult
+    {
+        public bool HasDrift { get; set; }
+        public int TotalDifferences { get; set; }
+        public int CriticalCount { get; set; }
+        public int WarningCount { get; set; }
+        public int InfoCount { get; set; }
+        public DateTime DetectionTimestamp { get; set; } = DateTime.UtcNow;
+        public List<ConfigurationDifference> Differences { get; set; } = new();
+    }
+
+    /// <summary>
+    /// A single configuration difference
+    /// </summary>
+    public class ConfigurationDifference
+    {
+        public string Category { get; set; } = string.Empty;
+        public string PropertyName { get; set; } = string.Empty;
+        public string Severity { get; set; } = "info";
+        public string? CurrentValue { get; set; }
+        public string? ExpectedValue { get; set; }
     }
 }

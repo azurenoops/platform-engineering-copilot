@@ -4,10 +4,19 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace Platform.Engineering.Copilot.Core.Data.Entities;
 
 /// <summary>
-/// Environment deployment entity for tracking all deployments
+/// IAC DEPLOYMENT (Infrastructure Agent) - Tracks AI-generated template deployments
+/// ═══════════════════════════════════════════════════════════════════════════════
+/// 
+/// Purpose: Tracks deployments of AI-generated IaC templates to Azure.
+/// 
+/// Related: InfrastructureTemplate (the source template for this deployment)
+/// 
+/// ─────────────────────────────────────────────────────────────────────────────
+/// DO NOT CONFUSE WITH: ProvisionedEnvironmentEntity (tracks Service Template deployments)
+/// ─────────────────────────────────────────────────────────────────────────────
 /// </summary>
-[Table("EnvironmentDeployments")]
-public class EnvironmentDeployment
+[Table("InfrastructureDeployments")]
+public class InfrastructureDeployment
 {
     [Key]
     public Guid Id { get; set; }
@@ -68,11 +77,9 @@ public class EnvironmentDeployment
     
     // Navigation properties
     [ForeignKey("TemplateId")]
-    public virtual EnvironmentTemplate? Template { get; set; }
+    public virtual InfrastructureTemplate? Template { get; set; }
     
     public virtual ICollection<DeploymentHistory> History { get; set; } = new List<DeploymentHistory>();
-    public virtual ICollection<EnvironmentMetrics> Metrics { get; set; } = new List<EnvironmentMetrics>();
-    public virtual ICollection<ScalingPolicy> ScalingPolicies { get; set; } = new List<ScalingPolicy>();
 }
 
 /// <summary>
@@ -109,5 +116,5 @@ public class DeploymentHistory
     
     // Navigation properties
     [ForeignKey("DeploymentId")]
-    public virtual EnvironmentDeployment Deployment { get; set; } = null!;
+    public virtual InfrastructureDeployment Deployment { get; set; } = null!;
 }

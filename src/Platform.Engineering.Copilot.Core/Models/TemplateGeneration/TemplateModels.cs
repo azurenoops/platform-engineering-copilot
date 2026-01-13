@@ -5,7 +5,7 @@ namespace Platform.Engineering.Copilot.Core.Models;
 /// <summary>
 /// Environment template DTO for storing reusable infrastructure templates
 /// </summary>
-public class EnvironmentTemplate
+public class InfrastructureTemplate
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;

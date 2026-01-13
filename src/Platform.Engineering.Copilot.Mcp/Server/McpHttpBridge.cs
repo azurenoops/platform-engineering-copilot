@@ -444,7 +444,7 @@ public class McpHttpBridge
                 
                 try
                 {
-                    templateCount = await dbContext.EnvironmentTemplates.CountAsync();
+                    templateCount = await dbContext.InfrastructureTemplates.CountAsync();
                     fileCount = await dbContext.TemplateFiles.CountAsync();
                 }
                 catch (Exception ex)

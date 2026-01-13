@@ -1,0 +1,272 @@
+@page "/templates/create"
+@inject TemplateApiService TemplateApi
+@inject NavigationManager Navigation
+@inject IToastService ToastService
+
+<div class="mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="templates">Service Templates</a></li>
+            <li class="breadcrumb-item active">Create Service Template</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <i class="fa fa-cube me-2"></i>Create Service Template
+            </div>
+            <div class="card-body">
+                <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+                    <DataAnnotationsValidator />
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Template Name <span class="text-danger">*</span></label>
+                            <InputText class="form-control" @bind-Value="_model.Name" placeholder="e.g., aks-cluster-standard" />
+                            <ValidationMessage For="@(() => _model.Name)" />
+                            <small class="text-muted">Unique identifier, no spaces</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Display Name</label>
+                            <InputText class="form-control" @bind-Value="_model.DisplayName" placeholder="e.g., Standard AKS Cluster" />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <InputTextArea class="form-control" rows="3" @bind-Value="_model.Description" 
+                                       placeholder="Describe what this template provisions and when to use it" />
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Version</label>
+                            <InputText class="form-control" @bind-Value="_model.Version" placeholder="1.0.0" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Category</label>
+                            <InputSelect class="form-select" @bind-Value="_model.Category">
+                                <option value="">Select category...</option>
+                                <option value="Compute">Compute</option>
+                                <option value="Kubernetes">Kubernetes</option>
+                                <option value="Database">Database</option>
+                                <option value="Storage">Storage</option>
+                                <option value="Networking">Networking</option>
+                                <option value="Security">Security</option>
+                                <option value="AI/ML">AI/ML</option>
+                                <option value="Development">Development</option>
+                                <option value="Other">Other</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Format</label>
+                            <InputSelect class="form-select" @bind-Value="_model.Format">
+                                <option value="Bicep">Bicep</option>
+                                <option value="ARM">ARM Template</option>
+                                <option value="Terraform">Terraform</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Template Content</label>
+                        <InputTextArea class="form-control code-editor" rows="15" @bind-Value="_model.TemplateContent" 
+                                       placeholder="Paste your Bicep, ARM, or Terraform template here..." />
+                    </div>
+
+                    <hr class="my-4" />
+                    <h6 class="mb-3"><i class="fa fa-cog me-2"></i>Settings</h6>
+
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Default Expiration (days)</label>
+                            <InputNumber class="form-control" @bind-Value="_model.DefaultExpirationDays" />
+                            <small class="text-muted">Leave empty for no expiration</small>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label">Compliance Frameworks</label>
+                            <InputText class="form-control" @bind-Value="_complianceInput" 
+                                       placeholder="e.g., NIST-800-53, FedRAMP-High (comma-separated)" />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Keywords</label>
+                        <InputText class="form-control" @bind-Value="_keywordsInput" 
+                                   placeholder="e.g., kubernetes, container, microservices (comma-separated)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">AI Selection Hint</label>
+                        <InputTextArea class="form-control" rows="2" @bind-Value="_model.AiSelectionHint" 
+                                       placeholder="Help AI agents select this template: describe ideal use cases, workload types, etc." />
+                    </div>
+
+                    <div class="form-check mb-4">
+                        <InputCheckbox class="form-check-input" @bind-Value="_model.RequiresApproval" id="requiresApproval" />
+                        <label class="form-check-label" for="requiresApproval">
+                            Require approval before environments can be provisioned
+                        </label>
+                    </div>
+
+                    <hr class="my-4" />
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary" disabled="@_saving">
+                            @if (_saving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="fa fa-save me-1"></i>Create Template
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" @onclick="ValidateTemplate" disabled="@_validating">
+                            @if (_validating)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="fa fa-check-circle me-1"></i>Validate
+                        </button>
+                        <a href="templates" class="btn btn-outline-secondary">
+                            <i class="fa fa-times me-1"></i>Cancel
+                        </a>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="fa fa-info-circle me-2"></i>Tips
+            </div>
+            <div class="card-body">
+                <ul class="mb-0">
+                    <li class="mb-2">Use descriptive names that indicate the template purpose</li>
+                    <li class="mb-2">Add keywords to improve discoverability</li>
+                    <li class="mb-2">Include AI hints to help agents select the right template</li>
+                    <li class="mb-2">Set expiration for dev/test environments</li>
+                    <li>Validate before saving to catch errors early</li>
+                </ul>
+            </div>
+        </div>
+
+        @if (_validationResult != null)
+        {
+            <div class="card">
+                <div class="card-header @(_validationResult.IsValid ? "bg-success text-white" : "bg-danger text-white")">
+                    <i class="fa @(_validationResult.IsValid ? "fa-check-circle" : "fa-times-circle") me-2"></i>
+                    Validation Result
+                </div>
+                <div class="card-body">
+                    @if (_validationResult.IsValid)
+                    {
+                        <p class="text-success mb-0"><i class="fa fa-check me-1"></i>Template is valid</p>
+                    }
+                    else
+                    {
+                        <h6 class="text-danger">Errors:</h6>
+                        <ul class="text-danger">
+                            @foreach (var error in _validationResult.Errors)
+                            {
+                                <li>@error</li>
+                            }
+                        </ul>
+                    }
+                    @if (_validationResult.Warnings?.Count > 0)
+                    {
+                        <h6 class="text-warning mt-3">Warnings:</h6>
+                        <ul class="text-warning">
+                            @foreach (var warning in _validationResult.Warnings)
+                            {
+                                <li>@warning</li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private CreateTemplateModel _model = new()
+    {
+        Version = "1.0.0",
+        Category = "Compute",
+        Format = "Bicep"
+    };
+    
+    private bool _saving;
+    private bool _validating;
+    private string _keywordsInput = "";
+    private string _complianceInput = "";
+    private ValidationResult? _validationResult;
+
+    private async Task HandleSubmit()
+    {
+        _saving = true;
+        try
+        {
+            // Parse comma-separated inputs
+            _model.Keywords = string.IsNullOrWhiteSpace(_keywordsInput) 
+                ? null 
+                : _keywordsInput.Split(',').Select(k => k.Trim()).Where(k => !string.IsNullOrEmpty(k)).ToList();
+            
+            _model.ComplianceFrameworks = string.IsNullOrWhiteSpace(_complianceInput) 
+                ? null 
+                : _complianceInput.Split(',').Select(k => k.Trim()).Where(k => !string.IsNullOrEmpty(k)).ToList();
+
+            _model.CreatedBy = "admin";
+
+            var result = await TemplateApi.CreateTemplateAsync(_model);
+            
+            ToastService.ShowSuccess($"Template '{result?.DisplayName ?? _model.Name}' created successfully");
+            Navigation.NavigateTo($"templates/{result?.Id}");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to create template: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ValidateTemplate()
+    {
+        _validating = true;
+        _validationResult = null;
+        
+        try
+        {
+            _validationResult = await TemplateApi.ValidateTemplateAsync(new ValidateTemplateModel
+            {
+                Name = _model.Name,
+                TemplateContent = _model.TemplateContent,
+                Format = _model.Format
+            });
+
+            if (_validationResult.IsValid)
+            {
+                ToastService.ShowSuccess("Template validation passed");
+            }
+            else
+            {
+                ToastService.ShowError($"Validation failed with {_validationResult.Errors.Count} errors");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Validation error: {ex.Message}");
+        }
+        finally
+        {
+            _validating = false;
+        }
+    }
+}

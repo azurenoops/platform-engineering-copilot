@@ -5,64 +5,64 @@ namespace Platform.Engineering.Copilot.Core.Data.Repositories;
 /// <summary>
 /// Repository interface for environment template operations
 /// </summary>
-public interface IEnvironmentTemplateRepository
+public interface IInfrastructureTemplateRepository
 {
     // ==================== Template Operations ====================
     
     /// <summary>
     /// Get a template by ID
     /// </summary>
-    Task<EnvironmentTemplate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<InfrastructureTemplate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get a template by ID with related files
     /// </summary>
-    Task<EnvironmentTemplate?> GetByIdWithFilesAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<InfrastructureTemplate?> GetByIdWithFilesAsync(Guid id, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get an active template by name
     /// </summary>
-    Task<EnvironmentTemplate?> GetActiveByNameAsync(string name, CancellationToken cancellationToken = default);
+    Task<InfrastructureTemplate?> GetActiveByNameAsync(string name, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get an active template by name (alias for GetActiveByNameAsync)
     /// </summary>
-    Task<EnvironmentTemplate?> GetByNameAsync(string name, CancellationToken cancellationToken = default);
+    Task<InfrastructureTemplate?> GetByNameAsync(string name, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get the most recently created active template
     /// </summary>
-    Task<EnvironmentTemplate?> GetLatestAsync(CancellationToken cancellationToken = default);
+    Task<InfrastructureTemplate?> GetLatestAsync(CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get templates by conversation ID (searches Tags JSON field)
     /// </summary>
-    Task<IReadOnlyList<EnvironmentTemplate>> GetByConversationIdAsync(string conversationId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InfrastructureTemplate>> GetByConversationIdAsync(string conversationId, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get all active templates
     /// </summary>
-    Task<IReadOnlyList<EnvironmentTemplate>> GetAllActiveAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InfrastructureTemplate>> GetAllActiveAsync(CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get templates by type
     /// </summary>
-    Task<IReadOnlyList<EnvironmentTemplate>> GetByTypeAsync(string templateType, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InfrastructureTemplate>> GetByTypeAsync(string templateType, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Search templates by tags (JSON contains search)
     /// </summary>
-    Task<IReadOnlyList<EnvironmentTemplate>> SearchByTagsAsync(string searchTerm, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InfrastructureTemplate>> SearchByTagsAsync(string searchTerm, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Search templates by name or description
     /// </summary>
-    Task<IReadOnlyList<EnvironmentTemplate>> SearchAsync(string searchTerm, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InfrastructureTemplate>> SearchAsync(string searchTerm, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get soft-deleted templates by name
     /// </summary>
-    Task<IReadOnlyList<EnvironmentTemplate>> GetSoftDeletedByNameAsync(string name, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InfrastructureTemplate>> GetSoftDeletedByNameAsync(string name, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Check if an active template with the given name exists
@@ -77,12 +77,12 @@ public interface IEnvironmentTemplateRepository
     /// <summary>
     /// Add a new template
     /// </summary>
-    Task<EnvironmentTemplate> AddAsync(EnvironmentTemplate template, CancellationToken cancellationToken = default);
+    Task<InfrastructureTemplate> AddAsync(InfrastructureTemplate template, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Add a new template (alias for AddAsync)
     /// </summary>
-    Task<EnvironmentTemplate> CreateAsync(EnvironmentTemplate template, CancellationToken cancellationToken = default);
+    Task<InfrastructureTemplate> CreateAsync(InfrastructureTemplate template, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Clean up soft-deleted templates by name (hard delete them and unlink deployments)
@@ -92,7 +92,7 @@ public interface IEnvironmentTemplateRepository
     /// <summary>
     /// Update an existing template
     /// </summary>
-    Task<EnvironmentTemplate> UpdateAsync(EnvironmentTemplate template, CancellationToken cancellationToken = default);
+    Task<InfrastructureTemplate> UpdateAsync(InfrastructureTemplate template, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Soft delete a template (set IsActive = false)
@@ -161,7 +161,7 @@ public interface IEnvironmentTemplateRepository
     /// <summary>
     /// Get all templates that have expired (ExpiresAt < DateTime.UtcNow)
     /// </summary>
-    Task<IReadOnlyList<EnvironmentTemplate>> GetExpiredTemplatesAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InfrastructureTemplate>> GetExpiredTemplatesAsync(CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Delete all expired templates and their associated files

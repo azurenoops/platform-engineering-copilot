@@ -1,0 +1,290 @@
+@page "/drift"
+@inject EnvironmentApiService EnvironmentApi
+@inject IToastService ToastService
+
+<PageTitle>Drift Detection</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4><i class="fa fa-exchange-alt me-2"></i>Drift Detection</h4>
+    <button class="btn btn-primary" @onclick="ScanAllForDrift" disabled="@_scanning">
+        @if (_scanning)
+        {
+            <span class="spinner-border spinner-border-sm me-1"></span>
+            <span>Scanning...</span>
+        }
+        else
+        {
+            <i class="fa fa-search me-1"></i>
+            <span>Scan All Environments</span>
+        }
+    </button>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading environments...</span>
+        </div>
+    </div>
+}
+else if (_environments.Count == 0)
+{
+    <div class="alert alert-info">
+        <i class="fa fa-info-circle me-2"></i>
+        No environments found. <a href="environments/create">Provision a new environment</a> to get started.
+    </div>
+}
+else
+{
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h2 class="text-success">@_environments.Count(e => !e.HasDrift)</h2>
+                    <small class="text-muted">In Sync</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h2 class="text-warning">@_environments.Count(e => e.HasDrift)</h2>
+                    <small class="text-muted">With Drift</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h2 class="text-info">@_environments.Sum(e => e.DriftCount)</h2>
+                    <small class="text-muted">Total Drift Items</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h2>@_environments.Count</h2>
+                    <small class="text-muted">Total Environments</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <i class="fa fa-list me-2"></i>Environment Drift Status
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Environment</th>
+                        <th>Template</th>
+                        <th>Status</th>
+                        <th>Drift</th>
+                        <th>Last Checked</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var env in _environments)
+                    {
+                        <tr>
+                            <td>
+                                <a href="environments/@env.Id">@env.Name</a>
+                                @if (!string.IsNullOrEmpty(env.DisplayName))
+                                {
+                                    <br /><small class="text-muted">@env.DisplayName</small>
+                                }
+                            </td>
+                            <td>@env.TemplateName</td>
+                            <td>
+                                <span class="badge @GetStatusBadgeClass(env.Status)">@env.Status</span>
+                            </td>
+                            <td>
+                                @if (env.HasDrift)
+                                {
+                                    <span class="badge bg-warning text-dark">
+                                        <i class="fa fa-exclamation-triangle me-1"></i>
+                                        @env.DriftCount items
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-success">
+                                        <i class="fa fa-check me-1"></i>In Sync
+                                    </span>
+                                }
+                            </td>
+                            <td>
+                                @{
+                                    var result = _driftResults.GetValueOrDefault(env.Id);
+                                }
+                                @if (result != null)
+                                {
+                                    <span title="@result.DetectedAt.ToString("g")">
+                                        @GetRelativeTime(result.DetectedAt)
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Not scanned</span>
+                                }
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" 
+                                            @onclick="() => DetectDrift(env.Id, env.Name)"
+                                            disabled="@(_scanningEnvironments.Contains(env.Id))">
+                                        @if (_scanningEnvironments.Contains(env.Id))
+                                        {
+                                            <span class="spinner-border spinner-border-sm"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="fa fa-search"></i>
+                                        }
+                                    </button>
+                                    @if (env.HasDrift)
+                                    {
+                                        <button class="btn btn-outline-success" 
+                                                @onclick="() => RemediateDrift(env.Id, env.Name)"
+                                                title="Remediate Drift">
+                                            <i class="fa fa-wrench"></i>
+                                        </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _scanning;
+    private List<EnvironmentListItem> _environments = new();
+    private HashSet<string> _scanningEnvironments = new();
+    private Dictionary<string, DriftDetectionResult> _driftResults = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEnvironments();
+    }
+
+    private async Task LoadEnvironments()
+    {
+        try
+        {
+            _environments = await EnvironmentApi.GetEnvironmentsAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load environments: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task DetectDrift(string id, string name)
+    {
+        _scanningEnvironments.Add(id);
+        StateHasChanged();
+        
+        try
+        {
+            var result = await EnvironmentApi.DetectDriftAsync(id);
+            if (result != null)
+            {
+                _driftResults[id] = result;
+                if (result.HasDrift)
+                {
+                    ToastService.ShowWarning($"{name}: {result.DriftCount} drift items detected");
+                }
+                else
+                {
+                    ToastService.ShowSuccess($"{name}: No drift detected");
+                }
+                await LoadEnvironments();
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to scan {name}: {ex.Message}");
+        }
+        finally
+        {
+            _scanningEnvironments.Remove(id);
+            StateHasChanged();
+        }
+    }
+
+    private async Task RemediateDrift(string id, string name)
+    {
+        try
+        {
+            var result = await EnvironmentApi.RemediateDriftAsync(id);
+            if (result?.Success == true)
+            {
+                ToastService.ShowSuccess($"{name}: Drift remediated successfully");
+                await LoadEnvironments();
+            }
+            else
+            {
+                ToastService.ShowError($"Failed to remediate {name}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to remediate {name}: {ex.Message}");
+        }
+    }
+
+    private async Task ScanAllForDrift()
+    {
+        _scanning = true;
+        StateHasChanged();
+        
+        try
+        {
+            var tasks = _environments.Select(e => DetectDrift(e.Id, e.Name));
+            await Task.WhenAll(tasks);
+            ToastService.ShowSuccess("Drift scan completed for all environments");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Scan failed: {ex.Message}");
+        }
+        finally
+        {
+            _scanning = false;
+        }
+    }
+
+    private string GetStatusBadgeClass(string status) => status switch
+    {
+        "Running" => "bg-success",
+        "Provisioning" => "bg-info",
+        "Updating" => "bg-warning text-dark",
+        "Failed" => "bg-danger",
+        "Stopped" => "bg-secondary",
+        _ => "bg-secondary"
+    };
+
+    private string GetRelativeTime(DateTime dt)
+    {
+        var diff = DateTime.UtcNow - dt;
+        if (diff.TotalMinutes < 1) return "Just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        return dt.ToString("MMM d");
+    }
+}
