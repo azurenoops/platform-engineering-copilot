@@ -4,6 +4,7 @@ using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.Discovery.Configuration;
 using Platform.Engineering.Copilot.Agents.Discovery.State;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
+using System.Text;
 
 namespace Platform.Engineering.Copilot.Agents.Discovery.Tools;
 
@@ -101,6 +102,7 @@ public class ResourceTagSearchTool : BaseTool
                 .GroupBy(r => r.Type ?? "Unknown")
                 .Select(g => new { type = g.Key, count = g.Count() })
                 .OrderByDescending(x => x.count)
+                .Cast<dynamic>()
                 .ToList();
 
             // Group by tag value
@@ -109,6 +111,7 @@ public class ResourceTagSearchTool : BaseTool
                 .GroupBy(r => r.Tags![tagKey] ?? "null")
                 .Select(g => new { tagValue = g.Key, count = g.Count() })
                 .OrderByDescending(x => x.count)
+                .Cast<dynamic>()
                 .ToList();
 
             // Build next steps based on results
@@ -124,10 +127,15 @@ public class ResourceTagSearchTool : BaseTool
             nextSteps.Add("Say 'show me details for resource <resource-id>' to inspect specific resources.");
             nextSteps.Add("Consider adding tags to untagged resources by saying 'I need to tag resources in this subscription'.");
 
+            // Build formatted summary
+            var formattedSummary = BuildFormattedSummary(
+                tagKey, tagValue, matchedResources, byType, byTagValue);
+
             return ToJson(new
             {
                 success = true,
                 subscriptionId,
+                formattedSummary,
                 search = new
                 {
                     tagKey,
@@ -163,5 +171,87 @@ public class ResourceTagSearchTool : BaseTool
             Logger.LogError(ex, "Error searching resources by tag in subscription {SubscriptionId}", subscriptionId);
             return ToJson(new { success = false, error = ex.Message });
         }
+    }
+
+    private static string BuildFormattedSummary(
+        string tagKey,
+        string? tagValue,
+        List<Core.Models.Azure.AzureResource> matchedResources,
+        List<dynamic> byType,
+        List<dynamic> byTagValue)
+    {
+        var sb = new StringBuilder();
+        
+        var searchDesc = string.IsNullOrWhiteSpace(tagValue) 
+            ? $"tag key `{tagKey}`" 
+            : $"tag `{tagKey}={tagValue}`";
+        
+        sb.AppendLine($"## 🏷️ Tag Search Results");
+        sb.AppendLine();
+        sb.AppendLine($"**Search:** Resources with {searchDesc}");
+        sb.AppendLine($"**Matches:** {DiscoveryFormatHelpers.Pluralize(matchedResources.Count, "resource")}");
+        sb.AppendLine();
+
+        if (matchedResources.Count == 0)
+        {
+            sb.AppendLine("❌ No resources found matching this tag.");
+            sb.AppendLine();
+            sb.AppendLine("### 💡 Suggestions");
+            sb.AppendLine("- Check the tag key spelling (tags are case-sensitive)");
+            sb.AppendLine("- Try searching for just the tag key without a value");
+            sb.AppendLine("- Common tag keys: `Environment`, `Owner`, `CostCenter`, `Project`");
+            return sb.ToString();
+        }
+
+        // By tag value (if searching by key only)
+        if (string.IsNullOrWhiteSpace(tagValue) && byTagValue.Any())
+        {
+            sb.AppendLine($"### 📊 Values for `{tagKey}`");
+            sb.AppendLine("| Value | Count |");
+            sb.AppendLine("|-------|-------|");
+            foreach (var item in byTagValue.Take(10))
+            {
+                sb.AppendLine($"| `{item.tagValue}` | {item.count} |");
+            }
+            if (byTagValue.Count > 10)
+                sb.AppendLine($"| ... | +{byTagValue.Skip(10).Sum(x => (int)x.count)} more |");
+            sb.AppendLine();
+        }
+
+        // By resource type
+        if (byType.Any())
+        {
+            sb.AppendLine("### 🏷️ By Resource Type");
+            sb.AppendLine("| Type | Count |");
+            sb.AppendLine("|------|-------|");
+            foreach (var item in byType.Take(8))
+            {
+                var icon = DiscoveryFormatHelpers.GetResourceTypeIcon((string)item.type);
+                var friendlyName = DiscoveryFormatHelpers.GetFriendlyTypeName((string)item.type);
+                sb.AppendLine($"| {icon} {friendlyName} | {item.count} |");
+            }
+            if (byType.Count > 8)
+                sb.AppendLine($"| ... | +{byType.Skip(8).Sum(x => (int)x.count)} more |");
+            sb.AppendLine();
+        }
+
+        // Sample resources
+        sb.AppendLine("### 🔍 Matching Resources");
+        foreach (var r in matchedResources.Take(8))
+        {
+            var icon = DiscoveryFormatHelpers.GetResourceTypeIcon(r.Type ?? "Unknown");
+            var tagVal = r.Tags?.GetValueOrDefault(tagKey) ?? "N/A";
+            sb.AppendLine($"- {icon} **{r.Name}** in `{r.ResourceGroup}` → `{tagKey}={tagVal}`");
+        }
+        if (matchedResources.Count > 8)
+            sb.AppendLine($"- ... and {matchedResources.Count - 8} more resources");
+        sb.AppendLine();
+
+        sb.AppendLine("### 💡 Next Steps");
+        sb.AppendLine("- Say **\"Show me details for resource `<name>`\"** to inspect a specific resource");
+        if (string.IsNullOrWhiteSpace(tagValue))
+            sb.AppendLine($"- Say **\"Search for resources with tag `{tagKey}=<value>`\"** to filter by specific value");
+
+        return sb.ToString();
     }
 }

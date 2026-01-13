@@ -49,6 +49,9 @@ public static class ServiceCollectionExtensions
         services.AddOptions<AzureGatewayOptions>()
             .BindConfiguration(AzureGatewayOptions.SectionName);
         
+        // Register Azure Client Factory (required for all Azure operations)
+        services.AddAzureClientFactory();
+        
         // Register caching services
         services.AddMemoryCache(); // Required for IMemoryCache
         
@@ -64,6 +67,9 @@ public static class ServiceCollectionExtensions
         // Register Azure resource service - Singleton (no DbContext dependency)
         services.AddSingleton<IAzureResourceService, AzureResourceService>();
         services.AddSingleton<IAzureResourceService, AzureResourceService>();
+        
+        // Register Azure Resource Graph service - Singleton (no DbContext dependency)
+        services.AddSingleton<Services.Azure.Graph.AzureResourceGraphService>();
         
         // Register Azure resource health service - Singleton (no DbContext dependency)
         services.AddSingleton<IAzureResourceHealthService, AzureResourceHealthService>();

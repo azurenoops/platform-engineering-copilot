@@ -61,10 +61,16 @@ builder.Services.AddSwaggerGen();
 
 // Add Entity Framework - Chat DB
 // Support both SQL Server (Docker) and SQLite (local dev)
-var chatConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+var chatConnectionString = builder.Configuration.GetConnectionString("ChatConnection") 
+    ?? builder.Configuration.GetConnectionString("DefaultConnection");
 if (!string.IsNullOrEmpty(chatConnectionString) && chatConnectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase))
 {
     // SQL Server (Docker environment)
+    // Ensure Chat uses its own database (PlatformChatDb) to avoid table conflicts
+    if (!chatConnectionString.Contains("PlatformChatDb"))
+    {
+        chatConnectionString = chatConnectionString.Replace("Database=PlatformEngineeringCopilot", "Database=PlatformChatDb");
+    }
     Console.WriteLine("[Chat] Using SQL Server for Chat database");
     builder.Services.AddDbContext<ChatDbContext>(options =>
         options.UseSqlServer(chatConnectionString));

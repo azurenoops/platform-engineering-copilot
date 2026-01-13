@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.Discovery.State;
+using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 
 namespace Platform.Engineering.Copilot.Agents.Discovery.Tools;
 
@@ -11,6 +12,7 @@ namespace Platform.Engineering.Copilot.Agents.Discovery.Tools;
 public class ResourceDiscoveryTool : BaseTool
 {
     private readonly DiscoveryStateAccessors _stateAccessors;
+    private readonly IAzureResourceService _resourceService;
 
     public override string Name => "discover_azure_resources";
 
@@ -21,9 +23,11 @@ public class ResourceDiscoveryTool : BaseTool
 
     public ResourceDiscoveryTool(
         ILogger<ResourceDiscoveryTool> logger,
-        DiscoveryStateAccessors stateAccessors) : base(logger)
+        DiscoveryStateAccessors stateAccessors,
+        IAzureResourceService resourceService) : base(logger)
     {
         _stateAccessors = stateAccessors ?? throw new ArgumentNullException(nameof(stateAccessors));
+        _resourceService = resourceService ?? throw new ArgumentNullException(nameof(resourceService));
 
         // Define parameters
         Parameters.Add(new ToolParameter(
@@ -78,14 +82,21 @@ public class ResourceDiscoveryTool : BaseTool
 
             if (!fromCache)
             {
-                // TODO: Integrate with actual Azure resource service
-                // For now, return a placeholder indicating real service integration needed
-                Logger.LogWarning("Resource discovery requires Azure service integration. Returning sample data.");
-                
-                resources = new List<DiscoveredResourceSummary>
+                // Call real Azure API to list all resources
+                Logger.LogInformation("Fetching resources from Azure for subscription {SubscriptionId}", subscriptionId);
+                var azureResources = await _resourceService.ListAllResourcesAsync(subscriptionId, cancellationToken);
+
+                resources = azureResources.Select(r => new DiscoveredResourceSummary
                 {
-                    new() { ResourceId = $"/subscriptions/{subscriptionId}/resourceGroups/rg-sample/providers/Microsoft.Compute/virtualMachines/vm-sample", Name = "vm-sample", Type = "Microsoft.Compute/virtualMachines", Location = "eastus", ResourceGroup = "rg-sample" }
-                };
+                    ResourceId = r.Id ?? string.Empty,
+                    Name = r.Name ?? string.Empty,
+                    Type = r.Type ?? string.Empty,
+                    Location = r.Location ?? string.Empty,
+                    ResourceGroup = r.ResourceGroup ?? string.Empty,
+                    Tags = r.Tags ?? new Dictionary<string, string>()
+                }).ToList();
+
+                Logger.LogInformation("Retrieved {Count} resources from Azure", resources.Count);
             }
 
             // Apply filters
@@ -125,41 +136,57 @@ public class ResourceDiscoveryTool : BaseTool
 
             // Group results
             var byType = resultList.GroupBy(r => r.Type)
+                .OrderByDescending(g => g.Count())
                 .ToDictionary(g => g.Key, g => g.Count());
             var byLocation = resultList.GroupBy(r => r.Location)
+                .OrderByDescending(g => g.Count())
                 .ToDictionary(g => g.Key, g => g.Count());
             var byResourceGroup = resultList.GroupBy(r => r.ResourceGroup)
+                .OrderByDescending(g => g.Count())
                 .ToDictionary(g => g.Key, g => g.Count());
 
-            await Task.CompletedTask; // Satisfy async requirement
+            // Build a formatted summary for the LLM to use
+            var formattedSummary = BuildFormattedSummary(
+                subscriptionId, resultList.Count, byType, byLocation, byResourceGroup, resultList);
 
             return ToJson(new
             {
                 success = true,
                 totalCount = resultList.Count,
                 fromCache,
+                formattedSummary,
                 filters = new
                 {
                     subscriptionId,
-                    resourceGroup,
-                    resourceType,
-                    location,
+                    resourceGroup = resourceGroup ?? "all",
+                    resourceType = resourceType ?? "all types",
+                    location = location ?? "all locations",
                     tagFilter
                 },
                 summary = new
                 {
-                    byType,
-                    byLocation,
-                    byResourceGroup
+                    totalResources = resultList.Count,
+                    uniqueTypes = byType.Count,
+                    uniqueLocations = byLocation.Count,
+                    uniqueResourceGroups = byResourceGroup.Count
                 },
-                resources = resultList.Take(100).Select(r => new
+                breakdown = new
+                {
+                    byType = byType.Take(10),
+                    byLocation,
+                    byResourceGroup = byResourceGroup.Take(10)
+                },
+                resources = resultList.Take(50).Select(r => new
                 {
                     r.ResourceId,
                     r.Name,
-                    r.Type,
+                    type = r.Type,
                     r.Location,
                     r.ResourceGroup
-                })
+                }),
+                nextSteps = resultList.Count > 50 
+                    ? "Results limited to 50 resources - use more specific filters. Say 'I want to see details for resource <resource-id>' to inspect specific resources, 'search for resources with tag Environment' to find tagged resources, or 'give me a complete inventory summary for this subscription' for a full report."
+                    : "Say 'I want to see details for resource <resource-id>' to inspect specific resources, 'search for resources with tag Environment' to find tagged resources, or 'give me a complete inventory summary for this subscription' for a full report."
             });
         }
         catch (Exception ex)
@@ -167,5 +194,84 @@ public class ResourceDiscoveryTool : BaseTool
             Logger.LogError(ex, "Error discovering resources in subscription {SubscriptionId}", subscriptionId);
             return ToJson(new { success = false, error = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Build a formatted markdown summary for better LLM presentation
+    /// </summary>
+    private static string BuildFormattedSummary(
+        string subscriptionId,
+        int totalCount,
+        Dictionary<string, int> byType,
+        Dictionary<string, int> byLocation,
+        Dictionary<string, int> byResourceGroup,
+        List<DiscoveredResourceSummary> resources)
+    {
+        var sb = new System.Text.StringBuilder();
+        
+        // Header with emoji
+        sb.AppendLine($"## 📊 Azure Resource Inventory");
+        sb.AppendLine();
+        sb.AppendLine($"**Subscription:** `{subscriptionId}`");
+        sb.AppendLine($"**Total Resources:** {totalCount}");
+        sb.AppendLine();
+
+        // Resource types with icons
+        sb.AppendLine("### 🏷️ By Resource Type");
+        sb.AppendLine("| Type | Count |");
+        sb.AppendLine("|------|-------|");
+        foreach (var (type, count) in byType.Take(10))
+        {
+            var icon = DiscoveryFormatHelpers.GetResourceTypeIcon(type);
+            var friendlyName = DiscoveryFormatHelpers.GetFriendlyTypeName(type);
+            sb.AppendLine($"| {icon} {friendlyName} | {count} |");
+        }
+        if (byType.Count > 10)
+            sb.AppendLine($"| ... | +{byType.Skip(10).Sum(x => x.Value)} more |");
+        sb.AppendLine();
+
+        // Locations
+        sb.AppendLine("### 🌎 By Location");
+        sb.AppendLine("| Region | Count |");
+        sb.AppendLine("|--------|-------|");
+        foreach (var (loc, count) in byLocation)
+        {
+            var regionName = DiscoveryFormatHelpers.GetFriendlyLocationName(loc);
+            sb.AppendLine($"| {regionName} | {count} |");
+        }
+        sb.AppendLine();
+
+        // Resource groups
+        sb.AppendLine("### 📁 By Resource Group");
+        sb.AppendLine("| Resource Group | Count |");
+        sb.AppendLine("|----------------|-------|");
+        foreach (var (rg, count) in byResourceGroup.Take(10))
+        {
+            sb.AppendLine($"| `{rg}` | {count} |");
+        }
+        if (byResourceGroup.Count > 10)
+            sb.AppendLine($"| ... | +{byResourceGroup.Skip(10).Sum(x => x.Value)} more |");
+        sb.AppendLine();
+
+        // Sample resources
+        if (resources.Count > 0)
+        {
+            sb.AppendLine("### 🔍 Sample Resources");
+            foreach (var r in resources.Take(5))
+            {
+                var icon = DiscoveryFormatHelpers.GetResourceTypeIcon(r.Type);
+                sb.AppendLine($"- {icon} **{r.Name}** ({DiscoveryFormatHelpers.GetFriendlyTypeName(r.Type)}) in `{r.ResourceGroup}`");
+            }
+            if (resources.Count > 5)
+                sb.AppendLine($"- ... and {resources.Count - 5} more resources");
+            sb.AppendLine();
+        }
+
+        sb.AppendLine("### 💡 Next Steps");
+        sb.AppendLine("- Say **\"Show me details for resource `<name>`\"** to inspect a specific resource");
+        sb.AppendLine("- Say **\"List resource groups\"** to see organization");
+        sb.AppendLine("- Say **\"Search for resources with tag `<key>`\"** to find tagged resources");
+
+        return sb.ToString();
     }
 }

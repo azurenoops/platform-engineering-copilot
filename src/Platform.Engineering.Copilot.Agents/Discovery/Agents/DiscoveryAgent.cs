@@ -42,6 +42,10 @@ public class DiscoveryAgent : BaseAgent
         ResourceDetailsTool resourceDetailsTool,
         DependencyMappingTool dependencyMappingTool,
         ResourceHealthTool resourceHealthTool,
+        ResourceGroupListTool resourceGroupListTool,
+        ResourceGroupSummaryTool resourceGroupSummaryTool,
+        ResourceTagSearchTool resourceTagSearchTool,
+        SubscriptionInventoryTool subscriptionInventoryTool,
         IAgentStateManager? agentStateManager = null,
         ISharedMemory? sharedMemory = null,
         IChannelManager? channelManager = null,
@@ -59,6 +63,10 @@ public class DiscoveryAgent : BaseAgent
         RegisterTool(resourceDetailsTool);
         RegisterTool(dependencyMappingTool);
         RegisterTool(resourceHealthTool);
+        RegisterTool(resourceGroupListTool);
+        RegisterTool(resourceGroupSummaryTool);
+        RegisterTool(resourceTagSearchTool);
+        RegisterTool(subscriptionInventoryTool);
 
         Logger.LogInformation("✅ Discovery Agent initialized (Temperature: {Temperature}, MaxTokens: {MaxTokens}, " +
             "HealthMonitoring: {HealthMonitoring}, DependencyMapping: {DependencyMapping})",

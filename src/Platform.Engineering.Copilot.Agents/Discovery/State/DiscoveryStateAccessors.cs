@@ -181,6 +181,31 @@ public class DiscoveryStateAccessors
 
         await _stateManager.SaveAgentStateAsync(conversationId, AgentType, agentState, cancellationToken);
     }
+
+    /// <summary>
+    /// Store the last inventory summary for follow-up queries.
+    /// </summary>
+    public async Task SetLastInventoryAsync(
+        object inventorySummary,
+        CancellationToken cancellationToken = default)
+    {
+        // Store in memory cache for quick retrieval within session
+        _cache.Set("last_inventory_summary", inventorySummary, TimeSpan.FromMinutes(30));
+        _logger.LogDebug("Stored last inventory summary in cache");
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Get the last inventory summary.
+    /// </summary>
+    public Task<object?> GetLastInventoryAsync(CancellationToken cancellationToken = default)
+    {
+        if (_cache.TryGetValue<object>("last_inventory_summary", out var summary))
+        {
+            return Task.FromResult<object?>(summary);
+        }
+        return Task.FromResult<object?>(null);
+    }
 }
 
 #region State Models

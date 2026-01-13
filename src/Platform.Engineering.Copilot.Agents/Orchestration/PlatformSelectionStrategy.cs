@@ -73,13 +73,24 @@ public class PlatformSelectionStrategy
     {
         var lower = message.ToLowerInvariant();
 
+        // Discovery subscription patterns - CHECK FIRST before Configuration
+        // "List subscriptions", "my subscriptions", "show subscriptions" = DISCOVERY (listing resources)
+        // "Set my subscription", "use subscription X" = CONFIGURATION (changing settings)
+        if (lower.Contains("list") && lower.Contains("subscription"))
+            return agents.FirstOrDefault(a => a.Name.Contains("Discovery", StringComparison.OrdinalIgnoreCase));
+        if (lower.Contains("my subscriptions") || lower.Contains("show subscriptions") ||
+            lower.Contains("available subscriptions") || lower.Contains("all subscriptions") ||
+            (lower.Contains("what") && lower.Contains("subscriptions")))
+            return agents.FirstOrDefault(a => a.Name.Contains("Discovery", StringComparison.OrdinalIgnoreCase));
+
         // Configuration patterns - route to Configuration Agent (handles subscription settings)
+        // These are SETTING operations, not listing operations
         if (lower.Contains("set my subscription") || lower.Contains("set subscription to") ||
             lower.Contains("use subscription") || lower.Contains("configure subscription") ||
             lower.Contains("my subscription is") || lower.Contains("switch to subscription") ||
             lower.Contains("change subscription") || lower.Contains("default subscription") ||
             lower.Contains("show my config") || lower.Contains("current subscription") ||
-            lower.Contains("what subscription"))
+            lower.Contains("what is my subscription") || lower.Contains("what's my subscription"))
             return agents.FirstOrDefault(a => a.Name.Contains("Configuration", StringComparison.OrdinalIgnoreCase));
 
         // Infrastructure patterns - CHECK FIRST to prioritize template generation over compliance keywords
@@ -104,7 +115,21 @@ public class PlatformSelectionStrategy
             lower.Contains("best practices") && (lower.Contains("template") || lower.Contains("aks") || lower.Contains("infrastructure")))
             return agents.FirstOrDefault(a => a.Name.Contains("Infrastructure", StringComparison.OrdinalIgnoreCase));
 
-        // Compliance patterns - only if NOT infrastructure-related
+        // Knowledge patterns - CHECK BEFORE COMPLIANCE to prioritize educational queries
+        // When user asks "What is NIST control X?" they want explanation, not compliance scan
+        // Use specific patterns to avoid matching cost/spending questions like "What is my monthly spending?"
+        if (lower.Contains("explain") || lower.Contains("tell me about") ||
+            lower.Contains("stig") || lower.Contains("cci") ||
+            (lower.Contains("what is") && (lower.Contains("nist") || lower.Contains("control") || lower.Contains("rmf") || 
+             lower.Contains("stig") || lower.Contains("cci") || lower.Contains("framework"))) ||
+            (lower.Contains("what does") && (lower.Contains("control") || lower.Contains("family"))) ||
+            (lower.Contains("how does") && (lower.Contains("compliance") || lower.Contains("nist") || lower.Contains("control"))) ||
+            (lower.Contains("nist") && (lower.Contains("control") || lower.Contains("family"))) ||
+            (lower.Contains("family") && lower.Contains("control")) ||
+            lower.Contains("rmf") || lower.Contains("risk management framework"))
+            return agents.FirstOrDefault(a => a.Name.Contains("Knowledge", StringComparison.OrdinalIgnoreCase));
+
+        // Compliance patterns - only if NOT infrastructure-related and NOT educational query
         if (lower.Contains("compliance scan") || lower.Contains("scan for compliance") ||
             lower.Contains("ssp") || lower.Contains("sar") || lower.Contains("poa&m") ||
             lower.Contains("poam") || lower.Contains("fedramp") ||
@@ -123,19 +148,16 @@ public class PlatformSelectionStrategy
             return agents.FirstOrDefault(a => a.Name.Contains("Cost", StringComparison.OrdinalIgnoreCase));
 
         // Discovery patterns
-        if ((lower.Contains("list") && (lower.Contains("resource") || lower.Contains("vm") || lower.Contains("storage"))) ||
+        if ((lower.Contains("list") && (lower.Contains("resource") || lower.Contains("vm") || lower.Contains("storage") || 
+             lower.Contains("subscription") || lower.Contains("azure subscription"))) ||
+            lower.Contains("list subscriptions") || lower.Contains("my subscriptions") ||
+            lower.Contains("available subscriptions") || lower.Contains("show subscriptions") ||
             lower.Contains("find resource") || lower.Contains("search resource") ||
+            lower.Contains("find all") || lower.Contains("find storage") ||
             lower.Contains("inventory") || lower.Contains("what resources") ||
-            lower.Contains("show me all") || lower.Contains("get all"))
+            lower.Contains("show me all") || lower.Contains("get all") ||
+            lower.Contains("discover") && !lower.Contains("compliance"))
             return agents.FirstOrDefault(a => a.Name.Contains("Discovery", StringComparison.OrdinalIgnoreCase));
-
-        // Knowledge patterns
-        if (lower.Contains("explain") || lower.Contains("what is") ||
-            lower.Contains("how does") || lower.Contains("tell me about") ||
-            lower.Contains("stig") || lower.Contains("cci") ||
-            (lower.Contains("nist") && (lower.Contains("control") || lower.Contains("family"))) ||
-            lower.Contains("rmf") || lower.Contains("risk management framework"))
-            return agents.FirstOrDefault(a => a.Name.Contains("Knowledge", StringComparison.OrdinalIgnoreCase));
 
         return null;
     }

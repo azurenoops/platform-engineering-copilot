@@ -1,4 +1,7 @@
 # syntax=docker/dockerfile:1.4
+# Multi-architecture Dockerfile for Platform Engineering Copilot MCP Server
+# Supports: linux/amd64 (Azure ACI) and linux/arm64 (Apple Silicon local dev)
+
 # Stage 1: Restore dependencies (cached layer)
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS restore
 WORKDIR /src
@@ -13,9 +16,8 @@ COPY ["src/Platform.Engineering.Copilot.State/Platform.Engineering.Copilot.State
 COPY ["src/Platform.Engineering.Copilot.Channels/Platform.Engineering.Copilot.Channels.csproj", "src/Platform.Engineering.Copilot.Channels/"]
 COPY ["src/Platform.Engineering.Copilot.Chat/Platform.Engineering.Copilot.Chat.csproj", "src/Platform.Engineering.Copilot.Chat/"]
 
-# Restore dependencies
-RUN dotnet restore "src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj" \
-    --runtime linux-x64
+# Restore dependencies (architecture-independent)
+RUN dotnet restore "src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj"
 
 # Stage 2: Build
 FROM restore AS build
@@ -24,13 +26,12 @@ WORKDIR /src
 # Copy all source code
 COPY . .
 
-# Build with optimizations
+# Build with optimizations (architecture-independent, uses container's native arch)
 WORKDIR "/src/src/Platform.Engineering.Copilot.Mcp"
 RUN dotnet build "Platform.Engineering.Copilot.Mcp.csproj" \
     -c Release \
     -o /app/build \
     --no-restore \
-    --runtime linux-x64 \
     /p:PublishReadyToRun=false \
     /p:PublishSingleFile=false
 
@@ -40,7 +41,6 @@ RUN dotnet publish "Platform.Engineering.Copilot.Mcp.csproj" \
     -c Release \
     -o /app/publish \
     --no-restore \
-    --runtime linux-x64 \
     /p:UseAppHost=false \
     /p:PublishReadyToRun=false \
     /p:PublishTrimmed=false
