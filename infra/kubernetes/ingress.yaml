@@ -44,7 +44,7 @@ spec:
           service:
             name: admin-api-service
             port:
-              number: 8080
+              number: 5050
       - path: /
         pathType: Prefix
         backend:
@@ -104,7 +104,7 @@ spec:
           service:
             name: admin-api-service
             port:
-              number: 8080
+              number: 5050
       - path: /
         pathType: Prefix
         backend:

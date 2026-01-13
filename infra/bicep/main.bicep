@@ -394,6 +394,14 @@ module aciMcp 'modules/aci.bicep' = if (deployACI || containerDeploymentTarget =
         name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
         value: useExistingLogAnalytics ? '' : monitoring!.outputs.connectionString
       }
+      {
+        name: 'GitSync__AutoSyncEnabled'
+        value: 'true'
+      }
+      {
+        name: 'GitSync__DefaultSyncIntervalMinutes'
+        value: '30'
+      }
     ]
     tags: {
       Service: 'MCP Server'
@@ -452,7 +460,7 @@ module aciAdminApi 'modules/aci.bicep' = if ((deployACI || containerDeploymentTa
     containerName: 'admin-api'
     cpuCores: 1
     memoryInGB: 2
-    port: 5002
+    port: 5050
     acrLoginServer: (deployACR || containerDeploymentTarget == 'aks' || containerDeploymentTarget == 'aci') ? acr!.outputs.acrLoginServer : ''
     useManagedIdentity: (deployACR || containerDeploymentTarget == 'aks' || containerDeploymentTarget == 'aci')
     enableVNetIntegration: environment == 'prod'
@@ -487,7 +495,7 @@ module aciAdminClient 'modules/aci.bicep' = if ((deployACI || containerDeploymen
     containerName: 'admin-client'
     cpuCores: 1
     memoryInGB: 2
-    port: 5003
+    port: 80
     acrLoginServer: (deployACR || containerDeploymentTarget == 'aks' || containerDeploymentTarget == 'aci') ? acr!.outputs.acrLoginServer : ''
     useManagedIdentity: (deployACR || containerDeploymentTarget == 'aks' || containerDeploymentTarget == 'aci')
     enableVNetIntegration: environment == 'prod'

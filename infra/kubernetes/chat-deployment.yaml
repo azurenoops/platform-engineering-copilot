@@ -34,7 +34,7 @@ spec:
         imagePullPolicy: Always
         ports:
         - name: http
-          containerPort: 8080
+          containerPort: 5001
           protocol: TCP
         env:
         - name: ASPNETCORE_ENVIRONMENT
@@ -43,7 +43,7 @@ spec:
               name: platform-config
               key: ASPNETCORE_ENVIRONMENT
         - name: ASPNETCORE_URLS
-          value: "http://+:8080"
+          value: "http://+:5001"
         - name: AZURE_TENANT_ID
           valueFrom:
             configMapKeyRef:
@@ -86,7 +86,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /health/live
-            port: 8080
+            port: 5001
             scheme: HTTP
           initialDelaySeconds: 30
           periodSeconds: 10
@@ -95,7 +95,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /health/ready
-            port: 8080
+            port: 5001
             scheme: HTTP
           initialDelaySeconds: 15
           periodSeconds: 5
@@ -158,7 +158,7 @@ spec:
   ports:
   - name: http
     port: 80
-    targetPort: 8080
+    targetPort: 5001
     protocol: TCP
   sessionAffinity: ClientIP
   sessionAffinityConfig:

@@ -1,0 +1,127 @@
+# Platform Engineering Copilot - MCP + Chat
+# Standard deployment: MCP Server + Chat UI
+# Use this for end-user chat interface with MCP backend
+#
+# Usage: docker-compose -f docker-compose.mcp-chat.yml up -d
+
+networks:
+  platform-network:
+    driver: bridge
+
+volumes:
+  sqlserver-data:
+  platform-logs:
+
+services:
+  # SQL Server Database (Azure SQL Edge for ARM64/Apple Silicon compatibility)
+  sqlserver:
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    platform: linux/arm64
+    container_name: pec-sqlserver
+    hostname: sqlserver
+    restart: unless-stopped
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${SA_PASSWORD:-PlatformDB123!}
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    networks:
+      - platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "(echo > /dev/tcp/localhost/1433) >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 45s
+
+  # MCP Server (Multi-Agent Orchestrator)
+  platform-mcp:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: src/Platform.Engineering.Copilot.Mcp/Dockerfile
+      target: final
+    image: platform-engineering-copilot-mcp:latest
+    container_name: pec-mcp
+    hostname: platform-mcp
+    restart: unless-stopped
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
+      - ASPNETCORE_URLS=http://0.0.0.0:5100
+      # Database
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=PlatformDb;User=sa;Password=${SA_PASSWORD:-PlatformDB123!};TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
+      - DatabaseProvider=SqlServer
+      # Azure Configuration
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID:-}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID:-}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}
+      - AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID:-}
+      - Gateway__Azure__SubscriptionId=${AZURE_SUBSCRIPTION_ID:-}
+      - Gateway__Azure__TenantId=${AZURE_TENANT_ID:-}
+      - Gateway__Azure__CloudEnvironment=${AZURE_CLOUD_ENVIRONMENT:-AzureGovernment}
+      - Gateway__Azure__UseManagedIdentity=${AZURE_USE_MANAGED_IDENTITY:-false}
+      - Gateway__Azure__Enabled=${AZURE_ENABLED:-true}
+      # Azure OpenAI Configuration
+      - Gateway__AzureOpenAI__ApiKey=${AZURE_OPENAI_API_KEY:-}
+      - Gateway__AzureOpenAI__Endpoint=${AZURE_OPENAI_ENDPOINT:-https://mcp-ai.openai.azure.us/}
+      - Gateway__AzureOpenAI__DeploymentName=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+      - Gateway__AzureOpenAI__ChatDeploymentName=${AZURE_OPENAI_CHAT_DEPLOYMENT:-gpt-4o}
+      - Gateway__AzureOpenAI__EmbeddingDeploymentName=${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:-text-embedding-ada-002}
+      # GitHub Configuration
+      - Gateway__GitHub__AccessToken=${GITHUB_TOKEN:-}
+      - Gateway__GitHub__Enabled=${GITHUB_ENABLED:-true}
+      # Git Sync Configuration
+      - GitSync__GitHubToken=${GITHUB_TOKEN:-}
+      - GitSync__AzureDevOpsToken=${AZURE_DEVOPS_TOKEN:-}
+      - GitSync__DefaultSyncIntervalMinutes=${GIT_SYNC_INTERVAL:-15}
+      - GitSync__AutoSyncEnabled=${GIT_AUTO_SYNC_ENABLED:-true}
+    ports:
+      - "5100:5100"
+    volumes:
+      - platform-logs:/app/logs
+      - ./appsettings.json:/app/appsettings.json:ro
+      - ~/.azure:/root/.azure:ro
+    networks:
+      - platform-network
+
+  # Chat UI (Web Interface)
+  platform-chat:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: src/Platform.Engineering.Copilot.Chat/Dockerfile
+      target: runtime
+    image: platform-engineering-copilot-chat:latest
+    container_name: pec-chat
+    hostname: platform-chat
+    restart: unless-stopped
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      platform-mcp:
+        condition: service_started
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
+      - ASPNETCORE_URLS=http://0.0.0.0:5001
+      - DatabaseProvider=SqlServer
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=PlatformChatDb;User=sa;Password=${SA_PASSWORD:-PlatformDB123!};TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
+      - McpServer__BaseUrl=http://platform-mcp:5100
+      - Logging__LogLevel__Default=Information
+    ports:
+      - "5001:5001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - platform-logs:/app/logs
+    networks:
+      - platform-network
