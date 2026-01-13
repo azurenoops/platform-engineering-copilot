@@ -97,8 +97,8 @@ ${GREEN}Examples:${NC}
 ${GREEN}Service Ports:${NC}
   ${YELLOW}MCP Server:${NC}      http://localhost:5100
   ${YELLOW}Chat App:${NC}        http://localhost:5001
-  ${YELLOW}Admin API:${NC}       http://localhost:5002
-  ${YELLOW}Admin Client:${NC}    http://localhost:5003
+  ${YELLOW}Admin API:${NC}       http://localhost:5050
+  ${YELLOW}Admin Client:${NC}    http://localhost:5000
   ${YELLOW}SQL Server:${NC}      localhost:1433
   ${YELLOW}Redis:${NC}           localhost:6379
   ${YELLOW}Nginx:${NC}           http://localhost (80/443)
@@ -318,8 +318,8 @@ case $MODE in
     *)
         test_endpoint "MCP Server" "http://localhost:5100/health"
         test_endpoint "Chat App" "http://localhost:5001/health"
-        test_endpoint "Admin API" "http://localhost:5002/health"
-        test_endpoint "Admin Client" "http://localhost:5003/health"
+        test_endpoint "Admin API" "http://localhost:5050/health"
+        test_endpoint "Admin Client" "http://localhost:5000/"
         ;;
 esac
 
@@ -347,8 +347,8 @@ EOF
 ${GREEN}Services:${NC}
   ${YELLOW}MCP Server:${NC}      http://localhost:5100
   ${YELLOW}Chat App:${NC}        http://localhost:5001
-  ${YELLOW}Admin API:${NC}       http://localhost:5002
-  ${YELLOW}Admin Client:${NC}    http://localhost:5003
+  ${YELLOW}Admin API:${NC}       http://localhost:5050
+  ${YELLOW}Admin Client:${NC}    http://localhost:5000
   ${YELLOW}SQL Server:${NC}      localhost:1433
 EOF
 
