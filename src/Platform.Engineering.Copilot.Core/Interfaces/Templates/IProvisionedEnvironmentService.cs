@@ -162,6 +162,55 @@ public interface IProvisionedEnvironmentService
 
     #endregion
 
+    #region Reprovision & Purge
+
+    /// <summary>
+    /// Reprovision a failed environment (retry deployment with same parameters)
+    /// </summary>
+    Task<CreateEnvironmentResult> ReprovisionEnvironmentAsync(
+        string environmentId,
+        string requestedBy,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get all soft-deleted environments
+    /// </summary>
+    Task<List<ProvisionedEnvironment>> GetDeletedEnvironmentsAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Permanently purge a soft-deleted environment
+    /// </summary>
+    Task<bool> PurgeEnvironmentAsync(
+        string environmentId,
+        string purgedBy,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Purge all soft-deleted environments
+    /// </summary>
+    Task<int> PurgeAllDeletedEnvironmentsAsync(
+        string purgedBy,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Delete Azure resources for an environment
+    /// </summary>
+    Task<DeleteResourcesResult> DeleteAzureResourcesAsync(
+        string environmentId,
+        string deletedBy,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sync resources from Azure for an environment.
+    /// Queries Azure to find resources created by this environment's deployment.
+    /// </summary>
+    Task<SyncResourcesResult> SyncResourcesFromAzureAsync(
+        string environmentId,
+        CancellationToken cancellationToken = default);
+
+    #endregion
+
     #region Audit
 
     /// <summary>
@@ -173,6 +222,52 @@ public interface IProvisionedEnvironmentService
         CancellationToken cancellationToken = default);
 
     #endregion
+
+    #region Deployment Status
+
+    /// <summary>
+    /// Refresh deployment status from Azure for environments in Provisioning state.
+    /// Updates status to Running (if succeeded) or Failed (if failed).
+    /// </summary>
+    Task<RefreshDeploymentStatusResult> RefreshDeploymentStatusAsync(
+        string environmentId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Refresh deployment status for all environments currently in Provisioning state.
+    /// </summary>
+    Task<List<RefreshDeploymentStatusResult>> RefreshAllProvisioningEnvironmentsAsync(
+        CancellationToken cancellationToken = default);
+
+    #endregion
+}
+
+/// <summary>
+/// Result of refreshing deployment status from Azure
+/// </summary>
+public class RefreshDeploymentStatusResult
+{
+    public string EnvironmentId { get; set; } = string.Empty;
+    public string EnvironmentName { get; set; } = string.Empty;
+    public string DeploymentId { get; set; } = string.Empty;
+    public EnvironmentStatus PreviousStatus { get; set; }
+    public EnvironmentStatus CurrentStatus { get; set; }
+    public string? StatusMessage { get; set; }
+    public bool StatusChanged { get; set; }
+    public string? Error { get; set; }
+}
+
+/// <summary>
+/// Result of syncing resources from Azure
+/// </summary>
+public class SyncResourcesResult
+{
+    public string EnvironmentId { get; set; } = string.Empty;
+    public string EnvironmentName { get; set; } = string.Empty;
+    public int ResourcesFound { get; set; }
+    public int ResourcesAdded { get; set; }
+    public string? Message { get; set; }
+    public string? Error { get; set; }
 }
 
 /// <summary>

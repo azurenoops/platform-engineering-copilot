@@ -56,4 +56,18 @@ public interface IGitTemplateSyncService
     Task<GitDiffResult> CheckForChangesAsync(
         Guid templateId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetch raw file content from a Git repository without importing.
+    /// </summary>
+    /// <param name="repositoryUrl">Git repository URL</param>
+    /// <param name="branch">Branch to fetch from</param>
+    /// <param name="path">Path to the file within the repo</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>File content as string</returns>
+    Task<string> FetchFileContentAsync(
+        string repositoryUrl,
+        string branch,
+        string path,
+        CancellationToken cancellationToken = default);
 }

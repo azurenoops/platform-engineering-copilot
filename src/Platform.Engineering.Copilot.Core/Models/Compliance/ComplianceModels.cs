@@ -592,7 +592,16 @@ public enum RiskLevel
 public class AtoComplianceAssessment
 {
     public required string AssessmentId { get; set; }
+    
+    // Environment context - primary scope for compliance assessment
+    public string? EnvironmentId { get; set; }
+    public string? EnvironmentName { get; set; }
+    
+    // Azure resource scope - can span multiple subscriptions/RGs within environment
     public required string SubscriptionId { get; set; }
+    public List<string> AdditionalSubscriptionIds { get; set; } = new(); // For multi-subscription environments
+    public string? ResourceGroupName { get; set; } // Optional RG scoping
+    
     public DateTimeOffset StartTime { get; set; }
     public DateTimeOffset EndTime { get; set; }
     public TimeSpan Duration { get; set; }

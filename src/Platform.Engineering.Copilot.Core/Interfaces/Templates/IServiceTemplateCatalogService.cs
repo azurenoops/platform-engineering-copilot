@@ -4,7 +4,7 @@ namespace Platform.Engineering.Copilot.Core.Interfaces.Templates;
 
 /// <summary>
 /// Service for managing the Service Template catalog.
-/// Templates are stored in Git (source of truth) and cached in the database.
+/// Git sync is handled by the dedicated IGitTemplateSyncService.
 /// </summary>
 public interface IServiceTemplateCatalogService
 {
@@ -78,25 +78,6 @@ public interface IServiceTemplateCatalogService
     /// Clone a template as a new draft
     /// </summary>
     Task<ServiceTemplate> CloneTemplateAsync(string templateId, string newName, string clonedBy, CancellationToken cancellationToken = default);
-
-    #endregion
-
-    #region Git Sync
-
-    /// <summary>
-    /// Sync a template from its Git source
-    /// </summary>
-    Task<ServiceTemplate> SyncFromGitAsync(string templateId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Sync all templates from Git that have AutoSync enabled
-    /// </summary>
-    Task<int> SyncAllFromGitAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Import a template from a Git repository
-    /// </summary>
-    Task<ServiceTemplate> ImportFromGitAsync(GitSourceInfo gitSource, string importedBy, CancellationToken cancellationToken = default);
 
     #endregion
 

@@ -1825,6 +1825,58 @@ public class AzureResourceService : IAzureResourceService
         throw new NotImplementedException("Subscription tagging not yet implemented");
     }
 
+    /// <summary>
+    /// Updates tags on an Azure resource by resource ID.
+    /// Merges the provided tags with existing tags.
+    /// </summary>
+    public async Task<bool> UpdateResourceTagsAsync(string resourceId, Dictionary<string, string> tags, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(resourceId) || tags == null || tags.Count == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            var armClient = EnsureArmClient();
+            var resourceIdentifier = new ResourceIdentifier(resourceId);
+            var genericResource = armClient.GetGenericResource(resourceIdentifier);
+            
+            // Get current resource to merge tags
+            var response = await genericResource.GetAsync(cancellationToken);
+            if (response?.Value == null)
+            {
+                _logger.LogWarning("Resource not found: {ResourceId}", resourceId);
+                return false;
+            }
+
+            var resource = response.Value;
+            var currentTags = resource.Data.Tags ?? new Dictionary<string, string>();
+            
+            // Merge new tags with existing
+            foreach (var tag in tags)
+            {
+                currentTags[tag.Key] = tag.Value;
+            }
+
+            // Use AddTag to add/update tags one by one
+            foreach (var tag in tags)
+            {
+                await resource.AddTagAsync(tag.Key, tag.Value, cancellationToken);
+            }
+
+            _logger.LogInformation("✅ Updated tags on resource {ResourceId}: {Tags}", 
+                resourceId, string.Join(", ", tags.Select(t => $"{t.Key}={t.Value}")));
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update tags on resource {ResourceId}", resourceId);
+            return false;
+        }
+    }
+
     public Task DeleteSubscriptionAsync(string subscriptionId)
     {
         throw new NotImplementedException("Subscription deletion not yet implemented");

@@ -8,6 +8,17 @@ namespace Platform.Engineering.Copilot.Core.Interfaces.Compliance;
 /// </summary>
 public interface IAtoComplianceEngine
 {
+    /// <summary>
+    /// Runs environment-scoped compliance assessment across multiple subscriptions
+    /// </summary>
+    Task<AtoComplianceAssessment> RunEnvironmentAssessmentAsync(
+        string environmentId,
+        string environmentName,
+        IEnumerable<string> subscriptionIds,
+        IEnumerable<string>? resourceGroupFilter = null,
+        IProgress<AssessmentProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
     Task<AtoComplianceAssessment> RunComprehensiveAssessmentAsync(
         string subscriptionId, 
         IProgress<AssessmentProgress>? progress = null,

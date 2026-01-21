@@ -115,6 +115,16 @@ namespace Platform.Engineering.Copilot.Core.Interfaces.Azure
         Task ApplySubscriptionTagsAsync(string subscriptionId, Dictionary<string, string> tags);
 
         /// <summary>
+        /// Updates tags on an Azure resource by resource ID.
+        /// Merges the provided tags with existing tags (doesn't remove existing tags).
+        /// </summary>
+        /// <param name="resourceId">Full Azure resource ID</param>
+        /// <param name="tags">Tags to apply/update</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>True if tags were updated successfully</returns>
+        Task<bool> UpdateResourceTagsAsync(string resourceId, Dictionary<string, string> tags, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Gets subscription details.
         /// </summary>
         /// <param name="subscriptionId">Subscription ID</param>

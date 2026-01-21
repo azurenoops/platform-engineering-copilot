@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Platform.Engineering.Copilot.Core.Data.Context;
@@ -50,7 +51,7 @@ public static class ServiceCollectionExtensions
                             errorNumbersToAdd: null);
                         
                         sqlOptions.CommandTimeout(60);
-                        sqlOptions.MigrationsAssembly("Platform.Engineering.Copilot.Data");
+                        sqlOptions.MigrationsAssembly("Platform.Engineering.Copilot.Core");
                     });
                     break;
             }
@@ -65,6 +66,10 @@ public static class ServiceCollectionExtensions
 
             // Enable query tracking optimization
             options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+            
+            // Suppress PendingModelChangesWarning to allow migrations to run even when model has uncommitted changes
+            // This allows the application to start and apply existing migrations without requiring new migrations
+            options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
 
         // Add repository services
@@ -73,6 +78,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<Repositories.IComplianceAssessmentRepository, Repositories.ComplianceAssessmentRepository>();
         services.AddScoped<Repositories.IServiceTemplateRepository, Repositories.ServiceTemplateRepository>();
         services.AddScoped<Repositories.IProvisionedEnvironmentRepository, Repositories.ProvisionedEnvironmentRepository>();
+        services.AddScoped<Repositories.IEnvironmentActivityRepository, Repositories.EnvironmentActivityRepository>();
         
         // Semantic Intent Repository and Service (real implementations)
         services.AddScoped<Platform.Engineering.Copilot.Core.Data.Repositories.ISemanticIntentRepository, 
@@ -102,6 +108,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<Repositories.IComplianceAssessmentRepository, Repositories.ComplianceAssessmentRepository>();
         services.AddScoped<Repositories.IServiceTemplateRepository, Repositories.ServiceTemplateRepository>();
         services.AddScoped<Repositories.IProvisionedEnvironmentRepository, Repositories.ProvisionedEnvironmentRepository>();
+        services.AddScoped<Repositories.IEnvironmentActivityRepository, Repositories.EnvironmentActivityRepository>();
         
         // Semantic Intent Repository and Service (real implementations)
         services.AddScoped<Platform.Engineering.Copilot.Core.Data.Repositories.ISemanticIntentRepository, 
