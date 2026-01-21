@@ -117,8 +117,25 @@ services:
       # Database
       - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=PlatformDb;User=sa;Password=${SA_PASSWORD:-PlatformDB123!};TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
       - DatabaseProvider=SqlServer
+      # Azure Configuration (for real deployments)
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID:-}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID:-}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}
+      - AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID:-}
+      # Azure Government Cloud Authority (required for cross-cloud auth)
+      - AZURE_AUTHORITY_HOST=https://login.microsoftonline.us/
+      - Gateway__Azure__SubscriptionId=${AZURE_SUBSCRIPTION_ID:-}
+      - Gateway__Azure__TenantId=${AZURE_TENANT_ID:-}
+      - Gateway__Azure__CloudEnvironment=${AZURE_CLOUD_ENVIRONMENT:-AzureGovernment}
+      - Gateway__Azure__UseManagedIdentity=${AZURE_USE_MANAGED_IDENTITY:-false}
+      - Gateway__Azure__Enabled=${AZURE_ENABLED:-true}
+      # Deployment Configuration (UseGovernmentCloud must be true/false, not cloud name)
+      - Deployment__UseGovernmentCloud=${AZURE_USE_GOVERNMENT_CLOUD:-true}
+      - Deployment__DefaultStateStorageAccount=${TERRAFORM_STATE_STORAGE:-}
+      - Deployment__DefaultStateContainer=${TERRAFORM_STATE_CONTAINER:-terraform-state}
+      - Deployment__DefaultStateResourceGroup=${TERRAFORM_STATE_RG:-}
       # CORS - Allow Admin Client
-      - Cors__AllowedOrigins=http://localhost:5000,http://platform-admin-client:80
+      - Cors__AllowedOrigins=http://localhost:5002,http://platform-admin-client:80
       # Azure OpenAI (for NL template matching)
       - Gateway__AzureOpenAI__ApiKey=${AZURE_OPENAI_API_KEY:-}
       - Gateway__AzureOpenAI__Endpoint=${AZURE_OPENAI_ENDPOINT:-https://mcp-ai.openai.azure.us/}
@@ -139,6 +156,7 @@ services:
       start_period: 30s
     volumes:
       - platform-logs:/app/logs
+      - ~/.azure:/root/.azure:ro
     networks:
       - platform-network
 
@@ -156,6 +174,6 @@ services:
       platform-admin-api:
         condition: service_started
     ports:
-      - "5000:80"
+      - "5002:80"
     networks:
       - platform-network

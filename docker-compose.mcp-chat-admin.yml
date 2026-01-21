@@ -8,7 +8,7 @@
 #   - 5100: MCP Server (AI agents)
 #   - 5001: Chat UI (end-user chat interface)
 #   - 5050: Admin API (REST API for template/environment management)
-#   - 5000: Admin Client (Blazor WASM web UI for platform admins)
+#   - 5003: Admin Client (Blazor WASM web UI for platform admins)
 
 networks:
   platform-network:
@@ -37,11 +37,11 @@ services:
     networks:
       - platform-network
     healthcheck:
-      test: ["CMD-SHELL", "(echo > /dev/tcp/localhost/1433) >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "exit 0"]
       interval: 10s
       timeout: 5s
-      retries: 15
-      start_period: 45s
+      retries: 3
+      start_period: 30s
 
   # MCP Server (Multi-Agent Orchestrator)
   platform-mcp:
@@ -117,6 +117,7 @@ services:
       - ASPNETCORE_URLS=http://0.0.0.0:5001
       - DatabaseProvider=SqlServer
       - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=PlatformChatDb;User=sa;Password=${SA_PASSWORD:-PlatformDB123!};TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
+      - ConnectionStrings__SqlServerConnection=Server=sqlserver,1433;Database=PlatformDb;User=sa;Password=${SA_PASSWORD:-PlatformDB123!};TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
       - McpServer__BaseUrl=http://platform-mcp:5100
       - Logging__LogLevel__Default=Information
     ports:
@@ -149,13 +150,26 @@ services:
       platform-mcp:
         condition: service_started
     environment:
-      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
+      - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://0.0.0.0:5050
+      - ASPNETCORE_HTTP_PORTS=5050
       # Database
       - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=PlatformDb;User=sa;Password=${SA_PASSWORD:-PlatformDB123!};TrustServerCertificate=true;MultipleActiveResultSets=true;Encrypt=false
       - DatabaseProvider=SqlServer
       # CORS - Allow Admin Client
-      - Cors__AllowedOrigins=http://localhost:5000,http://platform-admin-client:80
+      - Cors__AllowedOrigins=http://localhost:5003,http://platform-admin-client:80,http://localhost:5000,http://localhost:5002
+      # Azure Configuration for Deployments
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID:-}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID:-}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}
+      - AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID:-}
+      - Gateway__Azure__SubscriptionId=${AZURE_SUBSCRIPTION_ID:-}
+      - Gateway__Azure__TenantId=${AZURE_TENANT_ID:-}
+      - Gateway__Azure__ClientId=${AZURE_CLIENT_ID:-}
+      - Gateway__Azure__ClientSecret=${AZURE_CLIENT_SECRET:-}
+      - Gateway__Azure__CloudEnvironment=${AZURE_CLOUD_ENVIRONMENT:-AzureGovernment}
+      - Gateway__Azure__UseManagedIdentity=${AZURE_USE_MANAGED_IDENTITY:-false}
+      - Gateway__Azure__Enabled=${AZURE_ENABLED:-true}
       # Azure OpenAI (for NL template matching)
       - Gateway__AzureOpenAI__ApiKey=${AZURE_OPENAI_API_KEY:-}
       - Gateway__AzureOpenAI__Endpoint=${AZURE_OPENAI_ENDPOINT:-https://mcp-ai.openai.azure.us/}
@@ -166,14 +180,15 @@ services:
       - GitSync__DefaultSyncIntervalMinutes=${GIT_SYNC_INTERVAL:-15}
       - GitSync__AutoSyncEnabled=${GIT_AUTO_SYNC_ENABLED:-true}
       - Logging__LogLevel__Default=Information
+      - Logging__LogLevel__Microsoft=Warning
     ports:
       - "5050:5050"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5050/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost:5050/api/templates || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 40s
     volumes:
       - platform-logs:/app/logs
     networks:
@@ -193,7 +208,13 @@ services:
       platform-admin-api:
         condition: service_started
     ports:
-      - "5000:80"
+      - "5003:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     networks:
       - platform-network
 

@@ -1,19 +1,19 @@
 # Platform Engineering Copilot - Architecture
 
-**Version:** 3.0 (Microsoft Agent Framework Architecture)  
+**Version:** 3.1  
 **Last Updated:** January 2026
 
 ---
 
 ## Overview
 
-The Platform Engineering Copilot is an AI-powered infrastructure and compliance platform built on .NET 9.0. The system uses the **Microsoft Agent Framework** architecture pattern with specialized AI agents coordinated through a Model Context Protocol (MCP) server.
+The Platform Engineering Copilot is an AI-powered infrastructure and compliance platform built on .NET 9.0. The system uses a **BaseAgent/BaseTool pattern** with specialized AI agents coordinated through a Model Context Protocol (MCP) server.
 
 ### Key Characteristics
 
-- **Microsoft Agent Framework Pattern**: All agents extend `BaseAgent`, all tools extend `BaseTool`
+- **BaseAgent/BaseTool Pattern**: All agents extend `BaseAgent`, all tools extend `BaseTool`
 - **MCP Server**: Dual-mode operation (HTTP:5100 + stdio for AI clients)
-- **Multi-Agent Orchestration**: 6 specialized agents with shared context
+- **Multi-Agent Orchestration**: 7 specialized agents with 52 tools
 - **Azure Government**: Primary target with NIST 800-53 compliance
 
 ---
@@ -25,7 +25,7 @@ The Platform Engineering Copilot is an AI-powered infrastructure and compliance 
 │                         CLIENTS                                  │
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────┐ │
 │  │ Web Chat     │  │ Admin UI     │  │ AI Clients             │ │
-│  │ (5001)       │  │ (5003)       │  │ • GitHub Copilot       │ │
+│  │ (5001)       │  │ (5000)       │  │ • GitHub Copilot       │ │
 │  │              │  │              │  │ • Claude Desktop       │ │
 │  └──────┬───────┘  └──────┬───────┘  └────────┬───────────────┘ │
 │         │ HTTP            │ HTTP              │ stdio            │
@@ -42,15 +42,19 @@ The Platform Engineering Copilot is an AI-powered infrastructure and compliance 
 │  └────────────────────────────────────────────────────────────┘ │
 │                              ↓                                   │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │                 SPECIALIZED AGENTS                          │ │
+│  │                 SPECIALIZED AGENTS (7)                      │ │
 │  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │ │
 │  │  │Infrastructure│ │ Compliance │ │    Cost     │           │ │
-│  │  │   Agent     │ │   Agent    │ │   Agent     │           │ │
+│  │  │   Agent (6) │ │ Agent (12) │ │  Agent (6)  │           │ │
 │  │  └─────────────┘ └─────────────┘ └─────────────┘           │ │
 │  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │ │
-│  │  │  Discovery  │ │ Environment│ │  Security   │           │ │
-│  │  │   Agent     │ │   Agent    │ │   Agent     │           │ │
+│  │  │  Discovery  │ │ Environment│ │ Knowledge   │           │ │
+│  │  │   Agent (9) │ │ Agent (10) │ │ Base (8)    │           │ │
 │  │  └─────────────┘ └─────────────┘ └─────────────┘           │ │
+│  │  ┌─────────────┐                                           │ │
+│  │  │Configuration│                                           │ │
+│  │  │   Agent (1) │                                           │ │
+│  │  └─────────────┘                                           │ │
 │  └────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
@@ -64,15 +68,15 @@ The Platform Engineering Copilot is an AI-powered infrastructure and compliance 
 
 ---
 
-## Microsoft Agent Framework
+## BaseAgent/BaseTool Framework
 
 ### Core Abstractions
 
-The Microsoft Agent Framework framework provides two base classes that all agents and tools must extend:
+The framework provides two base classes that all agents and tools must extend:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                       Microsoft Agent Framework                  │
+│                       BaseAgent/BaseTool Pattern                 │
 ├──────────────────────────────────────────────────────────────────┤
 │  BaseAgent (abstract)                                             │
 │    ├─ AgentId: string                                             │
@@ -81,7 +85,7 @@ The Microsoft Agent Framework framework provides two base classes that all agent
 │    ├─ RegisteredTools: List<BaseTool>                             │
 │    ├─ RegisterTool(tool) - adds tool to agent                     │
 │    ├─ ProcessAsync(context) → AgentResponse                       │
-│    └─ GetSystemPrompt() → string (tool selection guidance)        │
+│    └─ GetSystemPrompt() → string (loaded from embedded resource)  │
 ├──────────────────────────────────────────────────────────────────┤
 │  BaseTool (abstract)                                              │
 │    ├─ Name: string (e.g., "run_compliance_assessment")            │
@@ -92,7 +96,7 @@ The Microsoft Agent Framework framework provides two base classes that all agent
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### BaseAgent Pattern
+### BaseAgent Implementation
 
 ```csharp
 public class ComplianceAgent : BaseAgent
@@ -106,8 +110,7 @@ public class ComplianceAgent : BaseAgent
         ILogger<ComplianceAgent> logger,
         ComplianceAssessmentTool assessmentTool,
         BatchRemediationTool remediationTool,
-        DefenderForCloudTool dfcTool,
-        // ... other tools
+        DefenderForCloudTool dfcTool
     ) : base(chatClient, logger)
     {
         RegisterTool(assessmentTool);
@@ -115,18 +118,19 @@ public class ComplianceAgent : BaseAgent
         RegisterTool(dfcTool);
     }
 
-    protected override string GetSystemPrompt() => @"
-        You are the Compliance Agent for Azure Government...
-        
-        ## Tool Selection
-        - run_compliance_assessment: NIST 800-53 scanning
-        - batch_remediation: Fix multiple findings
-        - get_defender_findings: DFC secure score and findings
-    ";
+    protected override string GetSystemPrompt()
+    {
+        var template = SystemPromptLoader.LoadFromType<ComplianceAgent>("ComplianceAgent.prompt.txt");
+        return SystemPromptLoader.ApplyVariables(template ?? "", new Dictionary<string, string>
+        {
+            ["agentName"] = AgentName,
+            ["agentId"] = AgentId
+        });
+    }
 }
 ```
 
-### BaseTool Pattern
+### BaseTool Implementation
 
 ```csharp
 public class ComplianceAssessmentTool : BaseTool
@@ -174,27 +178,29 @@ src/
 ├── Platform.Engineering.Copilot.Agents/        # All agents and tools
 │   ├── Common/
 │   │   ├── BaseAgent.cs                        # Agent base class
-│   │   └── BaseTool.cs                         # Tool base class
+│   │   ├── BaseTool.cs                         # Tool base class
+│   │   └── SystemPromptLoader.cs               # External prompt loader
 │   │
-│   ├── Compliance/                             # Compliance Agent
+│   ├── Prompts/                                # Externalized agent prompts
+│   │   ├── ComplianceAgent.prompt.txt
+│   │   ├── InfrastructureAgent.prompt.txt
+│   │   ├── CostManagementAgent.prompt.txt
+│   │   ├── DiscoveryAgent.prompt.txt
+│   │   ├── EnvironmentAgent.prompt.txt
+│   │   ├── KnowledgeBaseAgent.prompt.txt
+│   │   └── ConfigurationAgent.prompt.txt
+│   │
+│   ├── Compliance/                             # Compliance Agent (12 tools)
 │   │   ├── Agents/ComplianceAgent.cs
 │   │   ├── Tools/
-│   │   │   ├── ComplianceAssessmentTool.cs
-│   │   │   ├── BatchRemediationTool.cs
-│   │   │   ├── DefenderForCloudTool.cs
-│   │   │   └── ... (12 tools)
-│   │   ├── Services/
-│   │   │   └── Engines/AtoComplianceEngine.cs
-│   │   └── Extensions/ServiceCollectionExtensions.cs
+│   │   └── Services/Engines/
 │   │
-│   ├── Infrastructure/                         # Infrastructure Agent
-│   │   ├── Agents/InfrastructureAgent.cs
-│   │   └── Tools/
-│   │
-│   ├── CostManagement/                         # Cost Agent
-│   ├── Discovery/                              # Discovery Agent
-│   ├── Environment/                            # Environment Agent
-│   └── Security/                               # Security Agent
+│   ├── Infrastructure/                         # Infrastructure Agent (6 tools)
+│   ├── CostManagement/                         # Cost Agent (6 tools)
+│   ├── Discovery/                              # Discovery Agent (9 tools)
+│   ├── Environment/                            # Environment Agent (10 tools)
+│   ├── KnowledgeBase/                          # Knowledge Base Agent (8 tools)
+│   └── Configuration/                          # Configuration Agent (1 tool)
 │
 ├── Platform.Engineering.Copilot.Core/          # Shared models, interfaces
 │   ├── Interfaces/
@@ -202,38 +208,24 @@ src/
 │   └── Data/
 │
 ├── Platform.Engineering.Copilot.Chat/          # Web Chat UI (5001)
-└── Platform.Engineering.Copilot.Admin.API/     # Admin API (5003)
+└── Platform.Engineering.Copilot.Admin.API/     # Admin API (5000)
 ```
 
 ---
 
 ## Agent Catalog
 
-| Agent | Tools | Primary Capability |
-|-------|-------|-------------------|
-| **Compliance** | 12 | NIST 800-53 scanning, remediation, DFC integration |
-| **Infrastructure** | 8 | Azure provisioning, IaC generation (Bicep/Terraform) |
-| **Cost** | 6 | Cost analysis, optimization, budget tracking |
-| **Discovery** | 5 | Resource inventory, health monitoring |
-| **Environment** | 4 | Environment lifecycle, cloning |
-| **Security** | 5 | Vulnerability scanning, policy enforcement |
+| Agent | ID | Tools | Primary Capability |
+|-------|-----|-------|-------------------|
+| **Compliance** | `compliance` | 12 | NIST 800-53 scanning, remediation, DFC integration |
+| **Infrastructure** | `infrastructure` | 6 | Azure provisioning, IaC generation (Bicep/Terraform) |
+| **Cost** | `cost-management` | 6 | Cost analysis, optimization, budget tracking |
+| **Discovery** | `discovery` | 9 | Resource inventory, health monitoring |
+| **Environment** | `environment` | 10 | Environment lifecycle, drift detection |
+| **Knowledge Base** | `knowledgebase` | 8 | NIST/STIG/RMF compliance education |
+| **Configuration** | `configuration` | 1 | Subscription configuration |
 
-### Compliance Agent Tools
-
-| Tool | Description |
-|------|-------------|
-| `run_compliance_assessment` | NIST 800-53 assessment |
-| `batch_remediation` | Fix multiple findings by severity |
-| `execute_remediation` | Fix single finding |
-| `generate_remediation_plan` | Create prioritized plan |
-| `get_defender_findings` | DFC findings + secure score |
-| `get_control_family_details` | Control family info |
-| `collect_evidence` | Gather compliance evidence |
-| `generate_compliance_document` | SSP/SAR/POA&M generation |
-| `get_compliance_status` | Current status summary |
-| `get_compliance_history` | Trends over time |
-| `validate_remediation` | Verify fixes applied |
-| `get_assessment_audit_log` | Audit trail |
+See [AGENTS.md](./AGENTS.md) for complete tool reference.
 
 ---
 
@@ -250,7 +242,7 @@ User: "Check NIST compliance for my subscription"
                     ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │ ComplianceAgent.ProcessAsync(context)                           │
-│   ├─ Build messages with GetSystemPrompt()                      │
+│   ├─ Load prompt from ComplianceAgent.prompt.txt                │
 │   ├─ Include RegisteredTools as AITools                         │
 │   └─ ChatClient.GetResponseAsync(messages, tools)               │
 └─────────────────────────────────────────────────────────────────┘
@@ -277,7 +269,7 @@ The `PlatformSelectionStrategy` uses keyword matching for instant routing:
 
 ```csharp
 // Compliance patterns
-if (message.ContainsAny("compliance", "nist", "fedramp", "stig", "assessment"))
+if (message.ContainsAny("compliance", "nist", "fedramp", "assessment", "remediation"))
     return ComplianceAgent;
 
 // Infrastructure patterns
@@ -285,8 +277,20 @@ if (message.ContainsAny("create", "deploy", "provision", "terraform", "bicep"))
     return InfrastructureAgent;
 
 // Cost patterns
-if (message.ContainsAny("cost", "spending", "budget", "savings"))
-    return CostAgent;
+if (message.ContainsAny("cost", "spending", "budget", "forecast", "optimization"))
+    return CostManagementAgent;
+
+// Discovery patterns
+if (message.ContainsAny("discover", "list", "inventory", "health", "resources"))
+    return DiscoveryAgent;
+
+// Environment patterns
+if (message.ContainsAny("environment", "template", "clone", "scale", "drift"))
+    return EnvironmentAgent;
+
+// Knowledge patterns
+if (message.ContainsAny("explain", "what is", "stig", "rmf", "impact level"))
+    return KnowledgeBaseAgent;
 ```
 
 ---
@@ -301,7 +305,7 @@ All configuration in `appsettings.json`:
     "ComplianceAgent": {
       "Enabled": true,
       "Temperature": 0.2,
-      "MaxTokens": 6000,
+      "MaxTokens": 4000,
       "DefenderForCloud": {
         "Enabled": true,
         "IncludeSecureScore": true,
@@ -312,6 +316,26 @@ All configuration in `appsettings.json`:
       "Enabled": true,
       "Temperature": 0.4,
       "DefaultRegion": "usgovvirginia"
+    },
+    "CostManagementAgent": {
+      "Enabled": true,
+      "Temperature": 0.3
+    },
+    "DiscoveryAgent": {
+      "Enabled": true,
+      "Temperature": 0.3
+    },
+    "EnvironmentAgent": {
+      "Enabled": true,
+      "Temperature": 0.3
+    },
+    "KnowledgeBaseAgent": {
+      "Enabled": true,
+      "Temperature": 0.2
+    },
+    "ConfigurationAgent": {
+      "Enabled": true,
+      "Temperature": 0.2
     }
   }
 }
@@ -323,32 +347,48 @@ All configuration in `appsettings.json`:
 
 1. **Create agent folder**: `src/Platform.Engineering.Copilot.Agents/{Name}/`
 
-2. **Create agent class** extending `BaseAgent`:
+2. **Create prompt file**: `src/Platform.Engineering.Copilot.Agents/Prompts/{Name}Agent.prompt.txt`
+   ```
+   You are {{agentName}} for the Platform Engineering Copilot...
+   
+   ## Available Tools
+   - tool_name: Description of when to use
+   ```
+
+3. **Create agent class** extending `BaseAgent`:
    ```csharp
    public class MyAgent : BaseAgent
    {
        public override string AgentId => "my-agent";
        public override string AgentName => "My Agent";
+       
+       protected override string GetSystemPrompt()
+       {
+           var template = SystemPromptLoader.LoadFromType<MyAgent>("MyAgent.prompt.txt");
+           return SystemPromptLoader.ApplyVariables(template ?? "", variables);
+       }
    }
    ```
 
-3. **Create tools** extending `BaseTool`:
+4. **Create tools** extending `BaseTool`:
    ```csharp
    public class MyTool : BaseTool
    {
        public override string Name => "my_tool";
+       public override string Description => "What this tool does";
    }
    ```
 
-4. **Register in DI** (`ServiceCollectionExtensions.cs`):
+5. **Register in DI** (`ServiceCollectionExtensions.cs`):
    ```csharp
    services.AddScoped<MyTool>();
    services.AddScoped<MyAgent>();
    ```
 
-5. **Add to MCP tool list** (`McpHttpBridge.cs`)
-
-6. **Create agent prompt** (`.github/prompts/{name}-agent.prompt.md`)
+6. **Update .csproj** to embed prompt:
+   ```xml
+   <EmbeddedResource Include="Prompts\*.prompt.txt" />
+   ```
 
 ---
 
@@ -358,6 +398,7 @@ All configuration in `appsettings.json`:
 |-------|------------|
 | Runtime | .NET 9.0 |
 | AI Framework | Microsoft Semantic Kernel 1.26+ |
+| AI Abstractions | Microsoft.Extensions.AI 9.1.0 |
 | MCP | ModelContextProtocol 0.4.0-preview |
 | Azure SDK | Azure.ResourceManager.* |
 | Database | SQLite (default) / SQL Server |
@@ -368,8 +409,7 @@ All configuration in `appsettings.json`:
 
 ## Related Documentation
 
-- [AGENTS.md](./AGENTS.md) - Detailed agent capabilities
+- [AGENTS.md](./AGENTS.md) - Detailed agent capabilities and tools
 - [DEPLOYMENT.md](./DEPLOYMENT.md) - Docker, ACI, AKS deployment
 - [GETTING-STARTED.md](./GETTING-STARTED.md) - Quick start guide
-- [.github/prompts/](../.github/prompts/) - Agent prompt files
-
+- [DEVELOPMENT.md](./DEVELOPMENT.md) - Development workflow

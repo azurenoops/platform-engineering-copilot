@@ -109,6 +109,11 @@ class Program
         // Register HttpClient for services that need it (like NistControlsService)
         builder.Services.AddHttpClient();
 
+        // Add repository services for Environment Management (Service Templates and Provisioned Environments)
+        builder.Services.AddScoped<Core.Data.Repositories.IServiceTemplateRepository, Core.Data.Repositories.ServiceTemplateRepository>();
+        builder.Services.AddScoped<Core.Data.Repositories.IProvisionedEnvironmentRepository, Core.Data.Repositories.ProvisionedEnvironmentRepository>();
+        builder.Services.AddScoped<Core.Data.Repositories.IEnvironmentActivityRepository, Core.Data.Repositories.EnvironmentActivityRepository>();
+
         // Add Core services (Multi-Agent Orchestrator, Plugins, etc.)
         builder.Services.AddPlatformEngineeringCopilotCore(builder.Configuration);
         
@@ -178,6 +183,11 @@ class Program
 
         // Register HttpContextAccessor for middleware access
         builder.Services.AddHttpContextAccessor();
+
+        // Add repository services for Environment Management (Service Templates and Provisioned Environments)
+        builder.Services.AddScoped<Core.Data.Repositories.IServiceTemplateRepository, Core.Data.Repositories.ServiceTemplateRepository>();
+        builder.Services.AddScoped<Core.Data.Repositories.IProvisionedEnvironmentRepository, Core.Data.Repositories.ProvisionedEnvironmentRepository>();
+        builder.Services.AddScoped<Core.Data.Repositories.IEnvironmentActivityRepository, Core.Data.Repositories.EnvironmentActivityRepository>();
 
         // Configure Azure AD authentication options
         builder.Services.Configure<AzureAdOptions>(

@@ -1,7 +1,7 @@
 # Getting Started with Platform Engineering Copilot
 
 > **Complete setup guide from zero to running system in 15 minutes**  
-> **Last Updated:** November 2025
+> **Last Updated:** January 2026
 
 ---
 
@@ -268,13 +268,13 @@ vi appsettings.json
     "InfrastructureAgent": {
       "Enabled": true,
       "Temperature": 0.4,
-      "MaxTokens": 8000,
+      "MaxTokens": 4000,
       "DefaultRegion": "usgovvirginia"
     },
     "ComplianceAgent": {
       "Enabled": true,
       "Temperature": 0.2,
-      "MaxTokens": 6000,
+      "MaxTokens": 4000,
       "DefaultFramework": "NIST80053"
     },
     "CostManagementAgent": {
@@ -288,19 +288,16 @@ vi appsettings.json
       "EnableHealthMonitoring": true
     },
     "EnvironmentAgent": {
-      "Enabled": true
-    },
-    "SecurityAgent": {
-      "Enabled": true
+      "Enabled": true,
+      "Temperature": 0.3
     },
     "KnowledgeBaseAgent": {
-      "Enabled": true
+      "Enabled": true,
+      "Temperature": 0.2
     },
-    "ServiceCreationAgent": {
-      "Enabled": true
-    },
-    "DocumentAgent": {
-      "Enabled": false
+    "ConfigurationAgent": {
+      "Enabled": true,
+      "Temperature": 0.2
     }
   }
 }

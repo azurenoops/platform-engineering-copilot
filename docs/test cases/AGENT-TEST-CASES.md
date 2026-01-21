@@ -13,6 +13,7 @@ This document provides natural language test queries for each specialized agent.
 4. [Compliance Agent](#4-compliance-agent)
 5. [Cost Management Agent](#5-cost-management-agent)
 6. [KnowledgeBase Agent](#6-knowledgebase-agent)
+7. [Environment Agent](#7-environment-agent)
 
 ---
 
@@ -440,6 +441,99 @@ This document provides natural language test queries for each specialized agent.
 
 ---
 
+## 7. Environment Agent
+
+**Purpose**: Platform Engineering template management, environment lifecycle, drift detection and remediation.
+
+**Routing Keywords**: "environment", "template", "clone", "scale", "drift", "service catalog", "provision environment"
+
+### Test Case 7.1: List Service Templates
+| Field | Value |
+|-------|-------|
+| **Query** | `Show available service templates` |
+| **Alternative Queries** | `List templates`, `What templates are available?`, `Show me the service catalog` |
+| **Command** | `@platform /environment List service templates` |
+| **Tool Called** | `list_service_templates` |
+| **Parameters** | None required |
+| **Expected Result** | List of available templates with names, categories, descriptions |
+| **Prerequisite** | Database must be seeded with templates (run migrations or seed data) |
+
+### Test Case 7.2: Get Template Details
+| Field | Value |
+|-------|-------|
+| **Query** | `Show me details for the aks-standard template` |
+| **Alternative Queries** | `Get details for AKS template`, `What parameters does the AKS template need?` |
+| **Tool Called** | `get_template_details` |
+| **Parameters** | `templateId: "aks-standard"` (or partial match like "AKS") |
+| **Expected Result** | Template parameters, guardrails, compliance frameworks, version |
+| **Notes** | The tool supports partial matching - "AKS" will find "aks-standard". First run `list_service_templates` to see available template names. |
+
+### Test Case 7.3: Find Matching Template
+| Field | Value |
+|-------|-------|
+| **Query** | `I need an environment for a containerized web app` |
+| **Tool Called** | `find_matching_template` |
+| **Parameters** | `requirements: "containerized web app"` |
+| **Expected Result** | Recommended templates (AKS, Container Apps) with suitability scores |
+
+### Test Case 7.4: Create Environment from Template
+| Field | Value |
+|-------|-------|
+| **Query** | `Create a production environment from the AKS template` |
+| **Tool Called** | `create_environment_from_template` |
+| **Parameters** | `templateId: "<id>"`, `environmentName: "production"`, `size: "medium"` |
+| **Expected Result** | Environment creation initiated, deployment ID returned |
+
+### Test Case 7.5: List Provisioned Environments
+| Field | Value |
+|-------|-------|
+| **Query** | `Show my provisioned environments` |
+| **Tool Called** | `list_provisioned_environments` |
+| **Parameters** | None required |
+| **Expected Result** | List of environments with status, template, resource group |
+
+### Test Case 7.6: Clone Environment
+| Field | Value |
+|-------|-------|
+| **Query** | `Clone my dev environment to staging` |
+| **Tool Called** | `clone_provisioned_environment` |
+| **Parameters** | `sourceEnvironmentId: "<dev-id>"`, `newName: "staging"` |
+| **Expected Result** | New environment created from dev configuration |
+
+### Test Case 7.7: Scale Environment
+| Field | Value |
+|-------|-------|
+| **Query** | `Scale my test environment to large` |
+| **Tool Called** | `scale_provisioned_environment` |
+| **Parameters** | `environmentId: "<id>"`, `size: "large"` |
+| **Expected Result** | Environment scaling initiated, updated resource details |
+
+### Test Case 7.8: Detect Drift
+| Field | Value |
+|-------|-------|
+| **Query** | `Check for configuration drift in production` |
+| **Tool Called** | `detect_environment_drift` |
+| **Parameters** | `environmentId: "<production-id>"` |
+| **Expected Result** | Drift report showing differences from template |
+
+### Test Case 7.9: Remediate Drift
+| Field | Value |
+|-------|-------|
+| **Query** | `Fix drift in my production environment` |
+| **Tool Called** | `remediate_environment_drift` |
+| **Parameters** | `environmentId: "<id>"` |
+| **Expected Result** | Remediation applied, resources returned to template state |
+
+### Test Case 7.10: Delete Environment
+| Field | Value |
+|-------|-------|
+| **Query** | `Delete my test environment` |
+| **Tool Called** | `delete_provisioned_environment` |
+| **Parameters** | `environmentId: "<test-id>"` |
+| **Expected Result** | Environment deletion confirmation, resource cleanup |
+
+---
+
 ## Multi-Agent Workflows
 
 These test cases involve the orchestrator routing to multiple agents.
@@ -530,3 +624,52 @@ For each agent, verify:
 | "what is AC-2" | KnowledgeBase Agent |
 | "explain NIST" | KnowledgeBase Agent |
 | "how does RMF work" | KnowledgeBase Agent |
+| "show service templates" | Environment Agent |
+| "create environment" | Environment Agent |
+| "detect drift" | Environment Agent |
+| "clone environment" | Environment Agent |
+
+---
+
+## Troubleshooting
+
+### Environment Agent - No Templates Found
+
+**Problem**: "Show me details for the AKS template" returns empty or error.
+
+**Causes & Solutions**:
+
+1. **Database not seeded**: Run migrations to seed default templates:
+   ```bash
+   cd src/Platform.Engineering.Copilot.Core
+   dotnet ef database update
+   ```
+
+2. **First list available templates**:
+   ```
+   "List available service templates"
+   ```
+   This shows what templates exist. Then use the exact name:
+   ```
+   "Show details for aks-standard template"
+   ```
+
+3. **Check database connection**: Ensure SQLite file exists or SQL Server is accessible.
+
+### Agent Routing Issues
+
+**Problem**: Query goes to wrong agent or no response.
+
+**Solutions**:
+1. Use explicit slash commands: `@platform /environment Show templates`
+2. Include routing keywords: "environment", "template", "drift"
+3. Check MCP server logs for routing decisions
+
+### Tool Execution Errors
+
+**Problem**: Tool returns error or no data.
+
+**Debug Steps**:
+1. Check MCP server logs: `docker logs platform-mcp 2>&1 | tail -50`
+2. Verify Azure authentication: `az account show`
+3. Check subscription is set: "What is my current subscription?"

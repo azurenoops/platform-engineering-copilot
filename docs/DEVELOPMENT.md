@@ -1,9 +1,9 @@
 # Development Guide
 
 **Last Updated:** January 2026  
-**Version:** 3.0
+**Version:** 3.1
 
-This comprehensive guide covers the MCP-centric architecture, development setup, contribution guidelines, and API documentation for the Platform Engineering Copilot.
+This comprehensive guide covers the BaseAgent/BaseTool architecture, development setup, contribution guidelines, and API documentation for the Platform Engineering Copilot.
 
 ## 📋 Table of Contents
 
@@ -21,7 +21,7 @@ This comprehensive guide covers the MCP-centric architecture, development setup,
 
 ### System Architecture
 
-The Platform Engineering Copilot is an **MCP-centric multi-agent platform** with dual-mode operation. The MCP Server (port 5100) orchestrates **6+ specialized AI agents** and serves both web clients (HTTP) and AI clients (stdio MCP protocol).
+The Platform Engineering Copilot is an **MCP-centric multi-agent platform** with dual-mode operation. The MCP Server (port 5100) orchestrates **7 specialized AI agents** (52 tools) and serves both web clients (HTTP) and AI clients (stdio MCP protocol).
 
 ```mermaid
 graph TB
@@ -40,21 +40,13 @@ graph TB
   end
 
   subgraph "Agent Layer"
-    Orchestrator[Orchestrator Agent]
-    Infra[Infrastructure Agent]
-    Compliance[Compliance Agent]
-    Cost[Cost Management Agent]
-    Security[Security Agent]
-    Environment[Environment Agent]
-    Discovery[Discovery Agent]
-  end
-
-  subgraph "Plugin Layer"
-    InfraPlugin[Infrastructure Plugin]
-    CompliancePlugin[Compliance Plugin]
-    CostPlugin[Cost Plugin]
-    SecurityPlugin[Security Plugin]
-    ConfigPlugin[Configuration Plugin]
+    Infra[Infrastructure Agent<br/>6 tools]
+    Compliance[Compliance Agent<br/>12 tools]
+    Cost[Cost Management Agent<br/>6 tools]
+    Discovery[Discovery Agent<br/>9 tools]
+    Environment[Environment Agent<br/>10 tools]
+    KnowledgeBase[Knowledge Base Agent<br/>8 tools]
+    Configuration[Configuration Agent<br/>1 tool]
   end
 
   subgraph "Data Layer"
@@ -75,24 +67,19 @@ graph TB
   AdminAPI --> MCP
   MCPClients --> MCP
 
-  MCP --> Orchestrator
-  Orchestrator --> Infra
-  Orchestrator --> Compliance
-  Orchestrator --> Cost
-  Orchestrator --> Security
-  Orchestrator --> Environment
-  Orchestrator --> Discovery
+  MCP --> Infra
+  MCP --> Compliance
+  MCP --> Cost
+  MCP --> Discovery
+  MCP --> Environment
+  MCP --> KnowledgeBase
+  MCP --> Configuration
 
-  Infra --> InfraPlugin
-  Compliance --> CompliancePlugin
-  Cost --> CostPlugin
-  Security --> SecurityPlugin
-
-  InfraPlugin --> ARM
-  CostPlugin --> CostMgmt
-  CompliancePlugin --> Policy
-  SecurityPlugin --> Monitor
-  ConfigPlugin --> KeyVault
+  Infra --> ARM
+  Cost --> CostMgmt
+  Compliance --> Policy
+  Discovery --> Monitor
+  Configuration --> KeyVault
 
   MCP --> EFCore
   MCP --> Redis
@@ -109,19 +96,19 @@ graph TB
 
 ### Agent Architecture
 
-The platform uses a **hub-and-spoke agent pattern** where the Orchestrator Agent routes requests to specialized agents:
+The platform uses a **fast-path agent selection pattern** where the `PlatformSelectionStrategy` routes requests to specialized agents based on intent:
 
-| Agent | Domain | Key Capabilities |
-|-------|--------|------------------|
-| **Orchestrator** | Coordination | Intent detection, agent routing, workflow orchestration |
-| **Infrastructure** | Provisioning | Bicep/Terraform generation, ARM deployments, resource lifecycle |
-| **Compliance** | Governance | NIST 800-53 assessments, FedRAMP scanning, remediation |
-| **Cost Management** | FinOps | Budget analysis, optimization recommendations, trend forecasting |
-| **Security** | Protection | Vulnerability scanning, threat detection, security posture |
-| **Environment** | Lifecycle | Environment provisioning, template management, Git sync |
-| **Discovery** | Inventory | Resource discovery, dependency mapping, topology analysis |
+| Agent | ID | Tools | Domain |
+|-------|-----|-------|--------|
+| **Compliance** | `compliance` | 12 | NIST 800-53, FedRAMP, remediation |
+| **Infrastructure** | `infrastructure` | 6 | Azure provisioning, IaC generation |
+| **Cost Management** | `cost-management` | 6 | Cost analysis, optimization |
+| **Discovery** | `discovery` | 9 | Resource inventory, health |
+| **Environment** | `environment` | 10 | Template lifecycle, drift detection |
+| **Knowledge Base** | `knowledgebase` | 8 | Compliance education, NIST/STIG |
+| **Configuration** | `configuration` | 1 | Subscription settings |
 
-> **Remediation Boundary**: Compliance Agent handles configuration-level changes (tags, encryption, firewall rules via ARM PATCH). Infrastructure Agent handles resource lifecycle changes (create/delete, topology). See [AGENT-REMEDIATION-BOUNDARIES.md](AGENT-REMEDIATION-BOUNDARIES.md).
+> **Remediation Boundary**: Compliance Agent handles configuration-level changes (tags, encryption, firewall rules via ARM PATCH). Infrastructure Agent handles resource lifecycle changes (create/delete, topology).
 
 ### Project Structure
 
@@ -140,18 +127,18 @@ platform-engineering-copilot/
 │   ├── Platform.Engineering.Copilot.Mcp/          # Dual-mode MCP server (stdio + HTTP)
 │   │   ├── Server/                                # Minimal API HTTP bridge
 │   │   ├── Tools/                                 # MCP tool surface
-│   │   ├── Prompts/                               # System prompts for agents
 │   │   └── Middleware/                            # Request/response middleware
 │   ├── Platform.Engineering.Copilot.Agents/       # All specialized agents (consolidated)
-│   │   ├── Common/                                # Shared agent abstractions
+│   │   ├── Common/                                # BaseAgent, BaseTool, SystemPromptLoader
+│   │   ├── Prompts/                               # Externalized agent prompts (*.prompt.txt)
 │   │   ├── Orchestration/                         # Agent orchestration & selection strategies
-│   │   ├── Infrastructure/                        # Infrastructure agent
-│   │   ├── Compliance/                            # Compliance agent
-│   │   ├── CostManagement/                        # Cost management agent
-│   │   ├── Discovery/                             # Discovery agent
-│   │   ├── Environments/                          # Environment agent
-│   │   ├── Configuration/                         # Configuration agent
-│   │   └── KnowledgeBase/                         # Knowledge base agent
+│   │   ├── Infrastructure/                        # Infrastructure agent (6 tools)
+│   │   ├── Compliance/                            # Compliance agent (12 tools)
+│   │   ├── CostManagement/                        # Cost management agent (6 tools)
+│   │   ├── Discovery/                             # Discovery agent (9 tools)
+│   │   ├── Environment/                           # Environment agent (10 tools)
+│   │   ├── KnowledgeBase/                         # Knowledge base agent (8 tools)
+│   │   └── Configuration/                         # Configuration agent (1 tool)
 │   ├── Platform.Engineering.Copilot.Chat/         # Chat UI with SignalR
 │   │   ├── Controllers/                           # REST endpoints
 │   │   ├── Hubs/                                  # SignalR hubs

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.State.Abstractions;
+using Platform.Engineering.Copilot.State.Models;
 using Xunit;
 
 namespace Platform.Engineering.Copilot.Tests.Unit.Agents;
@@ -139,6 +140,111 @@ public class BaseAgentTests
 
     #endregion
 
+    #region MaxToolRounds Tests
+
+    [Fact]
+    public void MaxToolRounds_DefaultValue_IsFive()
+    {
+        // Arrange
+        var agent = new TestableAgent(_chatClientMock.Object, _loggerMock.Object);
+
+        // Act
+        var maxRounds = agent.GetMaxToolRounds();
+
+        // Assert
+        maxRounds.Should().Be(5);
+    }
+
+    [Fact]
+    public void MaxToolRounds_WithCustomValue_ReturnsCustomValue()
+    {
+        // Arrange
+        var agent = new CustomMaxRoundsAgent(_chatClientMock.Object, _loggerMock.Object, maxRounds: 10);
+
+        // Act
+        var maxRounds = agent.GetMaxToolRounds();
+
+        // Assert
+        maxRounds.Should().Be(10);
+    }
+
+    #endregion
+
+    #region ToolMode Tests
+
+    [Fact]
+    public void ToolMode_DefaultValue_IsAuto()
+    {
+        // Arrange
+        var agent = new TestableAgent(_chatClientMock.Object, _loggerMock.Object);
+
+        // Act
+        var toolMode = agent.GetToolMode();
+
+        // Assert
+        toolMode.Should().Be(ChatToolMode.Auto);
+    }
+
+    [Fact]
+    public void ToolMode_WithRequireAny_ReturnsRequireAny()
+    {
+        // Arrange
+        var agent = new RequireToolsAgent(_chatClientMock.Object, _loggerMock.Object);
+
+        // Act
+        var toolMode = agent.GetToolMode();
+
+        // Assert
+        toolMode.Should().Be(ChatToolMode.RequireAny);
+    }
+
+    #endregion
+
+    #region ProcessAsync Multi-Round Tests
+
+    [Fact]
+    public async Task ProcessAsync_WithNoToolCalls_ReturnsResponseInOneRound()
+    {
+        // Arrange
+        var agent = new TestableAgent(_chatClientMock.Object, _loggerMock.Object);
+        var context = CreateTestContext("Hello");
+        
+        var chatResponse = new ChatResponse(new ChatMessage(ChatRole.Assistant, "Hello there!"));
+        _chatClientMock
+            .Setup(x => x.GetResponseAsync(
+                It.IsAny<IEnumerable<ChatMessage>>(),
+                It.IsAny<ChatOptions>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(chatResponse);
+
+        // Act
+        var response = await agent.ProcessAsync(context);
+
+        // Assert
+        response.Success.Should().BeTrue();
+        response.Content.Should().Be("Hello there!");
+        _chatClientMock.Verify(x => x.GetResponseAsync(
+            It.IsAny<IEnumerable<ChatMessage>>(),
+            It.IsAny<ChatOptions>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_WithCancellation_ThrowsOperationCanceledException()
+    {
+        // Arrange
+        var agent = new TestableAgent(_chatClientMock.Object, _loggerMock.Object);
+        var context = CreateTestContext("Hello");
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => agent.ProcessAsync(context, cts.Token));
+    }
+
+    #endregion
+
     /// <summary>
     /// Testable implementation of BaseAgent for unit testing
     /// </summary>
@@ -154,5 +260,60 @@ public class BaseAgentTests
         protected override string GetSystemPrompt() => "You are a test agent for unit testing purposes.";
 
         public void PublicRegisterTool(BaseTool tool) => RegisterTool(tool);
+        
+        public int GetMaxToolRounds() => MaxToolRounds;
+        
+        public ChatToolMode GetToolMode() => ToolMode;
+    }
+
+    /// <summary>
+    /// Agent with custom MaxToolRounds for testing
+    /// </summary>
+    private class CustomMaxRoundsAgent : BaseAgent
+    {
+        private readonly int _maxRounds;
+        
+        public override string Description => "Agent with custom max rounds";
+        protected override int MaxToolRounds => _maxRounds;
+
+        public CustomMaxRoundsAgent(IChatClient chatClient, ILogger logger, int maxRounds)
+            : base(chatClient, logger)
+        {
+            _maxRounds = maxRounds;
+        }
+
+        protected override string GetSystemPrompt() => "Test agent";
+        
+        public int GetMaxToolRounds() => MaxToolRounds;
+    }
+
+    /// <summary>
+    /// Agent that requires tool usage
+    /// </summary>
+    private class RequireToolsAgent : BaseAgent
+    {
+        public override string Description => "Agent that requires tools";
+        protected override ChatToolMode ToolMode => ChatToolMode.RequireAny;
+
+        public RequireToolsAgent(IChatClient chatClient, ILogger logger)
+            : base(chatClient, logger)
+        {
+        }
+
+        protected override string GetSystemPrompt() => "Test agent";
+        
+        public ChatToolMode GetToolMode() => ToolMode;
+    }
+
+    private static AgentConversationContext CreateTestContext(string message)
+    {
+        return new AgentConversationContext
+        {
+            ConversationId = Guid.NewGuid().ToString(),
+            MessageHistory = new List<ConversationMessage>
+            {
+                new() { Content = message, IsUser = true, Timestamp = DateTime.UtcNow }
+            }
+        };
     }
 }
