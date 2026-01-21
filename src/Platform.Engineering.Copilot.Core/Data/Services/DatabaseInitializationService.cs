@@ -10,6 +10,10 @@ namespace Platform.Engineering.Copilot.Core.Data.Services;
 /// <summary>
 /// Database initialization service that handles database migrations, schema updates, and initial data seeding for the platform.
 /// This hosted service ensures the database is properly configured and contains required seed data on application startup.
+/// 
+/// Migration Strategy:
+/// - SQL Server (production): Uses EF Core migrations (dotnet ef migrations add/database update)
+/// - In-Memory (testing): Uses EnsureCreated() since migrations don't apply
 /// </summary>
 public class DatabaseInitializationService : IHostedService
 {
@@ -39,19 +43,39 @@ public class DatabaseInitializationService : IHostedService
         {
             _logger.LogInformation("Starting database initialization...");
 
-            // Apply pending migrations
-            var pendingMigrations = await context.Database.GetPendingMigrationsAsync(cancellationToken);
-            if (pendingMigrations.Any())
+            // Check if we're using a relational database (not in-memory)
+            var isRelational = context.Database.IsRelational();
+            
+            if (isRelational)
             {
-                _logger.LogInformation("Applying {Count} pending migrations: {Migrations}", 
-                    pendingMigrations.Count(), string.Join(", ", pendingMigrations));
+                // For relational databases (SQL Server), apply migrations
+                _logger.LogInformation("Applying database migrations...");
                 
-                await context.Database.MigrateAsync(cancellationToken);
-                _logger.LogInformation("Database migrations applied successfully");
+                var pendingMigrations = await context.Database.GetPendingMigrationsAsync(cancellationToken);
+                var pendingCount = pendingMigrations.Count();
+                
+                if (pendingCount > 0)
+                {
+                    _logger.LogInformation("Found {Count} pending migrations to apply", pendingCount);
+                    foreach (var migration in pendingMigrations)
+                    {
+                        _logger.LogInformation("  - {Migration}", migration);
+                    }
+                    
+                    await context.Database.MigrateAsync(cancellationToken);
+                    _logger.LogInformation("Database migrations applied successfully");
+                }
+                else
+                {
+                    _logger.LogInformation("Database is up to date, no migrations to apply");
+                }
             }
             else
             {
-                _logger.LogInformation("Database is up to date, no migrations needed");
+                // For in-memory databases, just ensure it's created
+                _logger.LogInformation("Using non-relational database, ensuring database is created...");
+                await context.Database.EnsureCreatedAsync(cancellationToken);
+                _logger.LogInformation("Database created/verified successfully");
             }
 
             // Seed initial data

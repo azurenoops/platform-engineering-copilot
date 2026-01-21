@@ -6,7 +6,11 @@ using Platform.Engineering.Copilot.Core.Data.Context;
 namespace Platform.Engineering.Copilot.Core.Data.Factories;
 
 /// <summary>
-/// Design-time factory for creating DbContext instances during migrations
+/// Design-time factory for creating DbContext instances during migrations.
+/// Used by EF Core CLI tools (dotnet ef migrations add, dotnet ef database update).
+/// 
+/// Default: SQL Server (production target)
+/// Override: Set DatabaseProvider=Sqlite in appsettings.json or environment variable
 /// </summary>
 public class EnvironmentManagementContextFactory : IDesignTimeDbContextFactory<PlatformEngineeringCopilotContext>
 {
@@ -22,11 +26,11 @@ public class EnvironmentManagementContextFactory : IDesignTimeDbContextFactory<P
             .AddEnvironmentVariables()
             .Build();
 
-        // Get connection string and provider
+        // Get connection string and provider - default to SQL Server for production
         var connectionString = configuration.GetConnectionString("DefaultConnection") 
-            ?? "./Data/SupervisorEnvironmentManagement.db";
+            ?? "Server=localhost,1433;Database=PlatformDb;User Id=sa;Password=YourPassword123!;TrustServerCertificate=True;";
         
-        var databaseProvider = configuration.GetValue<string>("DatabaseProvider") ?? "Sqlite";
+        var databaseProvider = configuration.GetValue<string>("DatabaseProvider") ?? "SqlServer";
 
         switch (databaseProvider.ToLower())
         {
@@ -41,7 +45,7 @@ public class EnvironmentManagementContextFactory : IDesignTimeDbContextFactory<P
             default:
                 optionsBuilder.UseSqlServer(connectionString, options =>
                 {
-                    options.MigrationsAssembly("Platform.Engineering.Copilot.Data");
+                    options.MigrationsAssembly("Platform.Engineering.Copilot.Core");
                     options.CommandTimeout(300); // 5 minutes for long-running migrations
                 });
                 break;

@@ -88,6 +88,9 @@ public class PlatformEngineeringCopilotContext : DbContext
     
     /// <summary>Audit log for provisioned environment changes</summary>
     public DbSet<EnvironmentAuditEntity> EnvironmentAuditLogs { get; set; }
+    
+    /// <summary>Activity history for provisioned environments (deployments, drift, scaling, etc.)</summary>
+    public DbSet<EnvironmentActivityEntity> EnvironmentActivities { get; set; }
 
     #region ══════════════════════════════════════════════════════════════════════
     //  SHARED INFRASTRUCTURE
@@ -495,7 +498,7 @@ public class PlatformEngineeringCopilotContext : DbContext
             entity.HasOne(e => e.ClonedFrom)
                 .WithMany(e => e.ClonedEnvironments)
                 .HasForeignKey(e => e.ClonedFromId)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<DeployedResourceEntity>(entity =>
@@ -528,6 +531,27 @@ public class PlatformEngineeringCopilotContext : DbContext
             entity.HasOne(e => e.ProvisionedEnvironment)
                 .WithMany()
                 .HasForeignKey(e => e.ProvisionedEnvironmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EnvironmentActivityEntity>(entity =>
+        {
+            // Indexes for common queries
+            entity.HasIndex(e => e.EnvironmentId);
+            entity.HasIndex(e => e.ActivityType);
+            entity.HasIndex(e => e.Timestamp);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => new { e.EnvironmentId, e.Timestamp });
+            entity.HasIndex(e => new { e.EnvironmentId, e.ActivityType });
+
+            // Default values
+            entity.Property(e => e.Timestamp).HasDefaultValueSql("GETUTCDATE()");
+            entity.Property(e => e.Status).HasDefaultValue("Completed");
+
+            // Relationship to ProvisionedEnvironment
+            entity.HasOne(e => e.Environment)
+                .WithMany()
+                .HasForeignKey(e => e.EnvironmentId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
