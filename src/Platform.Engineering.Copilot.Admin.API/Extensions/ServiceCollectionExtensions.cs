@@ -1,9 +1,15 @@
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Platform.Engineering.Copilot.Core.Data.Extensions;
+using Platform.Engineering.Copilot.Core.Data.Services;
+using Platform.Engineering.Copilot.Core.Extensions;
+using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 using Platform.Engineering.Copilot.Core.Interfaces.Templates;
+using Platform.Engineering.Copilot.Core.Interfaces.Deployment;
 using Platform.Engineering.Copilot.Core.Models.TemplateMatching;
+using Platform.Engineering.Copilot.Core.Services.Azure;
 using Platform.Engineering.Copilot.Agents.Environments.Services;
+using Platform.Engineering.Copilot.Agents.Infrastructure.Deployment;
 
 namespace Platform.Engineering.Copilot.Admin.API.Extensions;
 
@@ -32,9 +38,25 @@ public static class ServiceCollectionExtensions
             services.AddEnvironmentManagementData(configuration);
         }
         
+        // Add database initialization service for migrations and seeding
+        services.AddDatabaseInitialization();
+        
+        // Register deployment services (Bicep, Terraform deployers) for real Azure deployments
+        services.AddScoped<ITemplateDeployer, BicepDeployer>();
+        services.AddScoped<ITemplateDeployer, TerraformDeployer>();
+        services.AddScoped<IDeployerFactory, DeployerFactory>();
+        services.Configure<DeployerOptions>(configuration.GetSection("Deployment"));
+        
+        // Register Azure services for querying and managing Azure resources
+        services.Configure<Core.Configuration.GatewayOptions>(configuration.GetSection("Gateway"));
+        services.AddAzureClientFactory();
+        services.AddSingleton<IAzureResourceService, AzureResourceService>();
+        
         // Register template and environment services (Scoped to work with EF Core)
         services.AddScoped<IServiceTemplateCatalogService, ServiceTemplateCatalogService>();
         services.AddScoped<IProvisionedEnvironmentService, ProvisionedEnvironmentService>();
+        services.AddScoped<Core.Interfaces.Environments.IEnvironmentActivityService, 
+            Platform.Engineering.Copilot.Agents.Environments.Services.EnvironmentActivityService>();
 
         // Register NL template matching service (optional - works without LLM)
         services.AddScoped<INaturalLanguageTemplateMatchingService>(sp =>

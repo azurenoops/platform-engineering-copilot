@@ -15,6 +15,7 @@ public class ServiceTemplateSummaryDto
     public string Category { get; set; } = string.Empty;
     public string Format { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    public string DeploymentScope { get; set; } = "resourceGroup";
     public int DeploymentCount { get; set; }
     public DateTime CreatedAt { get; set; }
     public string CreatedBy { get; set; } = string.Empty;
@@ -40,7 +41,15 @@ public class ServiceTemplateDto
     public string Format { get; set; } = string.Empty;
     public string TemplateContent { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Deployment scope: "resourceGroup" or "subscription"
+    /// Subscription-scoped templates create their own resource groups.
+    /// </summary>
+    public string DeploymentScope { get; set; } = "resourceGroup";
+    
     public bool RequiresApproval { get; set; }
+    public bool EnforceCompliance { get; set; } = true;
     public int? DefaultExpirationDays { get; set; }
     public List<string> ComplianceFrameworks { get; set; } = new();
     public List<string> Keywords { get; set; } = new();
@@ -55,6 +64,16 @@ public class ServiceTemplateDto
     public List<TemplateParameterDto> Parameters { get; set; } = new();
     public List<TemplateGuardrailDto> Guardrails { get; set; } = new();
     
+    /// <summary>
+    /// Additional template files (e.g., Bicep modules) synced from Git.
+    /// </summary>
+    public List<TemplateFileDto> AdditionalFiles { get; set; } = new();
+    
+    /// <summary>
+    /// Indicates parameters were manually edited and will NOT be overwritten by Git sync.
+    /// </summary>
+    public bool ParametersOverridden { get; set; }
+    
     // Git Sync properties
     public bool HasGitSource { get; set; }
     public string? GitRepositoryUrl { get; set; }
@@ -64,6 +83,17 @@ public class ServiceTemplateDto
     public DateTime? LastSyncedFromGit { get; set; }
     public bool GitAutoSync { get; set; }
     public int GitSyncIntervalMinutes { get; set; }
+}
+
+/// <summary>
+/// Additional file DTO (e.g., Bicep module)
+/// </summary>
+public class TemplateFileDto
+{
+    public string FileName { get; set; } = string.Empty;
+    public string RelativePath { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+    public string FileType { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -143,6 +173,7 @@ public class ProvisionedEnvironmentDto
     public string? StatusMessage { get; set; }
     public bool HasDrift { get; set; }
     public int DriftCount { get; set; }
+    public List<DriftItemDto>? DriftItems { get; set; }
     public decimal EstimatedMonthlyCost { get; set; }
     public string? OwnerEmail { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -223,6 +254,68 @@ public class RemediateDriftResultDto
     public int ItemsFailed { get; set; }
     public int RemainingDriftCount { get; set; }
     public List<string>? Errors { get; set; }
+}
+
+/// <summary>
+/// Result of syncing resources from Azure
+/// </summary>
+public class SyncResourcesResultDto
+{
+    public string EnvironmentId { get; set; } = string.Empty;
+    public string EnvironmentName { get; set; } = string.Empty;
+    public int ResourcesFound { get; set; }
+    public int ResourcesAdded { get; set; }
+    public string? Message { get; set; }
+    public string? Error { get; set; }
+}
+
+/// <summary>
+/// Request to update environment status (admin only)
+/// </summary>
+public class UpdateEnvironmentStatusRequest
+{
+    public string? Status { get; set; }  // "Running", "Failed", "Provisioning", etc.
+    public string? StatusMessage { get; set; }
+    public string? DeploymentId { get; set; }
+    public string? UpdatedBy { get; set; }
+}
+
+/// <summary>
+/// Refresh deployment status result DTO
+/// </summary>
+public class RefreshDeploymentStatusResultDto
+{
+    public string EnvironmentId { get; set; } = string.Empty;
+    public string EnvironmentName { get; set; } = string.Empty;
+    public string DeploymentId { get; set; } = string.Empty;
+    public string PreviousStatus { get; set; } = string.Empty;
+    public string CurrentStatus { get; set; } = string.Empty;
+    public string? StatusMessage { get; set; }
+    public bool StatusChanged { get; set; }
+    public string? Error { get; set; }
+}
+
+/// <summary>
+/// Delete Azure resources result DTO
+/// </summary>
+public class DeleteResourcesResultDto
+{
+    public bool Success { get; set; }
+    public string? EnvironmentId { get; set; }
+    public string? Message { get; set; }
+    public List<string>? DeletedResources { get; set; }
+    public List<string>? FailedResources { get; set; }
+    public List<string>? Errors { get; set; }
+    public int TotalResourcesDeleted { get; set; }
+    public int TotalResourcesFailed { get; set; }
+}
+
+/// <summary>
+/// Purge all result DTO
+/// </summary>
+public class PurgeAllResultDto
+{
+    public int PurgedCount { get; set; }
 }
 
 /// <summary>
@@ -455,6 +548,71 @@ public class GitDiffResultDto
     public string? LatestSha { get; set; }
     public DateTime? LastSynced { get; set; }
     public string Message { get; set; } = string.Empty;
+}
+
+#endregion
+
+#region Environment Activity DTOs
+
+/// <summary>
+/// Environment activity entry DTO
+/// </summary>
+public class EnvironmentActivityDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string EnvironmentId { get; set; } = string.Empty;
+    public string ActivityType { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string? UserId { get; set; }
+    public string? UserName { get; set; }
+    public Dictionary<string, object>? Metadata { get; set; }
+    public DateTime Timestamp { get; set; }
+    public string Status { get; set; } = "Completed";
+    public string? ErrorMessage { get; set; }
+}
+
+/// <summary>
+/// Paged list of environment activities
+/// </summary>
+public class EnvironmentActivityListDto
+{
+    public List<EnvironmentActivityDto> Items { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int Skip { get; set; }
+    public int Take { get; set; }
+    public bool HasMore => Skip + Items.Count < TotalCount;
+}
+
+#endregion
+
+#region Deployed Resource DTOs
+
+/// <summary>
+/// Deployed resource DTO
+/// </summary>
+public class DeployedResourceDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string EnvironmentId { get; set; } = string.Empty;
+    public string ResourceId { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string ResourceType { get; set; } = string.Empty;
+    public string Location { get; set; } = string.Empty;
+    public string? Sku { get; set; }
+    public string ProvisioningState { get; set; } = string.Empty;
+    public DateTime DeployedAt { get; set; }
+    public string? AzurePortalUrl { get; set; }
+}
+
+/// <summary>
+/// List of deployed resources for an environment
+/// </summary>
+public class DeployedResourceListDto
+{
+    public List<DeployedResourceDto> Items { get; set; } = new();
+    public int TotalCount { get; set; }
+    public string EnvironmentId { get; set; } = string.Empty;
+    public string EnvironmentName { get; set; } = string.Empty;
 }
 
 #endregion

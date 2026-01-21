@@ -31,7 +31,11 @@ public class CreateTemplateRequest
 
     public string? CreatedBy { get; set; }
 
-    public bool RequiresApproval { get; set; }
+    public string? Status { get; set; }
+
+    public bool RequiresApproval { get; set; } = true;
+
+    public bool EnforceCompliance { get; set; } = true;
 
     public int? DefaultExpirationDays { get; set; }
 
@@ -46,6 +50,11 @@ public class CreateTemplateRequest
     public List<CreateParameterRequest>? Parameters { get; set; }
 
     public List<CreateGuardrailRequest>? Guardrails { get; set; }
+
+    /// <summary>
+    /// Git source configuration for syncing template content
+    /// </summary>
+    public GitSourceRequest? GitSource { get; set; }
 }
 
 /// <summary>
@@ -93,11 +102,51 @@ public class UpdateTemplateRequest
     public string? Description { get; set; }
     public string? Category { get; set; }
     public string? TemplateContent { get; set; }
+    
+    /// <summary>
+    /// Deployment scope: "resourceGroup" or "subscription"
+    /// </summary>
+    public string? DeploymentScope { get; set; }
+    
     public List<string>? Keywords { get; set; }
     public List<string>? UseCases { get; set; }
     public string? AiSelectionHint { get; set; }
     public int? DefaultExpirationDays { get; set; }
+    public string? Status { get; set; }
+    public bool? RequiresApproval { get; set; }
+    public bool? EnforceCompliance { get; set; }
+    public List<string>? ComplianceFrameworks { get; set; }
     public string? UpdatedBy { get; set; }
+    
+    // Git Source Configuration
+    public GitSourceRequest? GitSource { get; set; }
+    
+    // Parameters
+    public List<CreateParameterRequest>? Parameters { get; set; }
+    
+    // Guardrails
+    public List<GuardrailRequest>? Guardrails { get; set; }
+}
+
+public class GitSourceRequest
+{
+    public string? RepositoryUrl { get; set; }
+    public string? Branch { get; set; }
+    public string? Path { get; set; }
+    public bool AutoSync { get; set; }
+    public int SyncIntervalMinutes { get; set; } = 15;
+}
+
+public class GuardrailRequest
+{
+    public string? Name { get; set; }
+    public string? Description { get; set; }
+    public string? Type { get; set; }
+    public string? Property { get; set; }
+    public string? Operator { get; set; }
+    public string? Value { get; set; }
+    public string? Action { get; set; }
+    public string? ErrorMessage { get; set; }
 }
 
 /// <summary>

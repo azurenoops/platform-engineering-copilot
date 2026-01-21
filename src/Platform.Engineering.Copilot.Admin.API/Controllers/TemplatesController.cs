@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Platform.Engineering.Copilot.Core.Interfaces.Templates;
 using Platform.Engineering.Copilot.Core.Models.ServiceTemplates;
 using Platform.Engineering.Copilot.Core.Models.TemplateMatching;
+using Platform.Engineering.Copilot.Core.Utilities;
 using Platform.Engineering.Copilot.Admin.API.Models;
 
 namespace Platform.Engineering.Copilot.Admin.API.Controllers;
@@ -67,6 +68,7 @@ public class TemplatesController : ControllerBase
                 Category = t.Category,
                 Format = t.Format.ToString(),
                 Status = t.Status.ToString(),
+                DeploymentScope = t.DeploymentScope ?? "resourceGroup",
                 DeploymentCount = t.DeploymentCount,
                 CreatedAt = t.CreatedAt,
                 CreatedBy = t.CreatedBy,
@@ -162,8 +164,11 @@ public class TemplatesController : ControllerBase
                 Format = Enum.TryParse<TemplateFormat>(request.Format, out var format) 
                     ? format : TemplateFormat.Bicep,
                 MainTemplateContent = request.TemplateContent ?? string.Empty,
+                Status = !string.IsNullOrEmpty(request.Status) && Enum.TryParse<TemplateStatus>(request.Status, out var status) 
+                    ? status : TemplateStatus.Draft,
                 CreatedBy = request.CreatedBy ?? "admin",
                 RequiresApproval = request.RequiresApproval,
+                EnforceCompliance = request.EnforceCompliance,
                 DefaultExpirationDays = request.DefaultExpirationDays,
                 ComplianceFrameworks = request.ComplianceFrameworks ?? new List<string>(),
                 Keywords = request.Keywords ?? new List<string>(),
@@ -214,7 +219,37 @@ public class TemplatesController : ControllerBase
                 }
             }
 
+            // Set Git source if provided
+            if (request.GitSource != null && !string.IsNullOrEmpty(request.GitSource.RepositoryUrl))
+            {
+                template.GitSource = new GitSourceInfo
+                {
+                    RepositoryUrl = request.GitSource.RepositoryUrl,
+                    Branch = request.GitSource.Branch ?? "main",
+                    Path = request.GitSource.Path ?? "",
+                    AutoSync = request.GitSource.AutoSync,
+                    SyncIntervalMinutes = request.GitSource.SyncIntervalMinutes
+                };
+            }
+
             var created = await _catalogService.CreateTemplateAsync(template, template.CreatedBy, cancellationToken);
+            
+            // Auto-sync from Git if source is configured
+            if (created.GitSource != null && !string.IsNullOrEmpty(created.GitSource.RepositoryUrl) && _gitSyncService != null)
+            {
+                try
+                {
+                    _logger.LogInformation("Auto-syncing template {TemplateId} from Git source", created.Id);
+                    if (Guid.TryParse(created.Id, out var createdGuid))
+                    {
+                        await _gitSyncService.SyncTemplateAsync(createdGuid, force: true, cancellationToken);
+                    }
+                }
+                catch (Exception syncEx)
+                {
+                    _logger.LogWarning(syncEx, "Failed to auto-sync template {TemplateId} from Git. Template created but content may be empty.", created.Id);
+                }
+            }
             
             _logger.LogInformation("Created template {TemplateId}: {TemplateName}", 
                 created.Id, created.Name);
@@ -257,13 +292,96 @@ public class TemplatesController : ControllerBase
             if (request.UseCases != null) existing.UseCases = request.UseCases;
             if (request.AiSelectionHint != null) existing.AiSelectionHint = request.AiSelectionHint;
             if (request.DefaultExpirationDays.HasValue) existing.DefaultExpirationDays = request.DefaultExpirationDays;
+            if (!string.IsNullOrEmpty(request.DeploymentScope)) existing.DeploymentScope = request.DeploymentScope;
             
-            existing.UpdatedBy = request.UpdatedBy ?? "admin";
+            // Update Git source
+            if (request.GitSource != null)
+            {
+                existing.GitSource = new GitSourceInfo
+                {
+                    RepositoryUrl = request.GitSource.RepositoryUrl ?? "",
+                    Branch = request.GitSource.Branch ?? "main",
+                    Path = request.GitSource.Path ?? "",
+                    AutoSync = request.GitSource.AutoSync,
+                    SyncIntervalMinutes = request.GitSource.SyncIntervalMinutes
+                };
+            }
+            
+            // Update guardrails
+            if (request.Guardrails != null)
+            {
+                existing.Guardrails = request.Guardrails.Select(g => new TemplateGuardrail
+                {
+                    Name = g.Name ?? "",
+                    Description = g.Description ?? "",
+                    Type = Enum.TryParse<GuardrailType>(g.Type, out var type) ? type : GuardrailType.Limit,
+                    Property = g.Property ?? "",
+                    Operator = g.Operator ?? "",
+                    Value = g.Value ?? "",
+                    Action = Enum.TryParse<GuardrailAction>(g.Action, out var action) ? action : GuardrailAction.Deny,
+                    ErrorMessage = g.ErrorMessage ?? ""
+                }).ToList();
+            }
+                        // Update Parameters if provided
+            if (request.Parameters != null)
+            {
+                existing.Parameters = request.Parameters.Select(p => new TemplateParameter
+                {
+                    Name = p.Name,
+                    DisplayName = p.DisplayName ?? p.Name,
+                    Description = p.Description ?? "",
+                    Type = Enum.TryParse<ParameterType>(p.Type, out var type) ? type : ParameterType.String,
+                    Required = p.Required,
+                    DefaultValue = p.DefaultValue,
+                    AllowedValues = p.AllowedValues?.Select(v => v?.ToString() ?? "").ToList(),
+                    DisplayOrder = p.DisplayOrder
+                }).ToList();
+                
+                // Mark parameters as overridden so Git sync won't overwrite them
+                existing.ParametersOverridden = true;
+                _logger.LogInformation("Parameters manually updated for template {TemplateId} - marked as overridden", id);
+            }
+            
+            // Update Status if provided
+            if (!string.IsNullOrEmpty(request.Status) && Enum.TryParse<TemplateStatus>(request.Status, out var status))
+            {
+                existing.Status = status;
+            }
+            
+            // Update approval and compliance settings
+            if (request.RequiresApproval.HasValue)
+                existing.RequiresApproval = request.RequiresApproval.Value;
+                
+            if (request.EnforceCompliance.HasValue)
+                existing.EnforceCompliance = request.EnforceCompliance.Value;
+                
+            if (request.ComplianceFrameworks != null)
+                existing.ComplianceFrameworks = request.ComplianceFrameworks;
+                        existing.UpdatedBy = request.UpdatedBy ?? "admin";
 
             var updated = await _catalogService.UpdateTemplateAsync(
                 existing, 
                 existing.UpdatedBy, 
                 cancellationToken);
+
+            // Auto-sync from Git if source was added/updated
+            if (request.GitSource != null && !string.IsNullOrEmpty(request.GitSource.RepositoryUrl) && _gitSyncService != null)
+            {
+                try
+                {
+                    _logger.LogInformation("Auto-syncing template {TemplateId} from Git source after update", id);
+                    if (Guid.TryParse(id, out var templateGuid))
+                    {
+                        await _gitSyncService.SyncTemplateAsync(templateGuid, force: true, cancellationToken);
+                        // Refresh the template to get synced content
+                        updated = await _catalogService.GetTemplateAsync(id, cancellationToken) ?? updated;
+                    }
+                }
+                catch (Exception syncEx)
+                {
+                    _logger.LogWarning(syncEx, "Failed to auto-sync template {TemplateId} from Git after update.", id);
+                }
+            }
 
             _logger.LogInformation("Updated template {TemplateId}", id);
 
@@ -802,6 +920,65 @@ public class TemplatesController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Reset parameter override flag and resync parameters from Git.
+    /// Use this when you want to discard manual parameter edits and restore parameters from the Git source.
+    /// </summary>
+    [HttpPost("{id}/reset-parameters")]
+    [ProducesResponseType(typeof(ServiceTemplateDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<ServiceTemplateDto>> ResetParametersFromGit(
+        string id,
+        CancellationToken cancellationToken = default)
+    {
+        if (_gitSyncService == null)
+        {
+            return StatusCode(503, new { error = "Git sync service is not configured" });
+        }
+
+        try
+        {
+            if (!Guid.TryParse(id, out var templateId))
+                return BadRequest(new { error = "Invalid template ID format" });
+
+            var existing = await _catalogService.GetTemplateAsync(id, cancellationToken);
+            if (existing == null)
+                return NotFound(new { error = $"Template {id} not found" });
+
+            if (existing.GitSource == null || string.IsNullOrEmpty(existing.GitSource.RepositoryUrl))
+                return BadRequest(new { error = "Template has no Git source configured" });
+
+            // Reset the override flag
+            existing.ParametersOverridden = false;
+            existing.UpdatedBy = "ParameterReset";
+            await _catalogService.UpdateTemplateAsync(existing, "ParameterReset", cancellationToken);
+
+            // Force sync from Git to restore parameters
+            _logger.LogInformation("🔄 Resetting parameters for template {TemplateId} from Git", id);
+            var syncResult = await _gitSyncService.SyncTemplateAsync(templateId, force: true, cancellationToken);
+
+            if (!syncResult.Success)
+            {
+                return StatusCode(500, new { error = $"Failed to sync parameters from Git: {syncResult.Message}" });
+            }
+
+            // Get the updated template
+            var updated = await _catalogService.GetTemplateAsync(id, cancellationToken);
+            if (updated == null)
+                return NotFound(new { error = $"Template {id} not found after reset" });
+
+            _logger.LogInformation("✅ Parameters reset for template {TemplateId} from Git", id);
+
+            return Ok(MapToDto(updated));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resetting parameters for template {TemplateId}", id);
+            return StatusCode(500, new { error = "Failed to reset parameters" });
+        }
+    }
+
     #endregion
 
     private static ServiceTemplateDto MapToDto(ServiceTemplate template)
@@ -817,7 +994,9 @@ public class TemplatesController : ControllerBase
             Format = template.Format.ToString(),
             TemplateContent = template.MainTemplateContent,
             Status = template.Status.ToString(),
+            DeploymentScope = template.DeploymentScope ?? "resourceGroup",
             RequiresApproval = template.RequiresApproval,
+            EnforceCompliance = template.EnforceCompliance,
             DefaultExpirationDays = template.DefaultExpirationDays,
             ComplianceFrameworks = template.ComplianceFrameworks,
             Keywords = template.Keywords,
@@ -837,6 +1016,15 @@ public class TemplatesController : ControllerBase
             LastSyncedFromGit = template.LastSyncedFromGit,
             GitAutoSync = template.GitSource?.AutoSync ?? false,
             GitSyncIntervalMinutes = template.GitSource?.SyncIntervalMinutes ?? 15,
+            ParametersOverridden = template.ParametersOverridden,
+            // Additional files (Bicep modules)
+            AdditionalFiles = template.AdditionalFiles?.Select(f => new TemplateFileDto
+            {
+                FileName = f.FileName,
+                RelativePath = f.RelativePath,
+                Content = f.Content,
+                FileType = f.FileType
+            }).ToList() ?? new List<TemplateFileDto>(),
             Approval = template.Approval != null ? new ApprovalInfoDto
             {
                 Source = template.Approval.Source.ToString(),
@@ -871,4 +1059,121 @@ public class TemplatesController : ControllerBase
             }).ToList()
         };
     }
+
+    /// <summary>
+    /// Parse Bicep template content and extract parameter definitions
+    /// </summary>
+    [HttpPost("parse-bicep-parameters")]
+    [ProducesResponseType(typeof(List<TemplateParameterDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public ActionResult<List<TemplateParameterDto>> ParseBicepParameters([FromBody] ParseBicepParametersRequest request)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(request.BicepContent))
+            {
+                return BadRequest("Bicep content is required");
+            }
+
+            var parameters = BicepParameterParser.ParseParameters(request.BicepContent);
+
+            var dtos = parameters.Select((p, index) => new TemplateParameterDto
+            {
+                Name = p.Name,
+                DisplayName = p.DisplayName,
+                Description = p.Description,
+                Type = p.Type.ToString(),
+                Required = p.Required,
+                DefaultValue = p.DefaultValue,
+                AllowedValues = p.AllowedValues?.Cast<object>().ToList(),
+                MinValue = p.MinValue,
+                MaxValue = p.MaxValue,
+                DisplayOrder = index
+            }).ToList();
+
+            _logger.LogInformation("Parsed {Count} parameters from Bicep template", dtos.Count);
+            return Ok(dtos);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error parsing Bicep parameters");
+            return BadRequest($"Error parsing Bicep parameters: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Parse Bicep parameters from a Git repository URL
+    /// </summary>
+    [HttpPost("parse-bicep-parameters-from-git")]
+    [ProducesResponseType(typeof(List<TemplateParameterDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<List<TemplateParameterDto>>> ParseBicepParametersFromGit(
+        [FromBody] ParseBicepParametersFromGitRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (_gitSyncService == null)
+        {
+            return StatusCode(503, new { error = "Git sync service is not configured" });
+        }
+
+        try
+        {
+            _logger.LogInformation("📥 Fetching Bicep template from Git: {Url}/{Path}", request.RepositoryUrl, request.Path);
+
+            // Fetch the Bicep content from Git
+            var content = await _gitSyncService.FetchFileContentAsync(
+                request.RepositoryUrl ?? "",
+                request.Branch ?? "main",
+                request.Path ?? "",
+                cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                return BadRequest("Failed to fetch file content from Git repository");
+            }
+
+            // Parse parameters from the fetched content
+            var parameters = BicepParameterParser.ParseParameters(content);
+
+            var dtos = parameters.Select((p, index) => new TemplateParameterDto
+            {
+                Name = p.Name,
+                DisplayName = p.DisplayName,
+                Description = p.Description,
+                Type = p.Type.ToString(),
+                Required = p.Required,
+                DefaultValue = p.DefaultValue,
+                AllowedValues = p.AllowedValues?.Cast<object>().ToList(),
+                MinValue = p.MinValue,
+                MaxValue = p.MaxValue,
+                DisplayOrder = index
+            }).ToList();
+
+            _logger.LogInformation("Parsed {Count} parameters from Git Bicep template", dtos.Count);
+            return Ok(dtos);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error parsing Bicep parameters from Git");
+            return BadRequest($"Error parsing Bicep parameters from Git: {ex.Message}");
+        }
+    }
+}
+
+/// <summary>
+/// Request model for parsing Bicep parameters
+/// </summary>
+public record ParseBicepParametersRequest
+{
+    public required string BicepContent { get; init; }
+}
+
+/// <summary>
+/// Request model for parsing Bicep parameters from Git
+/// </summary>
+public record ParseBicepParametersFromGitRequest
+{
+    public string? RepositoryUrl { get; init; }
+    public string? Branch { get; init; }
+    public string? Path { get; init; }
 }

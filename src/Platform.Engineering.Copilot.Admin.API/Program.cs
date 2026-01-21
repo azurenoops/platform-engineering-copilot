@@ -29,18 +29,25 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 // Add CORS for Admin Client
+var corsOriginsConfig = builder.Configuration["Cors:AllowedOrigins"];
+var corsOrigins = !string.IsNullOrEmpty(corsOriginsConfig) 
+    ? corsOriginsConfig.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    : new[] { 
+        "http://localhost:5000",  // Admin Client default
+        "http://localhost:5003",  // Admin Client alt port (macOS AirPlay conflict)
+        "http://localhost:5200",  // Admin Client dev
+        "https://localhost:5201"  // Admin Client HTTPS
+    };
+
+Log.Information("CORS Origins configured: {Origins}", string.Join(", ", corsOrigins));
+
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AdminClient", policy =>
+    options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins(
-                "http://localhost:5000",  // Admin Client default
-                "http://localhost:5200",  // Admin Client dev
-                "https://localhost:5201"  // Admin Client HTTPS
-            )
+        policy.SetIsOriginAllowed(_ => true)
             .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
+            .AllowAnyMethod();
     });
 });
 
@@ -49,7 +56,6 @@ builder.Services.AddAdminServices(builder.Configuration);
 
 var app = builder.Build();
 
-// Configure pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -60,8 +66,9 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseCors("AdminClient");
-app.UseHttpsRedirection();
+// CORS must be before routing and controllers
+app.UseCors();
+app.UseRouting();
 app.UseAuthorization();
 app.MapControllers();
 
