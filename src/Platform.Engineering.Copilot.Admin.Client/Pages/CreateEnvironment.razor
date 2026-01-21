@@ -3,6 +3,7 @@
 @inject TemplateApiService TemplateApi
 @inject NavigationManager Navigation
 @inject IToastService ToastService
+@inject AppSettingsService SettingsService
 
 <div class="mb-4">
     <nav aria-label="breadcrumb">
@@ -165,10 +166,21 @@ else
                                 <ValidationMessage For="@(() => _model.SubscriptionId)" />
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Resource Group <span class="text-danger">*</span></label>
-                                <InputText class="form-control" @bind-Value="_model.ResourceGroup" 
-                                           placeholder="e.g., rg-dev-team-alpha" />
-                                <ValidationMessage For="@(() => _model.ResourceGroup)" />
+                                @if (_selectedTemplate?.DeploymentScope == "subscription")
+                                {
+                                    <label class="form-label">Resource Group</label>
+                                    <input type="text" class="form-control" value="Created by template" disabled />
+                                    <small class="text-info">
+                                        <i class="fa fa-info-circle me-1"></i>This template creates its own resource groups
+                                    </small>
+                                }
+                                else
+                                {
+                                    <label class="form-label">Resource Group <span class="text-danger">*</span></label>
+                                    <InputText class="form-control" @bind-Value="_model.ResourceGroup" 
+                                               placeholder="e.g., rg-dev-team-alpha" />
+                                    <ValidationMessage For="@(() => _model.ResourceGroup)" />
+                                }
                             </div>
                         </div>
 
@@ -246,7 +258,14 @@ else
                     <ul class="mb-0">
                         <li class="mb-2">Select a template that matches your requirements</li>
                         <li class="mb-2">Environment names must be unique within a subscription</li>
-                        <li class="mb-2">Resource group will be created if it doesn't exist</li>
+                        @if (_selectedTemplate?.DeploymentScope == "subscription")
+                        {
+                            <li class="mb-2"><strong>This template creates its own resource groups</strong></li>
+                        }
+                        else
+                        {
+                            <li class="mb-2">Resource group will be created if it doesn't exist</li>
+                        }
                         <li class="mb-2">Set expiration for temporary environments</li>
                         <li>Provisioning typically takes 5-15 minutes</li>
                     </ul>
@@ -304,7 +323,27 @@ else
     {
         try
         {
+            // Load settings to get defaults
+            await SettingsService.LoadSettingsAsync();
+            
             _templates = await TemplateApi.GetTemplatesAsync(status: "Published");
+            
+            // Apply default values from settings
+            if (!string.IsNullOrEmpty(SettingsService.Settings.DefaultSubscriptionId))
+            {
+                _model.SubscriptionId = SettingsService.Settings.DefaultSubscriptionId;
+            }
+            
+            if (!string.IsNullOrEmpty(SettingsService.Settings.DefaultLocation))
+            {
+                _model.Location = SettingsService.Settings.DefaultLocation;
+            }
+            
+            // Apply default expiration if configured
+            if (SettingsService.Settings.DefaultExpirationDays > 0)
+            {
+                _expirationDate = DateTime.Today.AddDays(SettingsService.Settings.DefaultExpirationDays);
+            }
             
             // Pre-select template if provided in query
             if (!string.IsNullOrEmpty(TemplateId))
@@ -477,7 +516,8 @@ else
         if (string.IsNullOrWhiteSpace(_model.SubscriptionId))
             validationErrors.Add("Subscription ID is required");
         
-        if (string.IsNullOrWhiteSpace(_model.ResourceGroup))
+        // Only require resource group for resource group-scoped templates
+        if (_selectedTemplate?.DeploymentScope != "subscription" && string.IsNullOrWhiteSpace(_model.ResourceGroup))
             validationErrors.Add("Resource Group is required");
         
         // Check required template parameters

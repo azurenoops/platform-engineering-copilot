@@ -8,9 +8,14 @@
         <h4 class="mb-0">Provisioned Environments</h4>
         <small class="text-muted">Manage deployed environments across subscriptions</small>
     </div>
-    <a href="environments/create" class="btn btn-primary">
-        <i class="fa fa-rocket me-1"></i>Provision New Environment
-    </a>
+    <div>
+        <button class="btn btn-outline-secondary me-2" @onclick="ToggleDeletedView">
+            <i class="fa fa-trash-alt me-1"></i>@(_showDeleted ? "Hide Deleted" : "View Deleted")
+        </button>
+        <a href="environments/create" class="btn btn-primary">
+            <i class="fa fa-rocket me-1"></i>Provision New Environment
+        </a>
+    </div>
 </div>
 
 <!-- Filters -->
@@ -58,90 +63,125 @@
         </div>
     </div>
 }
+else if (_showDeleted)
+{
+    <!-- Deleted Environments View -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="fa fa-trash-alt me-2"></i>Soft-Deleted Environments</span>
+            @if (_deletedEnvironments?.Count > 0)
+            {
+                <button class="btn btn-sm btn-danger" @onclick="ShowPurgeAllConfirmation">
+                    <i class="fa fa-fire me-1"></i>Purge All
+                </button>
+            }
+        </div>
+        <div class="card-body p-0">
+            @if (_deletedEnvironments?.Count > 0)
+            {
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Template</th>
+                            <th>Resource Group</th>
+                            <th>Deleted At</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var env in _deletedEnvironments)
+                        {
+                            <tr class="table-secondary">
+                                <td>
+                                    <span class="text-muted">@env.DisplayName</span>
+                                    <div class="text-muted small">@env.Name</div>
+                                </td>
+                                <td>@env.TemplateName</td>
+                                <td>@env.ResourceGroup</td>
+                                <td>@env.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy")</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ShowPurgeConfirmation(env)">
+                                        <i class="fa fa-fire me-1"></i>Purge
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <div class="text-center py-4 text-muted">
+                    <i class="fa fa-check-circle fa-2x mb-2"></i>
+                    <p>No soft-deleted environments</p>
+                </div>
+            }
+        </div>
+    </div>
+}
 else if (_environments?.Count > 0)
 {
     <div class="card">
-        <div class="card-body p-0">
-            <table class="table table-hover mb-0">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Template</th>
-                        <th>Resource Group</th>
-                        <th>Status</th>
-                        <th>Drift</th>
-                        <th>Cost/mo</th>
-                        <th>Expires</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var env in _environments)
-                    {
-                        <tr>
-                            <td>
-                                <a href="environments/@env.Id" class="fw-bold">@env.DisplayName</a>
-                                <div class="text-muted small">@env.Name</div>
-                            </td>
-                            <td>@env.TemplateName</td>
-                            <td>
-                                <span class="text-muted small">@env.ResourceGroup</span>
-                                <div class="text-muted small">@env.Location</div>
-                            </td>
-                            <td>
-                                <span class="status-badge @GetStatusClass(env.Status)">
-                                    @env.Status
-                                </span>
-                            </td>
-                            <td>
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="fa fa-server me-2"></i>Provisioned Environments</span>
+            <span class="badge bg-secondary">@_environments.Count</span>
+        </div>
+        <div class="card-body">
+            @foreach (var env in _environments)
+            {
+                <div class="list-group-item mb-2">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center mb-1">
+                                <a href="environments/@env.Id" class="text-decoration-none">
+                                    <strong>@env.DisplayName</strong>
+                                </a>
+                                <span class="status-badge @GetStatusClass(env.Status) ms-2">@env.Status</span>
                                 @if (env.HasDrift)
                                 {
-                                    <span class="badge bg-warning text-dark">
-                                        <i class="fa fa-exclamation-triangle me-1"></i>@env.DriftCount items
+                                    <span class="badge bg-warning text-dark ms-2">
+                                        <i class="fa fa-exclamation-triangle me-1"></i>@env.DriftCount drift
                                     </span>
                                 }
-                                else
-                                {
-                                    <span class="badge bg-success">
-                                        <i class="fa fa-check me-1"></i>None
-                                    </span>
-                                }
-                            </td>
-                            <td>@env.EstimatedMonthlyCost.ToString("C0")</td>
-                            <td>
+                            </div>
+                            <p class="text-muted small mb-1">@env.TemplateName • @env.ResourceGroup • @env.Location</p>
+                            <div>
+                                <span class="badge bg-info me-1">@env.TemplateName</span>
+                                <span class="badge bg-secondary me-1">@env.Location</span>
+                                <span class="badge bg-success me-1">@env.EstimatedMonthlyCost.ToString("C0")/mo</span>
                                 @if (env.ExpiresAt.HasValue)
                                 {
                                     var days = (env.ExpiresAt.Value - DateTime.UtcNow).TotalDays;
-                                    <span class="@(days < 7 ? "text-danger fw-bold" : "")">
-                                        @env.ExpiresAt.Value.ToLocalTime().ToString("MMM dd")
+                                    <span class="badge @(days < 7 ? "bg-danger" : "bg-secondary")">
+                                        Expires @env.ExpiresAt.Value.ToLocalTime().ToString("MMM dd")
                                     </span>
                                 }
-                                else
+                            </div>
+                        </div>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                Actions
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="environments/@env.Id"><i class="fa fa-eye me-2"></i>View Details</a></li>
+                                <li><a class="dropdown-item" href="#" @onclick="() => DetectDrift(env.Id)" @onclick:preventDefault><i class="fa fa-search me-2"></i>Detect Drift</a></li>
+                                @if (env.HasDrift)
                                 {
-                                    <span class="text-muted">Never</span>
+                                    <li><a class="dropdown-item" href="#" @onclick="() => RemediateDrift(env.Id)" @onclick:preventDefault><i class="fa fa-wrench me-2"></i>Remediate</a></li>
                                 }
-                            </td>
-                            <td>
-                                <div class="dropdown">
-                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                        Actions
-                                    </button>
-                                    <ul class="dropdown-menu">
-                                        <li><a class="dropdown-item" href="environments/@env.Id"><i class="fa fa-eye me-2"></i>View Details</a></li>
-                                        <li><a class="dropdown-item" href="#" @onclick="() => DetectDrift(env.Id)" @onclick:preventDefault><i class="fa fa-search me-2"></i>Detect Drift</a></li>
-                                        @if (env.HasDrift)
-                                        {
-                                            <li><a class="dropdown-item" href="#" @onclick="() => RemediateDrift(env.Id)" @onclick:preventDefault><i class="fa fa-wrench me-2"></i>Remediate</a></li>
-                                        }
-                                        <li><hr class="dropdown-divider"></li>
-                                        <li><a class="dropdown-item text-danger" href="#" @onclick="() => DeleteEnvironment(env)" @onclick:preventDefault><i class="fa fa-trash me-2"></i>Delete</a></li>
-                                    </ul>
-                                </div>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+                                @if (env.Status == "Failed")
+                                {
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item text-warning" href="#" @onclick="() => ShowReprovisionConfirmation(env)" @onclick:preventDefault><i class="fa fa-redo me-2"></i>Reprovision</a></li>
+                                }
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-danger" href="#" @onclick="() => ShowDeleteConfirmation(env)" @onclick:preventDefault><i class="fa fa-trash me-2"></i>Delete</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            }
         </div>
     </div>
 }
@@ -161,11 +201,153 @@ else
     </div>
 }
 
+<!-- Delete Confirmation Modal -->
+@if (_showDeleteModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title"><i class="fa fa-exclamation-triangle me-2"></i>Delete Environment</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _showDeleteModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete the environment <strong>@_selectedEnvironment?.DisplayName</strong>?</p>
+                    
+                    <div class="alert alert-warning">
+                        <i class="fa fa-info-circle me-2"></i>
+                        <strong>Resource Group:</strong> @_selectedEnvironment?.ResourceGroup
+                    </div>
+                    
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="deleteResources" @bind="_deleteAzureResources">
+                        <label class="form-check-label text-danger fw-bold" for="deleteResources">
+                            <i class="fa fa-cloud me-1"></i>Also delete Azure resources (resource group)
+                        </label>
+                        <div class="form-text">This will permanently delete all Azure resources in the environment's resource group.</div>
+                    </div>
+                    
+                    @if (_deleteAzureResources)
+                    {
+                        <div class="alert alert-danger">
+                            <i class="fa fa-exclamation-circle me-2"></i>
+                            <strong>Warning:</strong> This will permanently delete the resource group <code>@_selectedEnvironment?.ResourceGroup</code> and ALL resources within it. This action cannot be undone!
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _showDeleteModal = false">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@_processing">
+                        @if (_processing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="fa fa-trash me-1"></i>Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Reprovision Confirmation Modal -->
+@if (_showReprovisionModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title"><i class="fa fa-redo me-2"></i>Reprovision Environment</h5>
+                    <button type="button" class="btn-close" @onclick="() => _showReprovisionModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to reprovision the failed environment <strong>@_selectedEnvironment?.DisplayName</strong>?</p>
+                    
+                    <div class="alert alert-info">
+                        <i class="fa fa-info-circle me-2"></i>
+                        This will retry the deployment using the same template and parameters. Any partially deployed resources may be updated or replaced.
+                    </div>
+                    
+                    <ul class="list-unstyled">
+                        <li><strong>Template:</strong> @_selectedEnvironment?.TemplateName</li>
+                        <li><strong>Resource Group:</strong> @_selectedEnvironment?.ResourceGroup</li>
+                        <li><strong>Location:</strong> @_selectedEnvironment?.Location</li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _showReprovisionModal = false">Cancel</button>
+                    <button type="button" class="btn btn-warning" @onclick="ConfirmReprovision" disabled="@_processing">
+                        @if (_processing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="fa fa-redo me-1"></i>Reprovision
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Purge Confirmation Modal -->
+@if (_showPurgeModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title"><i class="fa fa-fire me-2"></i>Purge Environment</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _showPurgeModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_purgeAll)
+                    {
+                        <p>Are you sure you want to <strong>permanently delete ALL soft-deleted environments</strong>?</p>
+                        <div class="alert alert-danger">
+                            <i class="fa fa-exclamation-circle me-2"></i>
+                            This will permanently remove <strong>@(_deletedEnvironments?.Count ?? 0) environments</strong> from the database. This action cannot be undone!
+                        </div>
+                    }
+                    else
+                    {
+                        <p>Are you sure you want to permanently purge <strong>@_selectedEnvironment?.DisplayName</strong>?</p>
+                        <div class="alert alert-danger">
+                            <i class="fa fa-exclamation-circle me-2"></i>
+                            This will permanently remove the environment record from the database. This action cannot be undone!
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _showPurgeModal = false">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="ConfirmPurge" disabled="@_processing">
+                        @if (_processing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="fa fa-fire me-1"></i>Purge
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private bool _loading = true;
+    private bool _processing = false;
+    private bool _showDeleted = false;
     private List<EnvironmentListItem>? _environments;
+    private List<EnvironmentListItem>? _deletedEnvironments;
     private string _selectedStatus = "";
     private string _hasDriftFilter = "";
+    
+    // Modal state
+    private bool _showDeleteModal = false;
+    private bool _showReprovisionModal = false;
+    private bool _showPurgeModal = false;
+    private bool _purgeAll = false;
+    private bool _deleteAzureResources = false;
+    private EnvironmentListItem? _selectedEnvironment;
 
     protected override async Task OnInitializedAsync()
     {
@@ -191,6 +373,27 @@ else
         finally
         {
             _loading = false;
+        }
+    }
+
+    private async Task LoadDeletedEnvironments()
+    {
+        try
+        {
+            _deletedEnvironments = await EnvironmentApi.GetDeletedEnvironmentsAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load deleted environments: {ex.Message}");
+        }
+    }
+
+    private async Task ToggleDeletedView()
+    {
+        _showDeleted = !_showDeleted;
+        if (_showDeleted)
+        {
+            await LoadDeletedEnvironments();
         }
     }
 
@@ -221,7 +424,6 @@ else
     private async Task DetectAllDrift()
     {
         ToastService.ShowInfo("Checking drift for all environments...");
-        // Implementation would loop through environments
         await LoadEnvironments();
     }
 
@@ -246,17 +448,133 @@ else
         }
     }
 
-    private async Task DeleteEnvironment(EnvironmentListItem env)
+    // Delete confirmation
+    private void ShowDeleteConfirmation(EnvironmentListItem env)
     {
+        _selectedEnvironment = env;
+        _deleteAzureResources = false;
+        _showDeleteModal = true;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (_selectedEnvironment == null) return;
+        
+        _processing = true;
         try
         {
-            await EnvironmentApi.DeleteEnvironmentAsync(env.Id);
-            ToastService.ShowSuccess($"Environment {env.DisplayName} deleted");
+            // If user chose to delete Azure resources, do that first
+            if (_deleteAzureResources)
+            {
+                ToastService.ShowInfo($"Deleting Azure resources for {_selectedEnvironment.DisplayName}...");
+                var deleteResult = await EnvironmentApi.DeleteAzureResourcesAsync(_selectedEnvironment.Id);
+                if (deleteResult?.Success == true)
+                {
+                    ToastService.ShowSuccess($"Azure resource group deletion initiated");
+                }
+                else
+                {
+                    ToastService.ShowWarning($"Resource deletion may have issues: {string.Join(", ", deleteResult?.Errors ?? new List<string>())}");
+                }
+            }
+            
+            // Delete the environment record (soft delete)
+            await EnvironmentApi.DeleteEnvironmentAsync(_selectedEnvironment.Id);
+            ToastService.ShowSuccess($"Environment {_selectedEnvironment.DisplayName} deleted");
+            
+            _showDeleteModal = false;
             await LoadEnvironments();
         }
         catch (Exception ex)
         {
             ToastService.ShowError($"Failed to delete: {ex.Message}");
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    // Reprovision confirmation
+    private void ShowReprovisionConfirmation(EnvironmentListItem env)
+    {
+        _selectedEnvironment = env;
+        _showReprovisionModal = true;
+    }
+
+    private async Task ConfirmReprovision()
+    {
+        if (_selectedEnvironment == null) return;
+        
+        _processing = true;
+        try
+        {
+            ToastService.ShowInfo($"Reprovisioning {_selectedEnvironment.DisplayName}...");
+            var result = await EnvironmentApi.ReprovisionEnvironmentAsync(_selectedEnvironment.Id);
+            
+            if (result?.Success == true)
+            {
+                ToastService.ShowSuccess($"Environment {_selectedEnvironment.DisplayName} reprovisioned successfully");
+            }
+            else
+            {
+                ToastService.ShowError($"Reprovisioning failed: {string.Join(", ", result?.Errors ?? new List<string>())}");
+            }
+            
+            _showReprovisionModal = false;
+            await LoadEnvironments();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to reprovision: {ex.Message}");
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    // Purge confirmation
+    private void ShowPurgeConfirmation(EnvironmentListItem env)
+    {
+        _selectedEnvironment = env;
+        _purgeAll = false;
+        _showPurgeModal = true;
+    }
+
+    private void ShowPurgeAllConfirmation()
+    {
+        _selectedEnvironment = null;
+        _purgeAll = true;
+        _showPurgeModal = true;
+    }
+
+    private async Task ConfirmPurge()
+    {
+        _processing = true;
+        try
+        {
+            if (_purgeAll)
+            {
+                var count = await EnvironmentApi.PurgeAllDeletedEnvironmentsAsync();
+                ToastService.ShowSuccess($"Purged {count} soft-deleted environments");
+            }
+            else if (_selectedEnvironment != null)
+            {
+                await EnvironmentApi.PurgeEnvironmentAsync(_selectedEnvironment.Id);
+                ToastService.ShowSuccess($"Environment {_selectedEnvironment.DisplayName} permanently purged");
+            }
+            
+            _showPurgeModal = false;
+            await LoadDeletedEnvironments();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to purge: {ex.Message}");
+        }
+        finally
+        {
+            _processing = false;
         }
     }
 

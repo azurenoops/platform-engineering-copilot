@@ -122,4 +122,63 @@ public class EnvironmentApiService
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<EnvironmentDetail>();
     }
+
+    public async Task<EnvironmentActivityList?> GetActivitiesAsync(
+        string id,
+        string? activityType = null,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        int skip = 0,
+        int take = 50)
+    {
+        var query = $"{BaseUrl}/{id}/activities?skip={skip}&take={take}";
+        if (!string.IsNullOrEmpty(activityType)) query += $"&activityType={Uri.EscapeDataString(activityType)}";
+        if (fromDate.HasValue) query += $"&fromDate={fromDate.Value:O}";
+        if (toDate.HasValue) query += $"&toDate={toDate.Value:O}";
+
+        return await _httpClient.GetFromJsonAsync<EnvironmentActivityList>(query);
+    }
+
+    public async Task<DeployedResourceList?> GetResourcesAsync(string id)
+    {
+        return await _httpClient.GetFromJsonAsync<DeployedResourceList>($"{BaseUrl}/{id}/resources");
+    }
+
+    public async Task<SyncResourcesResult?> SyncResourcesAsync(string id)
+    {
+        var response = await _httpClient.PostAsync($"{BaseUrl}/{id}/sync-resources", null);
+        return await response.Content.ReadFromJsonAsync<SyncResourcesResult>();
+    }
+
+    public async Task<CreateEnvironmentResult?> ReprovisionEnvironmentAsync(string id, string requestedBy = "admin")
+    {
+        var response = await _httpClient.PostAsync($"{BaseUrl}/{id}/reprovision?requestedBy={Uri.EscapeDataString(requestedBy)}", null);
+        return await response.Content.ReadFromJsonAsync<CreateEnvironmentResult>();
+    }
+
+    public async Task<DeleteResourcesResult?> DeleteAzureResourcesAsync(string id, string deletedBy = "admin")
+    {
+        var response = await _httpClient.PostAsync($"{BaseUrl}/{id}/delete-resources?deletedBy={Uri.EscapeDataString(deletedBy)}", null);
+        return await response.Content.ReadFromJsonAsync<DeleteResourcesResult>();
+    }
+
+    public async Task<List<EnvironmentListItem>> GetDeletedEnvironmentsAsync()
+    {
+        var result = await _httpClient.GetFromJsonAsync<List<EnvironmentListItem>>($"{BaseUrl}/deleted");
+        return result ?? new List<EnvironmentListItem>();
+    }
+
+    public async Task PurgeEnvironmentAsync(string id, string purgedBy = "admin")
+    {
+        var response = await _httpClient.DeleteAsync($"{BaseUrl}/{id}/purge?purgedBy={Uri.EscapeDataString(purgedBy)}");
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<int> PurgeAllDeletedEnvironmentsAsync(string purgedBy = "admin")
+    {
+        var response = await _httpClient.DeleteAsync($"{BaseUrl}/purge-all?purgedBy={Uri.EscapeDataString(purgedBy)}");
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<PurgeAllResult>();
+        return result?.PurgedCount ?? 0;
+    }
 }

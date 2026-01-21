@@ -16,14 +16,14 @@
         </nav>
         
         <nav class="nav-section">
-            <div class="nav-section-title">Templates</div>
+            <div class="nav-section-title">Service Templates</div>
             <NavLink class="nav-link" href="templates">
                 <i class="fa fa-cube"></i>
                 <span>Template Catalog</span>
             </NavLink>
             <NavLink class="nav-link" href="templates/create">
                 <i class="fa fa-plus-circle"></i>
-                <span>Create Template</span>
+                <span>Create Service Template</span>
             </NavLink>
         </nav>
         
@@ -45,6 +45,10 @@
         
         <nav class="nav-section">
             <div class="nav-section-title">Compliance</div>
+            <NavLink class="nav-link" href="compliance">
+                <i class="fa fa-shield-alt"></i>
+                <span>Compliance Dashboard</span>
+            </NavLink>
             <NavLink class="nav-link" href="drift">
                 <i class="fa fa-exchange-alt"></i>
                 <span>Drift Detection</span>
@@ -70,7 +74,7 @@
                         <i class="fa fa-user-circle me-1"></i> Admin
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item" href="#"><i class="fa fa-cog me-2"></i>Settings</a></li>
+                        <li><a class="dropdown-item" href="settings"><i class="fa fa-cog me-2"></i>Settings</a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="#"><i class="fa fa-sign-out-alt me-2"></i>Sign Out</a></li>
                     </ul>
@@ -87,6 +91,18 @@
 @code {
     [Inject]
     private NavigationManager? Navigation { get; set; }
+    
+    [Inject]
+    private AppSettingsService? SettingsService { get; set; }
+    
+    protected override async Task OnInitializedAsync()
+    {
+        // Ensure settings are loaded and theme is applied
+        if (SettingsService != null)
+        {
+            await SettingsService.InitializeAsync();
+        }
+    }
     
     private string GetPageTitle()
     {

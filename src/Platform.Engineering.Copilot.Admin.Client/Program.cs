@@ -4,6 +4,7 @@ using Platform.Engineering.Copilot.Admin.Client;
 using Platform.Engineering.Copilot.Admin.Client.Services;
 using Blazored.Toast;
 using Blazored.Modal;
+using Blazored.LocalStorage;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -21,9 +22,18 @@ builder.Services.AddScoped(sp => new HttpClient
 // Register API services
 builder.Services.AddScoped<TemplateApiService>();
 builder.Services.AddScoped<EnvironmentApiService>();
+builder.Services.AddScoped<ComplianceApiService>();
+builder.Services.AddScoped<AppSettingsService>();
 
 // Add Blazored services
 builder.Services.AddBlazoredToast();
 builder.Services.AddBlazoredModal();
+builder.Services.AddBlazoredLocalStorage();
 
-await builder.Build().RunAsync();
+var host = builder.Build();
+
+// Initialize app settings (load saved settings and apply theme)
+var settingsService = host.Services.GetRequiredService<AppSettingsService>();
+await settingsService.InitializeAsync();
+
+await host.RunAsync();
