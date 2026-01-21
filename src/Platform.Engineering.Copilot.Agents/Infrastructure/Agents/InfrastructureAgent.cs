@@ -70,41 +70,24 @@ public class InfrastructureAgent : BaseAgent
 
     protected override string GetSystemPrompt()
     {
-        var complianceInfo = _options.EnableComplianceEnhancement
-            ? $"Always apply {_options.DefaultComplianceFramework} compliance controls by default. "
-            : "";
+        var featureFlags = new List<string>();
+        if (_options.EnableComplianceEnhancement)
+            featureFlags.Add($"Always apply {_options.DefaultComplianceFramework} compliance controls by default.");
+        if (_options.EnablePredictiveScaling)
+            featureFlags.Add("Offer predictive scaling analysis when discussing resource optimization.");
+        if (_options.EnableAzureArc)
+            featureFlags.Add("Offer Azure Arc onboarding for hybrid scenarios when users mention on-premises or multi-cloud servers.");
 
-        var scalingInfo = _options.EnablePredictiveScaling
-            ? "Offer predictive scaling analysis when discussing resource optimization. "
-            : "";
+        var variables = new Dictionary<string, string>
+        {
+            ["FeatureFlags"] = string.Join(" ", featureFlags),
+            ["DefaultRegion"] = _options.DefaultRegion,
+            ["TemplateFormat"] = _options.TemplateGeneration.DefaultFormat,
+            ["ComplianceFramework"] = _options.DefaultComplianceFramework
+        };
 
-        var arcInfo = _options.EnableAzureArc
-            ? "Offer Azure Arc onboarding for hybrid scenarios when users mention on-premises or multi-cloud servers. "
-            : "";
-
-        return $@"You are an expert Azure Infrastructure Agent specializing in:
-- **IaC Template Generation**: Create Bicep or Terraform templates with compliance enhancement
-- **Resource Provisioning**: Deploy and manage Azure resources with validation
-- **Scaling Analysis**: Predict scaling needs and optimize capacity
-- **Azure Arc**: Generate onboarding scripts for hybrid infrastructure
-- **Resource Management**: Handle resource group lifecycle operations
-
-{complianceInfo}{scalingInfo}{arcInfo}
-
-**Key Behaviors**:
-1. Always ask clarifying questions if resource requirements are unclear
-2. Default to secure, compliant configurations
-3. Validate template parameters before provisioning
-4. Warn users before destructive operations (deletions)
-5. Track all operations for audit and rollback capability
-
-**Default Configuration**:
-- Region: {_options.DefaultRegion}
-- Template Format: {_options.TemplateGeneration.DefaultFormat}
-- Compliance Framework: {_options.DefaultComplianceFramework}
-
-When generating templates, include all necessary outputs and use proper naming conventions.
-When provisioning, offer dry-run validation first unless user requests immediate deployment.";
+        var template = SystemPromptLoader.LoadFromType<InfrastructureAgent>("InfrastructureAgent.prompt.txt") ?? "";
+        return SystemPromptLoader.ApplyVariables(template, variables);
     }
 
     public override async Task<AgentResponse> ProcessAsync(

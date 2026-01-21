@@ -93,26 +93,26 @@ public class PlatformSelectionStrategy
             lower.Contains("what is my subscription") || lower.Contains("what's my subscription"))
             return agents.FirstOrDefault(a => a.Name.Contains("Configuration", StringComparison.OrdinalIgnoreCase));
 
-        // Infrastructure patterns - CHECK FIRST to prioritize template generation over compliance keywords
-        // When user asks for "template with compliance" or "AKS with NIST", the PRIMARY intent is infrastructure
-        if (lower.Contains("generate") && (lower.Contains("template") || lower.Contains("bicep") || lower.Contains("terraform")))
+        // Infrastructure patterns - Only for EXPLICIT custom template generation
+        // Platform Engineering model: Default to pre-approved templates (Environment Agent)
+        // Infrastructure Agent is for: "generate a bicep template", "create custom terraform", "design infrastructure"
+        // EXCEPTION: "service template" queries always go to Environment Agent
+        if ((lower.Contains("generate") || lower.Contains("create custom") || lower.Contains("design")) && 
+            (lower.Contains("template") || lower.Contains("bicep") || lower.Contains("terraform")) &&
+            !lower.Contains("service template") && !lower.Contains("from template"))
             return agents.FirstOrDefault(a => a.Name.Contains("Infrastructure", StringComparison.OrdinalIgnoreCase));
         
-        // Template retrieval/review patterns - route to Infrastructure Agent
-        if ((lower.Contains("review") || lower.Contains("show") || lower.Contains("display") || lower.Contains("get")) &&
-            (lower.Contains("template") || lower.Contains("file") || lower.Contains("bicep") || lower.Contains("generated")))
+        // Template retrieval/review patterns - route to Infrastructure Agent for generated templates
+        // EXCEPTION: "service template" queries go to Environment Agent
+        if ((lower.Contains("review") || lower.Contains("display")) &&
+            (lower.Contains("bicep") || lower.Contains("terraform") || lower.Contains("generated template")) &&
+            !lower.Contains("service template"))
             return agents.FirstOrDefault(a => a.Name.Contains("Infrastructure", StringComparison.OrdinalIgnoreCase));
         
-        if (lower.Contains("aks") || lower.Contains("kubernetes") || lower.Contains("container service"))
-            return agents.FirstOrDefault(a => a.Name.Contains("Infrastructure", StringComparison.OrdinalIgnoreCase));
-        
+        // Explicit IaC keywords - Infrastructure Agent (custom template generation)
         if (lower.Contains("bicep") || lower.Contains("terraform") ||
-            lower.Contains("arm template") || lower.Contains("deploy resource") ||
-            lower.Contains("create resource") || lower.Contains("delete resource") ||
-            lower.Contains("generate template") || lower.Contains("infrastructure as code") ||
-            lower.Contains("network design") || lower.Contains("vnet") ||
-            lower.Contains("virtual network") || lower.Contains("production template") ||
-            lower.Contains("best practices") && (lower.Contains("template") || lower.Contains("aks") || lower.Contains("infrastructure")))
+            lower.Contains("arm template") || lower.Contains("infrastructure as code") ||
+            lower.Contains("iac") || lower.Contains("generate template"))
             return agents.FirstOrDefault(a => a.Name.Contains("Infrastructure", StringComparison.OrdinalIgnoreCase));
 
         // Knowledge patterns - CHECK BEFORE COMPLIANCE to prioritize educational queries
@@ -147,7 +147,24 @@ public class PlatformSelectionStrategy
             lower.Contains("cost optimization") || lower.Contains("save money"))
             return agents.FirstOrDefault(a => a.Name.Contains("Cost", StringComparison.OrdinalIgnoreCase));
 
-        // Discovery patterns
+        // Environment patterns - Platform Engineering provisioning requests
+        // Route "I need X" requests to Environment Agent to find/use pre-approved templates
+        // This supports the Platform Engineering model: devs request, platform team provides templates
+        if (lower.Contains("environment") || lower.Contains("provisioned environment") ||
+            lower.Contains("create environment") || lower.Contains("scale environment") ||
+            lower.Contains("clone environment") || lower.Contains("drift") ||
+            lower.Contains("service template") || lower.Contains("template deployment") ||
+            lower.Contains("from template") || lower.Contains("provision") ||
+            // "I need X" patterns for resource provisioning (use templates, not custom IaC)
+            (lower.Contains("i need") && (lower.Contains("cluster") || lower.Contains("web app") || 
+             lower.Contains("container") || lower.Contains("database") || lower.Contains("microservice"))) ||
+            // Resource type requests without explicit "generate/bicep/terraform" go to templates
+            ((lower.Contains("kubernetes") || lower.Contains("aks") || lower.Contains("web app") || 
+              lower.Contains("container app")) && 
+             !lower.Contains("generate") && !lower.Contains("bicep") && !lower.Contains("terraform")))
+            return agents.FirstOrDefault(a => a.Name.Contains("Environment", StringComparison.OrdinalIgnoreCase));
+
+        // Discovery patterns - for Azure RESOURCES (not environments)
         if ((lower.Contains("list") && (lower.Contains("resource") || lower.Contains("vm") || lower.Contains("storage") || 
              lower.Contains("subscription") || lower.Contains("azure subscription"))) ||
             lower.Contains("list subscriptions") || lower.Contains("my subscriptions") ||
@@ -155,7 +172,8 @@ public class PlatformSelectionStrategy
             lower.Contains("find resource") || lower.Contains("search resource") ||
             lower.Contains("find all") || lower.Contains("find storage") ||
             lower.Contains("inventory") || lower.Contains("what resources") ||
-            lower.Contains("show me all") || lower.Contains("get all") ||
+            (lower.Contains("show me all") && !lower.Contains("environment")) || 
+            (lower.Contains("get all") && !lower.Contains("environment")) ||
             lower.Contains("discover") && !lower.Contains("compliance"))
             return agents.FirstOrDefault(a => a.Name.Contains("Discovery", StringComparison.OrdinalIgnoreCase));
 

@@ -28,6 +28,8 @@ using Platform.Engineering.Copilot.Agents.Discovery.Tools;
 using Platform.Engineering.Copilot.Agents.Environments.Agents;
 using Platform.Engineering.Copilot.Agents.Environments.Configuration;
 using Platform.Engineering.Copilot.Agents.Environments.Services;
+using Platform.Engineering.Copilot.Agents.Infrastructure.Deployment;
+using Platform.Engineering.Copilot.Core.Interfaces.Deployment;
 using Platform.Engineering.Copilot.Agents.Environments.State;
 using Platform.Engineering.Copilot.Agents.Environments.Tools;
 using Platform.Engineering.Copilot.Agents.Infrastructure.Agents;
@@ -551,9 +553,16 @@ public static class ServiceCollectionExtensions
         // Add state accessors (always needed for potential runtime enable)
         services.AddScoped<EnvironmentStateAccessors>();
 
+        // Add deployment services (Bicep, Terraform deployers)
+        services.AddScoped<ITemplateDeployer, BicepDeployer>();
+        services.AddScoped<ITemplateDeployer, TerraformDeployer>();
+        services.AddScoped<IDeployerFactory, DeployerFactory>();
+        services.Configure<DeployerOptions>(configuration.GetSection("Deployment"));
+
         // Add Platform Engineering template services
         services.AddScoped<IServiceTemplateCatalogService, ServiceTemplateCatalogService>();
         services.AddScoped<IProvisionedEnvironmentService, ProvisionedEnvironmentService>();
+        services.AddScoped<Core.Interfaces.Environments.IEnvironmentActivityService, EnvironmentActivityService>();
 
         // Add template-based tools (Platform Engineering approach)
         services.AddScoped<ServiceTemplateListTool>();

@@ -15,9 +15,11 @@ public class ProvisionedEnvironmentListTool : BaseTool
     public override string Name => "list_provisioned_environments";
 
     public override string Description =>
-        "List provisioned environments created from service templates. " +
-        "Shows status, template used, drift detection results, and expiration dates. " +
-        "Filter by subscription, template, status, owner, or drift state.";
+        "List PROVISIONED ENVIRONMENTS (template-based deployments created from service templates). " +
+        "Shows environment status, which template was used, drift detection results, and expiration dates. " +
+        "Filter by subscription, template, status, owner, or drift state. " +
+        "Use this when user asks to 'show environments', 'list environments', or 'what environments do I have'. " +
+        "NOTE: For listing individual Azure resources (VMs, storage, etc.), use 'discover_azure_resources' instead.";
 
     public ProvisionedEnvironmentListTool(
         ILogger<ProvisionedEnvironmentListTool> logger,

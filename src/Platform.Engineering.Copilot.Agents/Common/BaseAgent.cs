@@ -84,6 +84,18 @@ public abstract class BaseAgent
     }
 
     /// <summary>
+    /// Maximum number of tool execution rounds before forcing a response.
+    /// Override in derived agents if more rounds are needed.
+    /// </summary>
+    protected virtual int MaxToolRounds => 5;
+
+    /// <summary>
+    /// Tool mode for the agent. Override to change behavior.
+    /// Auto = let AI decide, RequireAny = force tool use, None = disable tools
+    /// </summary>
+    protected virtual ChatToolMode ToolMode => ChatToolMode.Auto;
+
+    /// <summary>
     /// Process a conversation context and return a response
     /// </summary>
     public virtual async Task<AgentResponse> ProcessAsync(
@@ -102,41 +114,63 @@ public abstract class BaseAgent
             
             var messages = BuildChatMessages(context);
 
-            // Configure options with Temperature, MaxTokens, and tools
+            // Configure options with Temperature, MaxTokens, tools, and tool mode
             var options = new ChatOptions
             {
                 Temperature = Temperature,
-                MaxOutputTokens = MaxTokens
+                MaxOutputTokens = MaxTokens,
+                ToolMode = ToolMode
             };
             if (RegisteredTools.Any())
             {
                 options.Tools = RegisteredTools.Select(t => t.AsAITool()).ToList();
             }
 
-            Logger.LogDebug("LLM options: Temperature={Temperature}, MaxTokens={MaxTokens}, Tools={ToolCount}",
-                Temperature, MaxTokens, RegisteredTools.Count);
+            Logger.LogDebug("LLM options: Temperature={Temperature}, MaxTokens={MaxTokens}, Tools={ToolCount}, ToolMode={ToolMode}",
+                Temperature, MaxTokens, RegisteredTools.Count, ToolMode);
 
-            // Get completion
-            var response = await ChatClient.GetResponseAsync(messages, options, cancellationToken);
-            var responseText = response.Text ?? "";
-
-            // Check for tool calls in the response
+            // Multi-round tool execution loop
             var toolsExecuted = new List<ToolExecutionResult>();
-            if (response.Messages.Count > 0)
-            {
-                var lastMessage = response.Messages.LastOrDefault();
-                if (lastMessage?.Contents != null)
-                {
-                    var toolCallResults = await ExecuteToolCallsAsync(lastMessage, context.ConversationId, toolsExecuted, cancellationToken);
-                    if (toolCallResults.Any())
-                    {
-                        // Continue conversation with tool results
-                        messages.AddRange(response.Messages);
-                        messages.AddRange(toolCallResults);
+            var responseText = "";
+            var round = 0;
 
-                        var followUp = await ChatClient.GetResponseAsync(messages, options, cancellationToken);
-                        responseText = followUp.Text ?? responseText;
-                    }
+            while (round < MaxToolRounds)
+            {
+                round++;
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Get completion
+                var response = await ChatClient.GetResponseAsync(messages, options, cancellationToken);
+                responseText = response.Text ?? "";
+
+                // Check for tool calls in the response
+                var lastMessage = response.Messages.LastOrDefault();
+                if (lastMessage?.Contents == null)
+                    break;
+
+                var hasToolCalls = lastMessage.Contents.OfType<FunctionCallContent>().Any();
+                if (!hasToolCalls)
+                {
+                    // No more tool calls, we have the final response
+                    break;
+                }
+
+                Logger.LogDebug("Tool execution round {Round}/{MaxRounds}", round, MaxToolRounds);
+
+                var toolCallResults = await ExecuteToolCallsAsync(lastMessage, context.ConversationId, toolsExecuted, cancellationToken);
+                if (!toolCallResults.Any())
+                    break;
+
+                // Add assistant message with tool calls and tool results to continue the conversation
+                messages.AddRange(response.Messages);
+                messages.AddRange(toolCallResults);
+
+                // After max rounds, disable tools to force a final response
+                if (round >= MaxToolRounds - 1)
+                {
+                    Logger.LogWarning("Reached max tool rounds ({MaxRounds}), forcing final response", MaxToolRounds);
+                    options.Tools = null;
+                    options.ToolMode = ChatToolMode.None;
                 }
             }
 
@@ -148,7 +182,8 @@ public abstract class BaseAgent
             {
                 agentName = AgentName,
                 messagePreview = responseText.Length > 100 ? responseText[..100] : responseText,
-                toolsUsed = toolsExecuted.Select(t => t.ToolName).ToList()
+                toolsUsed = toolsExecuted.Select(t => t.ToolName).ToList(),
+                toolRounds = round
             }, cancellationToken);
 
             return new AgentResponse
@@ -159,6 +194,11 @@ public abstract class BaseAgent
                 Success = true,
                 ToolsExecuted = toolsExecuted
             };
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.LogInformation("Agent processing cancelled: {AgentName}", AgentName);
+            throw;
         }
         catch (Exception ex)
         {

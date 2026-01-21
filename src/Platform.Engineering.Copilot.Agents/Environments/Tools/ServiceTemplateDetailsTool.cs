@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Core.Interfaces.Templates;
+using Platform.Engineering.Copilot.Core.Models.ServiceTemplates;
 
 namespace Platform.Engineering.Copilot.Agents.Environments.Tools;
 
@@ -15,9 +16,11 @@ public class ServiceTemplateDetailsTool : BaseTool
     public override string Name => "get_template_details";
 
     public override string Description =>
-        "Get detailed information about a specific service template including all parameters, " +
-        "validation rules, guardrails (constraints), compliance requirements, and usage guidance. " +
-        "Use this before creating an environment to understand all required and optional parameters.";
+        "Get DETAILED information about a SPECIFIC service template. Returns all parameters with types, " +
+        "validation rules, default values, guardrails (constraints), compliance requirements, and usage guidance. " +
+        "Use this when user asks for 'detailed information', 'parameters', 'parameter details', " +
+        "'what parameters', 'template details', or wants to know configuration options for a specific template. " +
+        "Requires the template name or ID.";
 
     public ServiceTemplateDetailsTool(
         ILogger<ServiceTemplateDetailsTool> logger,
@@ -46,9 +49,18 @@ public class ServiceTemplateDetailsTool : BaseTool
 
         try
         {
-            // Try by ID first, then by name
+            // Try by ID first, then by name, then by display name (search)
             var template = await _templateCatalog.GetTemplateAsync(templateId, cancellationToken)
                 ?? await _templateCatalog.GetTemplateByNameAsync(templateId, cancellationToken: cancellationToken);
+
+            // If not found by ID or Name, search by keyword (may match DisplayName)
+            if (template == null)
+            {
+                var searchResults = await _templateCatalog.SearchTemplatesAsync(
+                    new TemplateSearchCriteria { Keyword = templateId, Take = 1 },
+                    cancellationToken);
+                template = searchResults.FirstOrDefault();
+            }
 
             if (template == null)
             {
@@ -129,7 +141,7 @@ public class ServiceTemplateDetailsTool : BaseTool
                 nextSteps = new[]
                 {
                     "Review the parameters above and gather required values",
-                    "Use 'create_environment_from_template' with the templateId and parameters to create an environment"
+                    $"Say 'create an environment from {template.DisplayName}' and provide your parameter values to provision"
                 }
             });
         }

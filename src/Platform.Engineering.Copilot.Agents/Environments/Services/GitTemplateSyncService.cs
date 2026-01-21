@@ -151,9 +151,7 @@ public class GitTemplateSyncService : IGitTemplateSyncService
                 Category = metadata.Category,
                 Format = metadata.Format,
                 MainTemplateContent = content.MainContent,
-                AdditionalFilesJson = content.AdditionalFiles != null 
-                    ? JsonSerializer.Serialize(content.AdditionalFiles) 
-                    : null,
+                AdditionalFilesJson = SerializeAdditionalFiles(content.AdditionalFiles),
                 GitRepositoryUrl = repositoryUrl,
                 GitBranch = branch,
                 GitPath = path,
@@ -303,19 +301,24 @@ public class GitTemplateSyncService : IGitTemplateSyncService
 
             // Update template content
             entity.MainTemplateContent = content.MainContent;
-            entity.AdditionalFilesJson = content.AdditionalFiles != null
-                ? JsonSerializer.Serialize(content.AdditionalFiles)
-                : null;
+            entity.AdditionalFilesJson = SerializeAdditionalFiles(content.AdditionalFiles);
             entity.GitCommitSha = content.CommitSha;
             entity.LastSyncedFromGit = DateTime.UtcNow;
             entity.UpdatedBy = "GitSync";
             entity.UpdatedAt = DateTime.UtcNow;
 
-            // Re-extract parameters if template changed
-            var metadata = ExtractTemplateMetadata(content, entity.GitPath);
-            if (!string.IsNullOrEmpty(metadata.ParametersJson))
+            // Re-extract parameters if template changed, BUT only if parameters haven't been manually overridden
+            if (!entity.ParametersOverridden)
             {
-                entity.ParametersJson = metadata.ParametersJson;
+                var metadata = ExtractTemplateMetadata(content, entity.GitPath);
+                if (!string.IsNullOrEmpty(metadata.ParametersJson))
+                {
+                    entity.ParametersJson = metadata.ParametersJson;
+                }
+            }
+            else
+            {
+                _logger.LogInformation("⏭️ Skipping parameter update for template {Name} - parameters were manually overridden", entity.Name);
             }
 
             await _repository.UpdateAsync(entity, cancellationToken);
@@ -403,6 +406,217 @@ public class GitTemplateSyncService : IGitTemplateSyncService
         CancellationToken cancellationToken)
     {
         var filePath = path ?? "main.bicep";
+        
+        // Try GitHub API first (provides commit SHA for version tracking)
+        GitContent result;
+        try
+        {
+            result = await FetchFromGitHubApiAsync(owner, repo, branch, filePath, cancellationToken);
+        }
+        catch (HttpRequestException ex) when (ex.Message.Contains("Forbidden") || ex.Message.Contains("401"))
+        {
+            // Fallback to raw content URL for public repos (bypasses SAML SSO requirements)
+            _logger.LogWarning("GitHub API returned {Error}, falling back to raw content URL", ex.Message);
+            result = await FetchFromGitHubRawAsync(owner, repo, branch, filePath, cancellationToken);
+        }
+
+        // If this is a Bicep file, scan for module references and fetch them
+        if (filePath.EndsWith(".bicep", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(result.MainContent))
+        {
+            var moduleFiles = await FetchBicepModulesAsync(owner, repo, branch, filePath, result.MainContent, cancellationToken);
+            if (moduleFiles.Count > 0)
+            {
+                result.AdditionalFiles = moduleFiles;
+                _logger.LogInformation("📦 Fetched {Count} module files for template: {Files}", 
+                    moduleFiles.Count, string.Join(", ", moduleFiles.Keys));
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Extract module file paths from Bicep content and fetch them from GitHub
+    /// </summary>
+    private async Task<Dictionary<string, string>> FetchBicepModulesAsync(
+        string owner,
+        string repo,
+        string branch,
+        string mainFilePath,
+        string bicepContent,
+        CancellationToken cancellationToken)
+    {
+        var files = new Dictionary<string, string>();
+        
+        // Find module declarations: module name 'path/to/module.bicep' = { ... }
+        var modulePattern = new Regex(@"module\s+\w+\s+'([^']+\.bicep)'", RegexOptions.IgnoreCase);
+        
+        // Find loadJsonContent, loadTextContent, loadFileAsBase64 references
+        var loadContentPattern = new Regex(@"load(?:Json|Text|FileAsBase64)Content\s*\(\s*'([^']+)'", RegexOptions.IgnoreCase);
+        
+        var moduleMatches = modulePattern.Matches(bicepContent);
+        var loadContentMatches = loadContentPattern.Matches(bicepContent);
+
+        // Get the base directory of the main file
+        var baseDir = Path.GetDirectoryName(mainFilePath)?.Replace('\\', '/') ?? "";
+        if (!string.IsNullOrEmpty(baseDir) && !baseDir.EndsWith("/"))
+        {
+            baseDir += "/";
+        }
+
+        var processedPaths = new HashSet<string>();
+
+        // Process module references
+        // Process module references
+        foreach (Match match in moduleMatches)
+        {
+            var relativePath = match.Groups[1].Value;
+            
+            // Skip registry modules (br:, ts:, etc.)
+            if (relativePath.Contains(":"))
+            {
+                _logger.LogDebug("Skipping registry module reference: {Path}", relativePath);
+                continue;
+            }
+
+            // Resolve the full path relative to the main file
+            var fullPath = ResolveBicepModulePath(baseDir, relativePath);
+            
+            // Use the relative path as the key (what the main.bicep references)
+            if (processedPaths.Contains(relativePath))
+            {
+                continue;
+            }
+            processedPaths.Add(relativePath);
+
+            try
+            {
+                // Fetch the module content
+                _logger.LogInformation("📥 Fetching Bicep module: {Path}", fullPath);
+                var moduleContent = await FetchSingleFileFromGitHubAsync(owner, repo, branch, fullPath, cancellationToken);
+                
+                if (!string.IsNullOrEmpty(moduleContent))
+                {
+                    files[relativePath] = moduleContent;
+                    
+                    // Recursively check for nested modules and data files
+                    var nestedFiles = await FetchBicepModulesAsync(
+                        owner, repo, branch, fullPath, moduleContent, cancellationToken);
+                    
+                    foreach (var nested in nestedFiles)
+                    {
+                        // Adjust nested file path to be relative to the main file's directory
+                        var nestedRelativePath = Path.Combine(Path.GetDirectoryName(relativePath) ?? "", nested.Key)
+                            .Replace('\\', '/');
+                        
+                        if (!files.ContainsKey(nestedRelativePath))
+                        {
+                            files[nestedRelativePath] = nested.Value;
+                        }
+                    }
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning("Failed to fetch module {Path}: {Error}", fullPath, ex.Message);
+            }
+        }
+
+        // Process loadJsonContent, loadTextContent, loadFileAsBase64 references
+        foreach (Match match in loadContentMatches)
+        {
+            var relativePath = match.Groups[1].Value;
+            
+            if (processedPaths.Contains(relativePath))
+            {
+                continue;
+            }
+            processedPaths.Add(relativePath);
+
+            // Resolve the full path relative to the current file
+            var fullPath = ResolveBicepModulePath(baseDir, relativePath);
+
+            try
+            {
+                _logger.LogInformation("📥 Fetching data file: {Path}", fullPath);
+                var fileContent = await FetchSingleFileFromGitHubAsync(owner, repo, branch, fullPath, cancellationToken);
+                
+                if (!string.IsNullOrEmpty(fileContent))
+                {
+                    files[relativePath] = fileContent;
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning("Failed to fetch data file {Path}: {Error}", fullPath, ex.Message);
+            }
+        }
+
+        return files;
+    }
+
+    /// <summary>
+    /// Resolve a relative module path against a base directory
+    /// </summary>
+    private static string ResolveBicepModulePath(string baseDir, string relativePath)
+    {
+        // Handle relative paths like "../modules/foo.bicep" or "./modules/foo.bicep"
+        var combined = Path.Combine(baseDir, relativePath).Replace('\\', '/');
+        
+        // Normalize the path (resolve .. and .)
+        var segments = combined.Split('/', StringSplitOptions.RemoveEmptyEntries).ToList();
+        var result = new List<string>();
+        
+        foreach (var segment in segments)
+        {
+            if (segment == "..")
+            {
+                if (result.Count > 0)
+                {
+                    result.RemoveAt(result.Count - 1);
+                }
+            }
+            else if (segment != ".")
+            {
+                result.Add(segment);
+            }
+        }
+
+        return string.Join("/", result);
+    }
+
+    /// <summary>
+    /// Fetch a single file from GitHub (raw content)
+    /// </summary>
+    private async Task<string> FetchSingleFileFromGitHubAsync(
+        string owner,
+        string repo,
+        string branch,
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        var url = $"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{filePath}";
+        
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("User-Agent", "Platform-Engineering-Copilot");
+
+        var response = await _httpClient.SendAsync(request, cancellationToken);
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException($"GitHub returned {response.StatusCode} for {filePath}");
+        }
+
+        return await response.Content.ReadAsStringAsync(cancellationToken);
+    }
+
+    private async Task<GitContent> FetchFromGitHubApiAsync(
+        string owner,
+        string repo,
+        string branch,
+        string filePath,
+        CancellationToken cancellationToken)
+    {
         var url = $"https://api.github.com/repos/{owner}/{repo}/contents/{filePath}?ref={branch}";
 
         var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -435,6 +649,44 @@ public class GitTemplateSyncService : IGitTemplateSyncService
         {
             MainContent = decodedContent,
             CommitSha = sha,
+            FilePath = filePath
+        };
+    }
+
+    /// <summary>
+    /// Fetch content from GitHub raw URL (for public repos, bypasses API auth requirements)
+    /// </summary>
+    private async Task<GitContent> FetchFromGitHubRawAsync(
+        string owner,
+        string repo,
+        string branch,
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        var url = $"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{filePath}";
+        
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("User-Agent", "Platform-Engineering-Copilot");
+
+        var response = await _httpClient.SendAsync(request, cancellationToken);
+        
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException($"GitHub raw content returned {response.StatusCode}");
+        }
+
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        
+        // Generate a pseudo-SHA from content hash (raw URL doesn't provide commit SHA)
+        var contentHash = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
+            Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
+
+        _logger.LogInformation("Fetched template from raw GitHub URL: {Url}", url);
+
+        return new GitContent
+        {
+            MainContent = content,
+            CommitSha = contentHash, // Content-based hash as pseudo-SHA
             FilePath = filePath
         };
     }
@@ -548,17 +800,55 @@ public class GitTemplateSyncService : IGitTemplateSyncService
             if (descMatch.Success) metadata.Description = descMatch.Groups[1].Value;
         }
 
-        // Extract parameters
+        // Extract parameters - handle decorators on separate lines
+        // Pattern matches: @description('...') followed by optional other decorators, then param name type [= default]
         var parameters = new List<object>();
-        var paramMatches = Regex.Matches(content, @"@description\('([^']+)'\)\s*param\s+(\w+)\s+(\w+)(?:\s*=\s*(.+))?");
-        foreach (Match match in paramMatches)
+        
+        // First, find all param declarations with their preceding decorators
+        var paramBlockPattern = @"(?:@\w+\([^)]*\)\s*)+param\s+(\w+)\s+(\w+)(?:\s*=\s*(.+?))?(?=\r?\n|$)";
+        var paramBlocks = Regex.Matches(content, paramBlockPattern, RegexOptions.Multiline);
+        
+        foreach (Match block in paramBlocks)
         {
+            var paramName = block.Groups[1].Value;
+            var paramType = block.Groups[2].Value;
+            var defaultValue = block.Groups[3].Success ? block.Groups[3].Value.Trim().Trim('\'', '"') : null;
+            
+            // Look for @description decorator before this param
+            var descPattern = $@"@description\('([^']+)'\)[\s\S]*?param\s+{Regex.Escape(paramName)}\s+";
+            var descMatch = Regex.Match(content, descPattern);
+            var description = descMatch.Success ? descMatch.Groups[1].Value : "";
+            
+            // Check for @minLength, @maxLength, @minValue, @maxValue
+            int? minLength = null, maxLength = null, minValue = null, maxValue = null;
+            var decoratorSection = block.Value.Substring(0, block.Value.IndexOf("param"));
+            
+            var minLenMatch = Regex.Match(decoratorSection, @"@minLength\((\d+)\)");
+            if (minLenMatch.Success) minLength = int.Parse(minLenMatch.Groups[1].Value);
+            
+            var maxLenMatch = Regex.Match(decoratorSection, @"@maxLength\((\d+)\)");
+            if (maxLenMatch.Success) maxLength = int.Parse(maxLenMatch.Groups[1].Value);
+            
+            var minValMatch = Regex.Match(decoratorSection, @"@minValue\((\d+)\)");
+            if (minValMatch.Success) minValue = int.Parse(minValMatch.Groups[1].Value);
+            
+            var maxValMatch = Regex.Match(decoratorSection, @"@maxValue\((\d+)\)");
+            if (maxValMatch.Success) maxValue = int.Parse(maxValMatch.Groups[1].Value);
+            
+            // Check if required (no default value)
+            var required = !block.Groups[3].Success || string.IsNullOrEmpty(block.Groups[3].Value);
+            
             parameters.Add(new
             {
-                name = match.Groups[2].Value,
-                type = match.Groups[3].Value,
-                description = match.Groups[1].Value,
-                defaultValue = match.Groups[4].Success ? match.Groups[4].Value.Trim() : null
+                name = paramName,
+                type = MapBicepType(paramType),
+                description = description,
+                defaultValue = defaultValue,
+                required = required,
+                minLength = minLength,
+                maxLength = maxLength,
+                minValue = minValue,
+                maxValue = maxValue
             });
         }
         
@@ -566,6 +856,19 @@ public class GitTemplateSyncService : IGitTemplateSyncService
         {
             metadata.ParametersJson = JsonSerializer.Serialize(parameters);
         }
+    }
+
+    private string MapBicepType(string bicepType)
+    {
+        return bicepType.ToLowerInvariant() switch
+        {
+            "string" => "String",
+            "int" => "Number",
+            "bool" => "Boolean",
+            "array" => "Array",
+            "object" => "Object",
+            _ => "String"
+        };
     }
 
     private void ExtractArmMetadata(string content, TemplateMetadata metadata)
@@ -670,4 +973,56 @@ public class GitTemplateSyncService : IGitTemplateSyncService
     }
 
     #endregion
+
+    /// <summary>
+    /// Fetch raw file content from a Git repository without importing.
+    /// </summary>
+    public async Task<string> FetchFileContentAsync(
+        string repositoryUrl,
+        string branch,
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Fetching file content from Git: {Url}/{Path}", repositoryUrl, path);
+
+            // Parse repository info
+            var (owner, repo, provider) = ParseGitUrl(repositoryUrl);
+            
+            // Fetch content using existing logic
+            var gitContent = await FetchGitContentAsync(provider, owner, repo, branch, path, cancellationToken);
+
+            _logger.LogInformation("Successfully fetched {Length} bytes from Git", gitContent.MainContent?.Length ?? 0);
+            return gitContent.MainContent ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching file content from Git: {Url}/{Path}", repositoryUrl, path);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Convert the Dictionary of additional files to the proper TemplateFile format for serialization
+    /// </summary>
+    private static string? SerializeAdditionalFiles(Dictionary<string, string>? additionalFiles)
+    {
+        if (additionalFiles == null || additionalFiles.Count == 0)
+        {
+            return null;
+        }
+
+        var templateFiles = additionalFiles.Select((kvp, index) => new Platform.Engineering.Copilot.Core.Models.ServiceTemplates.TemplateFile
+        {
+            FileName = Path.GetFileName(kvp.Key),
+            RelativePath = kvp.Key,
+            Content = kvp.Value,
+            FileType = Path.GetExtension(kvp.Key).TrimStart('.').ToLowerInvariant(),
+            IsEntryPoint = false,
+            Order = index + 1
+        }).ToList();
+
+        return JsonSerializer.Serialize(templateFiles);
+    }
 }

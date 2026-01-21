@@ -16,10 +16,10 @@ public class ServiceTemplateListTool : BaseTool
     public override string Name => "list_service_templates";
 
     public override string Description =>
-        "List available service templates from the Platform Engineering catalog. " +
-        "Service templates are pre-approved infrastructure patterns created by the Platform Team. " +
-        "Use this to discover templates for creating new environments. " +
-        "Filter by category (Compute, Web, Containers, Composite, Compliance) or keywords.";
+        "List and BROWSE available service templates from the Platform Engineering catalog (summary view only). " +
+        "Returns template names, descriptions, and categories - NOT detailed parameters. " +
+        "Use this to discover WHAT templates exist. Filter by category or keywords. " +
+        "For DETAILED parameter information about a specific template, use 'get_template_details' instead.";
 
     public ServiceTemplateListTool(
         ILogger<ServiceTemplateListTool> logger,

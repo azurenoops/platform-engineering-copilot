@@ -11,14 +11,12 @@ namespace Platform.Engineering.Copilot.Agents.Environments.Services;
 
 /// <summary>
 /// Database-backed implementation of the Service Template Catalog.
-/// Uses EF Core for persistence with optional Git sync for source of truth.
+/// Uses EF Core for persistence. Git sync is handled by the dedicated GitTemplateSyncService.
 /// </summary>
 public class ServiceTemplateCatalogService : IServiceTemplateCatalogService
 {
     private readonly ILogger<ServiceTemplateCatalogService> _logger;
     private readonly IServiceTemplateRepository _repository;
-    private static bool _initialized = false;
-    private static readonly object _initLock = new();
 
     public ServiceTemplateCatalogService(
         ILogger<ServiceTemplateCatalogService> logger,
@@ -26,16 +24,7 @@ public class ServiceTemplateCatalogService : IServiceTemplateCatalogService
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-        
-        // Seed default templates on first initialization (thread-safe)
-        lock (_initLock)
-        {
-            if (!_initialized)
-            {
-                InitializeDefaultTemplatesAsync().GetAwaiter().GetResult();
-                _initialized = true;
-            }
-        }
+        // Note: Service template seeding is now handled by DatabaseSeeder at app startup
     }
 
     #region Service Template CRUD
@@ -303,87 +292,6 @@ public class ServiceTemplateCatalogService : IServiceTemplateCatalogService
 
     #endregion
 
-    #region Git Sync
-
-    public async Task<ServiceTemplate> SyncFromGitAsync(string templateId, CancellationToken cancellationToken = default)
-    {
-        var entity = await _repository.GetByIdAsync(templateId, cancellationToken);
-        if (entity == null)
-            throw new InvalidOperationException($"Template {templateId} not found");
-
-        if (string.IsNullOrEmpty(entity.GitRepositoryUrl))
-            throw new InvalidOperationException("Template does not have a Git source configured");
-
-        // TODO: Implement actual Git sync
-        // 1. Clone/pull repository
-        // 2. Read template files from GitSource.Path
-        // 3. Update template content
-        // 4. Update GitCommitSha and LastSyncedFromGit
-
-        await _repository.UpdateGitSyncTimestampAsync(entity.Id, null, cancellationToken);
-        await AddAuditEntryAsync(entity.Id, entity.Name, "SyncedFromGit", "system", 
-            "Template synced from Git repository", cancellationToken);
-
-        _logger.LogInformation("🔄 Template {Name} synced from Git", entity.Name);
-
-        // Re-fetch to get updated timestamp
-        entity = await _repository.GetByIdAsync(templateId, cancellationToken);
-        return entity!.ToModel();
-    }
-
-    public async Task<int> SyncAllFromGitAsync(CancellationToken cancellationToken = default)
-    {
-        var templatesNeedingSync = await _repository.GetTemplatesNeedingSyncAsync(cancellationToken);
-
-        var syncedCount = 0;
-        foreach (var entity in templatesNeedingSync)
-        {
-            try
-            {
-                await SyncFromGitAsync(entity.Id.ToString(), cancellationToken);
-                syncedCount++;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to sync template {Name} from Git", entity.Name);
-            }
-        }
-
-        return syncedCount;
-    }
-
-    public async Task<ServiceTemplate> ImportFromGitAsync(GitSourceInfo gitSource, string importedBy, CancellationToken cancellationToken = default)
-    {
-        // TODO: Implement actual Git import
-        // 1. Clone repository
-        // 2. Read template files
-        // 3. Parse Bicep/Terraform/ARM to extract parameters
-        // 4. Create ServiceTemplate entity
-
-        var template = new ServiceTemplate
-        {
-            Id = Guid.NewGuid().ToString(),
-            Name = $"imported-{DateTime.UtcNow:yyyyMMddHHmmss}",
-            DisplayName = "Imported Template",
-            GitSource = gitSource,
-            CreatedBy = importedBy,
-            CreatedAt = DateTime.UtcNow,
-            Status = TemplateStatus.Draft
-        };
-
-        var entity = template.ToEntity();
-        await _repository.CreateAsync(entity, cancellationToken);
-        await AddAuditEntryAsync(entity.Id, template.Name, "ImportedFromGit", importedBy, 
-            $"Imported from {gitSource.RepositoryUrl}", cancellationToken);
-
-        _logger.LogInformation("📥 Template imported from Git by {ImportedBy}: {Url}",
-            importedBy, gitSource.RepositoryUrl);
-
-        return template;
-    }
-
-    #endregion
-
     #region Validation
 
     public async Task<List<string>> ValidateParametersAsync(string templateId, Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
@@ -647,225 +555,6 @@ public class ServiceTemplateCatalogService : IServiceTemplateCatalogService
         var entry = ServiceTemplateMapper.CreateAuditEntry(entityId, entityName, action, performedBy, details);
         await _repository.AddAuditEntryAsync(entry, cancellationToken);
     }
-
-    private async Task InitializeDefaultTemplatesAsync()
-    {
-        try
-        {
-            // Check if templates already exist
-            var existingTemplates = await _repository.GetAllAsync();
-            if (existingTemplates.Any())
-            {
-                _logger.LogInformation("📚 Service templates already initialized ({Count} templates)", existingTemplates.Count);
-                return;
-            }
-
-            var templates = new List<ServiceTemplate>
-            {
-                CreateAksTemplate(),
-                CreateWebAppTemplate(),
-                CreateContainerAppTemplate(),
-                CreateMicroserviceTemplate(),
-                CreateFedRampTemplate()
-            };
-
-            foreach (var template in templates)
-            {
-                var entity = template.ToEntity();
-                await _repository.CreateAsync(entity);
-            }
-
-            _logger.LogInformation("📚 Initialized {Count} default service templates", templates.Count);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to initialize default templates (database may not be ready)");
-        }
-    }
-
-    private ServiceTemplate CreateAksTemplate() => new()
-    {
-        Id = "tpl-aks-standard",
-        Name = "aks-standard",
-        DisplayName = "Standard AKS Cluster",
-        Description = "Production-ready Azure Kubernetes Service cluster with autoscaling, monitoring, and security best practices.",
-        Version = "2.0.0",
-        Category = "Compute",
-        Format = TemplateFormat.Bicep,
-        Status = TemplateStatus.Published,
-        CreatedBy = "platform-team",
-        CreatedAt = DateTime.UtcNow.AddDays(-30),
-        Keywords = new List<string> { "kubernetes", "aks", "containers", "k8s", "cluster", "microservices" },
-        UseCases = new List<string> { "Microservices", "Container workloads", "API hosting", "Background workers" },
-        AiSelectionHint = "Use this template when user needs Kubernetes, AKS, container orchestration, or microservices platform",
-        ComplianceFrameworks = new List<string> { "NIST-800-53" },
-        Parameters = new List<TemplateParameter>
-        {
-            new() { Name = "clusterName", DisplayName = "Cluster Name", Description = "Name of the AKS cluster", Type = ParameterType.String, Required = true, MinLength = 3, MaxLength = 63, ValidationRegex = "^[a-z0-9-]+$" },
-            new() { Name = "nodeCount", DisplayName = "Initial Node Count", Description = "Initial number of nodes", Type = ParameterType.Number, DefaultValue = 3, MinValue = 1, MaxValue = 100 },
-            new() { Name = "nodeSize", DisplayName = "Node Size", Description = "VM size for nodes", Type = ParameterType.Choice, DefaultValue = "Standard_D4s_v5", AllowedValues = new List<string> { "Standard_D2s_v5", "Standard_D4s_v5", "Standard_D8s_v5", "Standard_D16s_v5" } },
-            new() { Name = "kubernetesVersion", DisplayName = "Kubernetes Version", Description = "Kubernetes version", Type = ParameterType.Choice, DefaultValue = "1.28", AllowedValues = new List<string> { "1.27", "1.28", "1.29" } },
-            new() { Name = "enableAutoScaling", DisplayName = "Enable Auto Scaling", Description = "Enable cluster autoscaler", Type = ParameterType.Boolean, DefaultValue = true },
-            new() { Name = "minNodeCount", DisplayName = "Minimum Nodes", Description = "Minimum nodes when autoscaling", Type = ParameterType.Number, DefaultValue = 1, MinValue = 1 },
-            new() { Name = "maxNodeCount", DisplayName = "Maximum Nodes", Description = "Maximum nodes when autoscaling", Type = ParameterType.Number, DefaultValue = 10, MaxValue = 100 }
-        },
-        Guardrails = new List<TemplateGuardrail>
-        {
-            new() { Id = "g1", Name = "Max Node Limit", Property = "maxNodeCount", Operator = "<=", Value = 50, Action = GuardrailAction.Deny, ErrorMessage = "Maximum node count cannot exceed 50 per cluster" },
-            new() { Id = "g2", Name = "Node Size Limit", Property = "nodeSize", Operator = "in", Value = new List<string> { "Standard_D2s_v5", "Standard_D4s_v5", "Standard_D8s_v5" }, Action = GuardrailAction.Deny, ErrorMessage = "Node size exceeds approved sizes for this template" }
-        },
-        DefaultTags = new Dictionary<string, string>
-        {
-            ["ManagedBy"] = "PlatformEngineering",
-            ["TemplateId"] = "tpl-aks-standard"
-        },
-        RequiresApproval = false,
-        Approval = new ApprovalInfo { ApprovedBy = "platform-team", ApprovedAt = DateTime.UtcNow.AddDays(-30), Source = ApprovalSource.Internal }
-    };
-
-    private ServiceTemplate CreateWebAppTemplate() => new()
-    {
-        Id = "tpl-webapp-standard",
-        Name = "webapp-standard",
-        DisplayName = "Standard Web Application",
-        Description = "Azure Web App with staging slot, Application Insights, and recommended security settings.",
-        Version = "1.5.0",
-        Category = "Web",
-        Format = TemplateFormat.Bicep,
-        Status = TemplateStatus.Published,
-        CreatedBy = "platform-team",
-        CreatedAt = DateTime.UtcNow.AddDays(-60),
-        Keywords = new List<string> { "web", "webapp", "app service", "website", "api", "dotnet", "node" },
-        UseCases = new List<string> { "Web APIs", "Websites", ".NET applications", "Node.js apps" },
-        AiSelectionHint = "Use this for web applications, REST APIs, websites, or when user mentions App Service",
-        ComplianceFrameworks = new List<string> { "NIST-800-53" },
-        Parameters = new List<TemplateParameter>
-        {
-            new() { Name = "appName", DisplayName = "Application Name", Description = "Name of the web app", Type = ParameterType.String, Required = true, MinLength = 2, MaxLength = 60 },
-            new() { Name = "sku", DisplayName = "App Service Plan SKU", Description = "Pricing tier", Type = ParameterType.Choice, DefaultValue = "P1v3", AllowedValues = new List<string> { "B1", "B2", "S1", "S2", "P1v3", "P2v3" } },
-            new() { Name = "runtime", DisplayName = "Runtime Stack", Description = "Application runtime", Type = ParameterType.Choice, DefaultValue = "DOTNET|8.0", AllowedValues = new List<string> { "DOTNET|8.0", "DOTNET|6.0", "NODE|20-lts", "NODE|18-lts", "PYTHON|3.11" } },
-            new() { Name = "enableStagingSlot", DisplayName = "Enable Staging Slot", Description = "Create staging deployment slot", Type = ParameterType.Boolean, DefaultValue = true },
-            new() { Name = "enableAppInsights", DisplayName = "Enable Application Insights", Description = "Enable monitoring", Type = ParameterType.Boolean, DefaultValue = true }
-        },
-        DefaultTags = new Dictionary<string, string>
-        {
-            ["ManagedBy"] = "PlatformEngineering",
-            ["TemplateId"] = "tpl-webapp-standard"
-        },
-        RequiresApproval = false,
-        Approval = new ApprovalInfo { ApprovedBy = "platform-team", ApprovedAt = DateTime.UtcNow.AddDays(-60), Source = ApprovalSource.Internal }
-    };
-
-    private ServiceTemplate CreateContainerAppTemplate() => new()
-    {
-        Id = "tpl-containerapp-standard",
-        Name = "containerapp-standard",
-        DisplayName = "Standard Container App",
-        Description = "Azure Container App with autoscaling, ingress, and Dapr integration options.",
-        Version = "1.2.0",
-        Category = "Containers",
-        Format = TemplateFormat.Bicep,
-        Status = TemplateStatus.Published,
-        CreatedBy = "platform-team",
-        CreatedAt = DateTime.UtcNow.AddDays(-45),
-        Keywords = new List<string> { "container", "containerapp", "docker", "serverless", "dapr" },
-        UseCases = new List<string> { "Containerized apps", "Serverless containers", "Microservices with Dapr" },
-        AiSelectionHint = "Use for containerized applications when full Kubernetes is not needed",
-        ComplianceFrameworks = new List<string> { "NIST-800-53" },
-        Parameters = new List<TemplateParameter>
-        {
-            new() { Name = "appName", DisplayName = "Container App Name", Description = "Name of the container app", Type = ParameterType.String, Required = true },
-            new() { Name = "image", DisplayName = "Container Image", Description = "Container image to deploy", Type = ParameterType.String, Required = true, Placeholder = "myregistry.azurecr.io/myapp:latest" },
-            new() { Name = "minReplicas", DisplayName = "Minimum Replicas", Description = "Minimum number of replicas", Type = ParameterType.Number, DefaultValue = 1, MinValue = 0, MaxValue = 30 },
-            new() { Name = "maxReplicas", DisplayName = "Maximum Replicas", Description = "Maximum number of replicas", Type = ParameterType.Number, DefaultValue = 10, MinValue = 1, MaxValue = 30 },
-            new() { Name = "cpu", DisplayName = "CPU Cores", Description = "CPU cores per replica", Type = ParameterType.Choice, DefaultValue = "0.5", AllowedValues = new List<string> { "0.25", "0.5", "1", "2" } },
-            new() { Name = "memory", DisplayName = "Memory", Description = "Memory per replica", Type = ParameterType.Choice, DefaultValue = "1Gi", AllowedValues = new List<string> { "0.5Gi", "1Gi", "2Gi", "4Gi" } },
-            new() { Name = "enableIngress", DisplayName = "Enable Ingress", Description = "Enable external access", Type = ParameterType.Boolean, DefaultValue = true },
-            new() { Name = "enableDapr", DisplayName = "Enable Dapr", Description = "Enable Dapr sidecar", Type = ParameterType.Boolean, DefaultValue = false }
-        },
-        DefaultTags = new Dictionary<string, string>
-        {
-            ["ManagedBy"] = "PlatformEngineering",
-            ["TemplateId"] = "tpl-containerapp-standard"
-        },
-        RequiresApproval = false,
-        Approval = new ApprovalInfo { ApprovedBy = "platform-team", ApprovedAt = DateTime.UtcNow.AddDays(-45), Source = ApprovalSource.Internal }
-    };
-
-    private ServiceTemplate CreateMicroserviceTemplate() => new()
-    {
-        Id = "tpl-microservice-full",
-        Name = "microservice-fullstack",
-        DisplayName = "Full-Stack Microservice",
-        Description = "Complete microservice environment with AKS, Azure SQL, Redis Cache, and Service Bus.",
-        Version = "1.0.0",
-        Category = "Composite",
-        Format = TemplateFormat.Bicep,
-        Status = TemplateStatus.Published,
-        CreatedBy = "platform-team",
-        CreatedAt = DateTime.UtcNow.AddDays(-15),
-        Keywords = new List<string> { "microservice", "fullstack", "complete", "database", "cache", "messaging" },
-        UseCases = new List<string> { "Complete microservice stack", "New applications", "Production workloads" },
-        AiSelectionHint = "Use when user needs a complete environment with database, cache, and messaging",
-        ComplianceFrameworks = new List<string> { "NIST-800-53" },
-        Parameters = new List<TemplateParameter>
-        {
-            new() { Name = "serviceName", DisplayName = "Service Name", Description = "Name of the microservice", Type = ParameterType.String, Required = true },
-            new() { Name = "includeDatabase", DisplayName = "Include Database", Description = "Include Azure SQL Database", Type = ParameterType.Boolean, DefaultValue = true },
-            new() { Name = "databaseSku", DisplayName = "Database SKU", Description = "Database tier", Type = ParameterType.Choice, DefaultValue = "S1", AllowedValues = new List<string> { "Basic", "S0", "S1", "S2", "P1" } },
-            new() { Name = "includeCache", DisplayName = "Include Redis Cache", Description = "Include Azure Redis Cache", Type = ParameterType.Boolean, DefaultValue = true },
-            new() { Name = "includeServiceBus", DisplayName = "Include Service Bus", Description = "Include Azure Service Bus", Type = ParameterType.Boolean, DefaultValue = true },
-            new() { Name = "nodeCount", DisplayName = "AKS Node Count", Description = "Number of AKS nodes", Type = ParameterType.Number, DefaultValue = 3, MinValue = 1, MaxValue = 10 }
-        },
-        DefaultTags = new Dictionary<string, string>
-        {
-            ["ManagedBy"] = "PlatformEngineering",
-            ["TemplateId"] = "tpl-microservice-full"
-        },
-        RequiresApproval = true
-    };
-
-    private ServiceTemplate CreateFedRampTemplate() => new()
-    {
-        Id = "tpl-fedramp-high",
-        Name = "fedramp-high-environment",
-        DisplayName = "FedRAMP High Compliant Environment",
-        Description = "Environment pre-configured for FedRAMP High compliance with all required security controls.",
-        Version = "1.0.0",
-        Category = "Compliance",
-        Format = TemplateFormat.Bicep,
-        Status = TemplateStatus.Published,
-        CreatedBy = "security-team",
-        CreatedAt = DateTime.UtcNow.AddDays(-20),
-        Keywords = new List<string> { "fedramp", "compliance", "government", "security", "high", "nist" },
-        UseCases = new List<string> { "Government workloads", "FedRAMP certification", "High security requirements" },
-        AiSelectionHint = "Use for government, FedRAMP, or high-security compliance requirements",
-        ComplianceFrameworks = new List<string> { "FedRAMP-High", "NIST-800-53" },
-        EnforceCompliance = true,
-        Parameters = new List<TemplateParameter>
-        {
-            new() { Name = "environmentName", DisplayName = "Environment Name", Description = "Name of the environment", Type = ParameterType.String, Required = true },
-            new() { Name = "systemName", DisplayName = "System Name", Description = "Name of the system for ATO", Type = ParameterType.String, Required = true },
-            new() { Name = "dataClassification", DisplayName = "Data Classification", Description = "Data classification level", Type = ParameterType.Choice, DefaultValue = "CUI", AllowedValues = new List<string> { "Public", "CUI", "Controlled" } },
-            new() { Name = "enableCmk", DisplayName = "Customer Managed Keys", Description = "Use customer-managed encryption keys", Type = ParameterType.Boolean, DefaultValue = true },
-            new() { Name = "enablePrivateEndpoints", DisplayName = "Private Endpoints", Description = "Use private endpoints for all services", Type = ParameterType.Boolean, DefaultValue = true },
-            new() { Name = "retentionDays", DisplayName = "Log Retention Days", Description = "Audit log retention period", Type = ParameterType.Number, DefaultValue = 365, MinValue = 90, MaxValue = 730 }
-        },
-        Guardrails = new List<TemplateGuardrail>
-        {
-            new() { Id = "g1", Name = "Private Endpoints Required", Property = "enablePrivateEndpoints", Operator = "==", Value = true, Action = GuardrailAction.Deny, ErrorMessage = "FedRAMP High requires private endpoints" },
-            new() { Id = "g2", Name = "CMK Required", Property = "enableCmk", Operator = "==", Value = true, Action = GuardrailAction.Deny, ErrorMessage = "FedRAMP High requires customer-managed keys" },
-            new() { Id = "g3", Name = "Minimum Retention", Property = "retentionDays", Operator = ">=", Value = 90, Action = GuardrailAction.Deny, ErrorMessage = "Minimum log retention is 90 days" }
-        },
-        DefaultTags = new Dictionary<string, string>
-        {
-            ["ManagedBy"] = "PlatformEngineering",
-            ["TemplateId"] = "tpl-fedramp-high",
-            ["ComplianceFramework"] = "FedRAMP-High"
-        },
-        RequiresApproval = true,
-        Approval = new ApprovalInfo { ApprovedBy = "security-team", ApprovedAt = DateTime.UtcNow.AddDays(-20), Source = ApprovalSource.Internal }
-    };
 
     #endregion
 }

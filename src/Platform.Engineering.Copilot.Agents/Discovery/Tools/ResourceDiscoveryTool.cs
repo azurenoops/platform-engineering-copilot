@@ -17,9 +17,10 @@ public class ResourceDiscoveryTool : BaseTool
     public override string Name => "discover_azure_resources";
 
     public override string Description =>
-        "Discover and list Azure resources with comprehensive filtering. " +
+        "Discover and list Azure infrastructure resources (VMs, storage accounts, databases, etc.) with comprehensive filtering. " +
         "Search by subscription, resource group, type, location, or tags. " +
-        "Use for resource inventory, discovery, and finding specific resources.";
+        "Use for resource inventory, infrastructure discovery, and finding specific Azure resources. " +
+        "NOTE: To list PROVISIONED ENVIRONMENTS (template-based deployments), use 'list_provisioned_environments' instead.";
 
     public ResourceDiscoveryTool(
         ILogger<ResourceDiscoveryTool> logger,
