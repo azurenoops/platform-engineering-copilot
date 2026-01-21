@@ -180,10 +180,63 @@ public class ServiceTemplateRepository : IServiceTemplateRepository
             throw new InvalidOperationException($"Template with ID {entity.Id} not found");
         }
 
-        // Copy updated values
-        _context.Entry(existing).CurrentValues.SetValues(entity);
+        // Explicitly copy all updatable properties
+        existing.Name = entity.Name;
+        existing.DisplayName = entity.DisplayName;
+        existing.Description = entity.Description;
+        existing.Version = entity.Version;
+        existing.Category = entity.Category;
+        existing.Format = entity.Format;
+        existing.Status = entity.Status;
+        existing.MainTemplateContent = entity.MainTemplateContent;
+        existing.AdditionalFilesJson = entity.AdditionalFilesJson;
+        existing.ParametersJson = entity.ParametersJson;
+        existing.ParametersOverridden = entity.ParametersOverridden;
+        existing.GuardrailsJson = entity.GuardrailsJson;
+        existing.DefaultTagsJson = entity.DefaultTagsJson;
+        
+        // Git source properties
+        existing.GitRepositoryUrl = entity.GitRepositoryUrl;
+        existing.GitBranch = entity.GitBranch;
+        existing.GitPath = entity.GitPath;
+        existing.GitCommitSha = entity.GitCommitSha;
+        existing.LastSyncedFromGit = entity.LastSyncedFromGit;
+        existing.GitAutoSync = entity.GitAutoSync;
+        existing.GitSyncIntervalMinutes = entity.GitSyncIntervalMinutes;
+        
+        // Approval properties
+        existing.RequiresApproval = entity.RequiresApproval;
+        existing.ApprovalSource = entity.ApprovalSource;
+        existing.ApprovedBy = entity.ApprovedBy;
+        existing.ApprovedAt = entity.ApprovedAt;
+        existing.ApprovalComments = entity.ApprovalComments;
+        existing.ExternalApprovalId = entity.ExternalApprovalId;
+        existing.ExternalApprovalUrl = entity.ExternalApprovalUrl;
+        
+        // Deployment configuration
+        existing.DeploymentScope = entity.DeploymentScope;
+        
+        // Metadata
+        existing.ComplianceFrameworks = entity.ComplianceFrameworks;
+        existing.EnforceCompliance = entity.EnforceCompliance;
+        existing.Keywords = entity.Keywords;
+        existing.UseCases = entity.UseCases;
+        existing.AiSelectionHint = entity.AiSelectionHint;
+        existing.DefaultExpirationDays = entity.DefaultExpirationDays;
+        existing.VersionHistoryJson = entity.VersionHistoryJson;
+        
+        // Usage stats
+        existing.DeploymentCount = entity.DeploymentCount;
+        existing.LastDeployedAt = entity.LastDeployedAt;
+        
+        // Audit
+        existing.UpdatedBy = entity.UpdatedBy;
         existing.UpdatedAt = DateTime.UtcNow;
 
+        // Explicitly mark as modified to ensure EF Core's change tracker detects 
+        // our property changes (FindAsync can return cached entities)
+        _context.Entry(existing).State = EntityState.Modified;
+        
         await _context.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Updated service template {TemplateId} - {TemplateName}", entity.Id, entity.Name);

@@ -46,6 +46,9 @@ public static class ServiceTemplateMapper
             MainTemplateContent = entity.MainTemplateContent ?? string.Empty,
             AdditionalFiles = DeserializeList<TemplateFileModel>(entity.AdditionalFilesJson),
             
+            // Deployment scope
+            DeploymentScope = entity.DeploymentScope ?? "resourceGroup",
+            
             // Git source
             GitSource = !string.IsNullOrEmpty(entity.GitRepositoryUrl) ? new GitSourceInfoModel
             {
@@ -60,6 +63,7 @@ public static class ServiceTemplateMapper
             // Parameters and guardrails
             Parameters = DeserializeList<TemplateParameterModel>(entity.ParametersJson),
             Guardrails = DeserializeList<TemplateGuardrailModel>(entity.GuardrailsJson),
+            ParametersOverridden = entity.ParametersOverridden,
             
             // Metadata - comma-separated strings to lists
             DefaultTags = DeserializeDictionary(entity.DefaultTagsJson),
@@ -131,6 +135,9 @@ public static class ServiceTemplateMapper
             MainTemplateContent = model.MainTemplateContent,
             AdditionalFilesJson = SerializeToJson(model.AdditionalFiles),
             
+            // Deployment scope
+            DeploymentScope = model.DeploymentScope ?? "resourceGroup",
+            
             // Git source
             GitRepositoryUrl = model.GitSource?.RepositoryUrl,
             GitBranch = model.GitSource?.Branch,
@@ -138,10 +145,12 @@ public static class ServiceTemplateMapper
             GitCommitSha = model.GitCommitSha,
             LastSyncedFromGit = model.LastSyncedFromGit,
             GitAutoSync = model.GitSource?.AutoSync ?? true,
+            GitSyncIntervalMinutes = model.GitSource?.SyncIntervalMinutes ?? 15,
             
             // Parameters and guardrails
             ParametersJson = SerializeToJson(model.Parameters),
             GuardrailsJson = SerializeToJson(model.Guardrails),
+            ParametersOverridden = model.ParametersOverridden,
             
             // Metadata - lists to comma-separated strings
             DefaultTagsJson = SerializeToJson(model.DefaultTags),
@@ -195,6 +204,9 @@ public static class ServiceTemplateMapper
         
         // Main template content
         entity.MainTemplateContent = model.MainTemplateContent;
+        
+        // Deployment scope
+        entity.DeploymentScope = model.DeploymentScope ?? "resourceGroup";
         entity.AdditionalFilesJson = SerializeToJson(model.AdditionalFiles);
         
         // Git source
@@ -208,6 +220,7 @@ public static class ServiceTemplateMapper
         // Parameters and guardrails
         entity.ParametersJson = SerializeToJson(model.Parameters);
         entity.GuardrailsJson = SerializeToJson(model.Guardrails);
+        entity.ParametersOverridden = model.ParametersOverridden;
         
         // Metadata
         entity.DefaultTagsJson = SerializeToJson(model.DefaultTags);

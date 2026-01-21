@@ -68,7 +68,7 @@ public class ProvisionedEnvironmentEntity
     [StringLength(20)]
     public string Status { get; set; } = "Provisioning"; // Provisioning, Running, Updating, Scaling, Stopped, Failed, Deleting, Deleted
 
-    [StringLength(1000)]
+    [StringLength(4000)]
     public string? StatusMessage { get; set; }
 
     [StringLength(200)]

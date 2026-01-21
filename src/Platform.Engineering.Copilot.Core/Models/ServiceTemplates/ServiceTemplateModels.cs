@@ -96,6 +96,13 @@ public class ServiceTemplate
     public string MainTemplateContent { get; set; } = string.Empty;
     public List<TemplateFile> AdditionalFiles { get; set; } = new();
     
+    /// <summary>
+    /// Deployment scope of the template.
+    /// "resourceGroup" - Deploy into an existing resource group (user must specify RG name)
+    /// "subscription" - Deploy at subscription level, template creates its own resource groups
+    /// </summary>
+    public string DeploymentScope { get; set; } = "resourceGroup";
+    
     // Git Source of Truth
     public GitSourceInfo? GitSource { get; set; }
     public string? GitCommitSha { get; set; }
@@ -104,6 +111,11 @@ public class ServiceTemplate
     // Parameters & Guardrails
     public List<TemplateParameter> Parameters { get; set; } = new();
     public List<TemplateGuardrail> Guardrails { get; set; } = new();
+    
+    /// <summary>
+    /// When true, parameters were manually edited and should NOT be overwritten by Git sync.
+    /// </summary>
+    public bool ParametersOverridden { get; set; } = false;
     
     // Default Tags (applied to all resources)
     public Dictionary<string, string> DefaultTags { get; set; } = new();
@@ -503,6 +515,21 @@ public class UpgradeEnvironmentResult
     public string? ErrorMessage { get; set; }
     public List<string>? Errors { get; set; }
     public List<string>? Changes { get; set; }
+}
+
+/// <summary>
+/// Result of deleting Azure resources for an environment
+/// </summary>
+public class DeleteResourcesResult
+{
+    public bool Success { get; set; }
+    public string? EnvironmentId { get; set; }
+    public string? Message { get; set; }
+    public List<string>? DeletedResources { get; set; }
+    public List<string>? FailedResources { get; set; }
+    public List<string>? Errors { get; set; }
+    public int TotalResourcesDeleted { get; set; }
+    public int TotalResourcesFailed { get; set; }
 }
 
 #endregion

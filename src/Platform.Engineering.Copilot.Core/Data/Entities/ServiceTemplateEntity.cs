@@ -68,6 +68,12 @@ public class ServiceTemplateEntity
     /// </summary>
     public string? AdditionalFilesJson { get; set; }
 
+    /// <summary>
+    /// Deployment scope: "resourceGroup" or "subscription"
+    /// </summary>
+    [StringLength(20)]
+    public string DeploymentScope { get; set; } = "resourceGroup";
+
     // Git Source of Truth
     public string? GitRepositoryUrl { get; set; }
     public string? GitBranch { get; set; }
@@ -81,6 +87,12 @@ public class ServiceTemplateEntity
     /// JSON-serialized list of template parameters
     /// </summary>
     public string? ParametersJson { get; set; }
+
+    /// <summary>
+    /// When true, parameters were manually edited and should NOT be overwritten by Git sync.
+    /// Git sync will only update template content, not parameters.
+    /// </summary>
+    public bool ParametersOverridden { get; set; } = false;
 
     /// <summary>
     /// JSON-serialized list of guardrails
