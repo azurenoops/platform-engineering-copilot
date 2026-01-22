@@ -185,7 +185,7 @@ else
                                 {
                                     <div class="list-group-item">
                                         <div class="d-flex justify-content-between align-items-start">
-                                            <div>
+                                            <div class="flex-grow-1">
                                                 <strong>@param.Name</strong>
                                                 @if (param.Required)
                                                 {
@@ -193,10 +193,19 @@ else
                                                 }
                                                 <p class="text-muted small mb-1">@param.Description</p>
                                                 <span class="badge bg-info">@param.Type</span>
+                                                @if (!string.IsNullOrEmpty(param.DefaultValue))
+                                                {
+                                                    <span class="badge bg-secondary ms-1">Default: @param.DefaultValue</span>
+                                                }
                                             </div>
-                                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveParameter(param)">
-                                                <i class="fa fa-trash"></i>
-                                            </button>
+                                            <div class="btn-group">
+                                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => EditParameter(param)" title="Edit parameter">
+                                                    <i class="fa fa-edit"></i>
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveParameter(param)" title="Delete parameter">
+                                                    <i class="fa fa-trash"></i>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 }
@@ -408,15 +417,15 @@ else
     </div>
 }
 
-@* Add Parameter Modal *@
+@* Add/Edit Parameter Modal *@
 @if (_showAddParameterModal)
 {
     <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="fa fa-sliders me-2"></i>Add Parameter</h5>
-                    <button type="button" class="btn-close" @onclick="() => _showAddParameterModal = false"></button>
+                    <h5 class="modal-title"><i class="fa fa-sliders me-2"></i>@(_isEditMode ? "Edit" : "Add") Parameter</h5>
+                    <button type="button" class="btn-close" @onclick="CloseParameterModal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="row mb-3">
@@ -465,12 +474,21 @@ else
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="() => _showAddParameterModal = false">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseParameterModal">
                         Cancel
                     </button>
-                    <button type="button" class="btn btn-primary" @onclick="AddParameter">
-                        <i class="fa fa-plus me-1"></i>Add Parameter
-                    </button>
+                    @if (_isEditMode)
+                    {
+                        <button type="button" class="btn btn-primary" @onclick="SaveEditedParameter">
+                            <i class="fa fa-save me-1"></i>Save Changes
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-primary" @onclick="AddParameter">
+                            <i class="fa fa-plus me-1"></i>Add Parameter
+                        </button>
+                    }
                 </div>
             </div>
         </div>
@@ -598,6 +616,8 @@ else
     private List<CreateParameterModel> _parameters = new();
     private bool _showAddParameterModal;
     private CreateParameterModel _newParameter = new();
+    private CreateParameterModel? _editingParameter;  // Track which parameter is being edited
+    private bool _isEditMode => _editingParameter != null;
     
     // Guardrails
     private List<GuardrailModel> _guardrails = new();
@@ -758,6 +778,7 @@ else
     
     private void ShowAddParameterModal()
     {
+        _editingParameter = null;  // Ensure we're in "add" mode, not "edit" mode
         _newParameter = new CreateParameterModel
         {
             Type = "String",
@@ -783,6 +804,64 @@ else
     {
         _parameters.Remove(param);
         ToastService.ShowSuccess("Parameter removed");
+    }
+    
+    private void EditParameter(CreateParameterModel param)
+    {
+        // Store reference to the parameter being edited
+        _editingParameter = param;
+        
+        // Copy values to the form
+        _newParameter = new CreateParameterModel
+        {
+            Name = param.Name,
+            DisplayName = param.DisplayName,
+            Description = param.Description,
+            Type = param.Type,
+            Required = param.Required,
+            DefaultValue = param.DefaultValue,
+            AllowedValues = param.AllowedValues,
+            MinValue = param.MinValue,
+            MaxValue = param.MaxValue,
+            DisplayOrder = param.DisplayOrder
+        };
+        
+        _showAddParameterModal = true;
+    }
+    
+    private void SaveEditedParameter()
+    {
+        if (string.IsNullOrWhiteSpace(_newParameter.Name))
+        {
+            ToastService.ShowError("Parameter name is required");
+            return;
+        }
+        
+        if (_editingParameter != null)
+        {
+            // Update the existing parameter in place
+            _editingParameter.Name = _newParameter.Name;
+            _editingParameter.DisplayName = _newParameter.DisplayName;
+            _editingParameter.Description = _newParameter.Description;
+            _editingParameter.Type = _newParameter.Type;
+            _editingParameter.Required = _newParameter.Required;
+            _editingParameter.DefaultValue = _newParameter.DefaultValue;
+            _editingParameter.AllowedValues = _newParameter.AllowedValues;
+            _editingParameter.MinValue = _newParameter.MinValue;
+            _editingParameter.MaxValue = _newParameter.MaxValue;
+            _editingParameter.DisplayOrder = _newParameter.DisplayOrder;
+            
+            ToastService.ShowSuccess("Parameter updated");
+        }
+        
+        CloseParameterModal();
+    }
+    
+    private void CloseParameterModal()
+    {
+        _showAddParameterModal = false;
+        _editingParameter = null;
+        _newParameter = new CreateParameterModel();
     }
     
     private void AddGuardrail()
