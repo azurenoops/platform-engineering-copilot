@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Core.Interfaces.Templates;
 using Platform.Engineering.Copilot.Core.Models.ServiceTemplates;
+using Platform.Engineering.Copilot.Core.Services;
 
 namespace Platform.Engineering.Copilot.Agents.Environments.Tools;
 
@@ -14,22 +15,26 @@ public class CreateEnvironmentFromTemplateTool : BaseTool
 {
     private readonly IServiceTemplateCatalogService _templateCatalog;
     private readonly IProvisionedEnvironmentService _environmentService;
+    private readonly ConfigService _configService;
 
     public override string Name => "create_environment_from_template";
 
     public override string Description =>
         "Create a new Azure environment from an approved service template. " +
         "Specify the template ID and provide values for required parameters. " +
+        "If subscriptionId is not provided, uses the configured default subscription. " +
         "The platform will validate parameters against guardrails and provision all resources. " +
         "Use 'list_service_templates' and 'get_template_details' first to understand available options.";
 
     public CreateEnvironmentFromTemplateTool(
         ILogger<CreateEnvironmentFromTemplateTool> logger,
         IServiceTemplateCatalogService templateCatalog,
-        IProvisionedEnvironmentService environmentService) : base(logger)
+        IProvisionedEnvironmentService environmentService,
+        ConfigService configService) : base(logger)
     {
         _templateCatalog = templateCatalog ?? throw new ArgumentNullException(nameof(templateCatalog));
         _environmentService = environmentService ?? throw new ArgumentNullException(nameof(environmentService));
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
 
         Parameters.Add(new ToolParameter(
             name: "templateId",
@@ -43,13 +48,13 @@ public class CreateEnvironmentFromTemplateTool : BaseTool
 
         Parameters.Add(new ToolParameter(
             name: "subscriptionId",
-            description: "Azure subscription ID for deployment (required)",
-            required: true));
+            description: "Azure subscription ID for deployment. If not provided, uses the configured default subscription.",
+            required: false));
 
         Parameters.Add(new ToolParameter(
             name: "resourceGroupName",
-            description: "Resource group name (will be created if it doesn't exist)",
-            required: true));
+            description: "Resource group name (required for resource-group scoped templates, optional for subscription-scoped templates that create their own resource groups)",
+            required: false));  // Made optional - validation depends on template scope
 
         Parameters.Add(new ToolParameter(
             name: "location",
@@ -91,22 +96,36 @@ public class CreateEnvironmentFromTemplateTool : BaseTool
         var ownerEmail = GetOptionalString(arguments, "ownerEmail");
         var expirationDays = GetOptionalInt(arguments, "expirationDays");
 
-        // Validation
+        // Basic validation
         if (string.IsNullOrWhiteSpace(templateId))
             return ToJson(new { success = false, error = "Template ID is required" });
         if (string.IsNullOrWhiteSpace(environmentName))
             return ToJson(new { success = false, error = "Environment name is required" });
+        
+        // Auto-fill subscription from configuration if not provided
         if (string.IsNullOrWhiteSpace(subscriptionId))
-            return ToJson(new { success = false, error = "Subscription ID is required" });
-        if (string.IsNullOrWhiteSpace(resourceGroupName))
-            return ToJson(new { success = false, error = "Resource group name is required" });
+        {
+            subscriptionId = _configService.GetDefaultSubscription();
+            if (!string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                Logger.LogInformation("Using configured default subscription: {SubscriptionId}", subscriptionId);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return ToJson(new { 
+                success = false, 
+                error = "Subscription ID is required. Either provide subscriptionId parameter or set a default using 'Set my subscription to <id>'" 
+            });
+        }
 
         Logger.LogInformation("🚀 Creating environment {Name} from template {Template}",
             environmentName, templateId);
 
         try
         {
-            // Resolve template
+            // Resolve template FIRST to check deployment scope
             var template = await _templateCatalog.GetTemplateAsync(templateId, cancellationToken)
                 ?? await _templateCatalog.GetTemplateByNameAsync(templateId, cancellationToken: cancellationToken);
 
@@ -118,6 +137,28 @@ public class CreateEnvironmentFromTemplateTool : BaseTool
                     error = $"Template '{templateId}' not found",
                     hint = "Use 'list_service_templates' to see available templates"
                 });
+            }
+
+            // Check if resource group is required based on deployment scope
+            var isSubscriptionScoped = template.DeploymentScope?.Equals("subscription", StringComparison.OrdinalIgnoreCase) == true;
+            
+            if (!isSubscriptionScoped && string.IsNullOrWhiteSpace(resourceGroupName))
+            {
+                return ToJson(new 
+                { 
+                    success = false, 
+                    error = "Resource group name is required for this template",
+                    hint = "This template deploys at resource group scope. Provide a resourceGroupName."
+                });
+            }
+
+            // For subscription-scoped templates, resource group is not needed (template creates its own)
+            if (isSubscriptionScoped)
+            {
+                Logger.LogInformation("📦 Template {Template} is subscription-scoped - will create its own resource groups",
+                    template.Name);
+                // Clear any provided resource group name since the template manages this
+                resourceGroupName = null;
             }
 
             // Parse parameters
@@ -216,13 +257,13 @@ public class CreateEnvironmentFromTemplateTool : BaseTool
                     status = result.Environment.Status.ToString(),
                     createdAt = result.Environment.CreatedAt,
                     expiresAt = result.Environment.ExpiresAt,
-                    deployedResources = result.Environment.DeployedResources.Select(r => new
+                    deployedResources = result.Environment.DeployedResources?.Select(r => new
                     {
                         name = r.Name,
                         type = r.Type,
                         resourceId = r.ResourceId,
                         provisioningState = r.ProvisioningState
-                    }),
+                    }) ?? Enumerable.Empty<object>(),
                     tags = result.Environment.Tags
                 },
                 deploymentId = result.DeploymentId,
