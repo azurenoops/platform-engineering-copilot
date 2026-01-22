@@ -71,7 +71,7 @@ if (!string.IsNullOrEmpty(chatConnectionString) && chatConnectionString.Contains
     {
         chatConnectionString = chatConnectionString.Replace("Database=PlatformEngineeringCopilot", "Database=PlatformChatDb");
     }
-    Console.WriteLine("[Chat] Using SQL Server for Chat database");
+    Log.Information("[Chat] Using SQL Server for Chat database");
     builder.Services.AddDbContext<ChatDbContext>(options =>
         options.UseSqlServer(chatConnectionString));
 }
@@ -79,7 +79,7 @@ else
 {
     // SQLite (local development)
     var sqliteConnection = chatConnectionString ?? "Data Source=chat.db";
-    Console.WriteLine($"[Chat] Using SQLite for Chat database: {sqliteConnection}");
+    Log.Information("[Chat] Using SQLite for Chat database: {Connection}", sqliteConnection);
     builder.Services.AddDbContext<ChatDbContext>(options =>
         options.UseSqlite(sqliteConnection));
 }
@@ -90,7 +90,7 @@ var platformConnectionString = builder.Configuration.GetConnectionString("SqlSer
 if (!string.IsNullOrEmpty(platformConnectionString) && platformConnectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase))
 {
     // SQL Server (Docker environment)
-    Console.WriteLine("[Chat] Using SQL Server for Platform database");
+    Log.Information("[Chat] Using SQL Server for Platform database");
     builder.Services.AddDbContext<PlatformEngineeringCopilotContext>(options =>
         options.UseSqlServer(platformConnectionString));
 }
@@ -99,7 +99,7 @@ else
     // SQLite (local development)
     var sharedDbPath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "../..", "platform_engineering_copilot_management.db"));
     var sqliteConnectionString = $"Data Source={sharedDbPath}";
-    Console.WriteLine($"[Chat] Using SQLite for Platform database: {sharedDbPath}");
+    Log.Information("[Chat] Using SQLite for Platform database: {Path}", sharedDbPath);
     builder.Services.AddDbContext<PlatformEngineeringCopilotContext>(options =>
         options.UseSqlite(sqliteConnectionString));
 }
