@@ -129,7 +129,7 @@ export class McpClient {
         try {
             const payload: Record<string, any> = {
                 message,
-                conversationHistory: history
+                history: history  // Changed from conversationHistory to match ChatRequest model
             };
 
             // Add target agent hint if specified (e.g., from /command)
