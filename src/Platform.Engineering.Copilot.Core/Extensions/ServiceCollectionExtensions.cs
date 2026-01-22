@@ -1,5 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http;
+using Polly;
+using Polly.Extensions.Http;
 using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 using Platform.Engineering.Copilot.Core.Interfaces.Audits;
@@ -241,6 +244,63 @@ public static class ServiceCollectionExtensions
             };
         });
         services.AddSingleton<AzureMcpClient>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Add resilient HTTP clients with retry and circuit breaker policies
+    /// </summary>
+    public static IServiceCollection AddResilientHttpClients(this IServiceCollection services)
+    {
+        // Retry policy with exponential backoff and jitter
+        static IAsyncPolicy<HttpResponseMessage> GetRetryPolicy() =>
+            HttpPolicyExtensions
+                .HandleTransientHttpError()
+                .OrResult(msg => msg.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                .WaitAndRetryAsync(
+                    retryCount: 3,
+                    sleepDurationProvider: retryAttempt => 
+                        TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)) + 
+                        TimeSpan.FromMilliseconds(Random.Shared.Next(0, 1000)),
+                    onRetry: (outcome, timespan, retryAttempt, context) =>
+                    {
+                        // Retry logging handled by Polly
+                    });
+
+        // Circuit breaker policy
+        static IAsyncPolicy<HttpResponseMessage> GetCircuitBreakerPolicy() =>
+            HttpPolicyExtensions
+                .HandleTransientHttpError()
+                .CircuitBreakerAsync(
+                    handledEventsAllowedBeforeBreaking: 5,
+                    durationOfBreak: TimeSpan.FromSeconds(30));
+
+        // Azure Management API client with resilience
+        services.AddHttpClient("AzureManagement", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+        })
+        .AddPolicyHandler(GetRetryPolicy())
+        .AddPolicyHandler(GetCircuitBreakerPolicy());
+
+        // GitHub API client with resilience
+        services.AddHttpClient("GitHubApi", client =>
+        {
+            client.DefaultRequestHeaders.Add("User-Agent", "Platform-Engineering-Copilot");
+            client.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        })
+        .AddPolicyHandler(GetRetryPolicy())
+        .AddPolicyHandler(GetCircuitBreakerPolicy());
+
+        // GitHub Raw content client with resilience
+        services.AddHttpClient("GitHubRaw", client =>
+        {
+            client.DefaultRequestHeaders.Add("User-Agent", "Platform-Engineering-Copilot");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        })
+        .AddPolicyHandler(GetRetryPolicy());
 
         return services;
     }
