@@ -188,6 +188,40 @@ src/
 
 ---
 
+## Infrastructure as Code (Bicep)
+
+Refactored Bicep templates live under [infra/bicep](infra/bicep). They use modern `.bicepparam` files, typed parameters, and simplified orchestration.
+
+Quick steps:
+
+```bash
+# Set cloud and authenticate
+az cloud set --name AzureUSGovernment   # or AzureCloud
+az login
+
+# Dev: MCP + Admin
+az deployment group create \
+  --resource-group rg-pecop-dev \
+  --parameters infra/bicep/main.dev.bicepparam \
+  --parameters sqlAdminPassword='YourSecurePassword123!'
+
+# MCP-only
+az deployment group create \
+  --resource-group rg-pecop-dev \
+  --parameters infra/bicep/main.mcp-only.bicepparam \
+  --parameters sqlAdminPassword='YourSecurePassword123!'
+
+# Prod: all services
+az deployment group create \
+  --resource-group rg-pecop-prod \
+  --parameters infra/bicep/main.prod.bicepparam \
+  --parameters sqlAdminPassword='SetSecurelyFromKeyVaultOrPipeline'
+```
+
+More details and parameters: [infra/bicep/README.md](infra/bicep/README.md)
+
+---
+
 ## Configuration
 
 All configuration in `appsettings.json`:
