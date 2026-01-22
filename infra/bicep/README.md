@@ -1,225 +1,140 @@
-# Bicep Infrastructure as Code
+# Bicep Infrastructure (Refactored)
 
-This directory contains Azure Bicep templates for deploying the Platform Engineering Copilot infrastructure.
+This folder contains the Azure Bicep IaC for Platform Engineering Copilot. It was recently refactored to simplify parameters, adopt `.bicepparam` files, and add type safety.
 
-## Deployment Profiles
+## What Changed
+- New typed model in [types/main.bicep](infra/bicep/types/main.bicep) (e.g., `containerDeploymentTarget`, `sqlDatabaseSku`).
+- Main orchestrator simplified in [main.bicep](infra/bicep/main.bicep) with clearer params and conditional modules.
+- Modern parameter files: `.bicepparam` now used instead of JSON.
+- ACR module updated in [modules/acr.bicep](infra/bicep/modules/acr.bicep) to remove deprecated properties and linter warnings.
 
-The templates support 4 deployment profiles matching Docker Compose configurations:
-
-| Profile | Services | Parameter File | Docker Compose |
-|---------|----------|----------------|----------------|
-| **MCP Only** | MCP Server | `main.parameters.mcp.json` | `docker-compose.mcp.yml` |
-| **MCP + Chat** | MCP, Chat UI | `main.parameters.mcp-chat.json` | `docker-compose.mcp-chat.yml` |
-| **MCP + Admin** | MCP, Admin API, Admin Client | `main.parameters.mcp-admin.json` | `docker-compose.mcp-admin.yml` |
-| **Full Stack** | MCP, Chat, Admin API, Admin Client | `main.parameters.mcp-chat-admin.json` | `docker-compose.mcp-chat-admin.yml` |
-
-## Service Port Mappings
-
-| Service | Container Port | Description |
-|---------|---------------|-------------|
-| MCP Server | 5100 | AI Agent MCP Server |
-| Chat UI | 5001 | Web Chat Interface |
-| Admin API | 5050 | Admin REST API |
-| Admin Client | 80 | Admin Blazor WASM UI (Nginx) |
-
-## Directory Structure
+## Current Layout
 
 ```
 bicep/
-├── main.bicep                      # Main infrastructure template
-├── main.parameters.json            # Base parameters template
-├── main.parameters.mcp.json        # MCP-only deployment
-├── main.parameters.mcp-chat.json   # MCP + Chat deployment
-├── main.parameters.mcp-admin.json  # MCP + Admin deployment
-├── main.parameters.mcp-chat-admin.json # Full stack deployment
-├── main.parameters.aci.json        # ACI deployment (legacy)
-├── main.parameters.aks.json        # AKS deployment
-├── main.parameters.appservice.json # App Service deployment
-├── modules/                        # Reusable Bicep modules
-│   ├── aci.bicep                   # Azure Container Instances
-│   ├── acr.bicep                   # Azure Container Registry
-│   ├── aks.bicep                   # Azure Kubernetes Service
-│   ├── app-services.bicep          # App Services
-│   ├── keyvault.bicep              # Key Vault
-│   ├── monitoring.bicep            # Application Insights
-│   ├── network.bicep               # Virtual Network
-│   ├── sql.bicep                   # Azure SQL
-│   └── storage.bicep               # Storage Account
-├── scripts/                        # Deployment scripts
-│   ├── deploy-to-aci.sh           # Deploy to ACI
-│   ├── deploy-to-azure.sh         # General deployment
-│   └── update-mcp-auth.sh         # Update MCP authentication
-└── README.md                       # This file
+├── main.bicep                     # Orchestrates SQL, KV, Storage, Monitoring, Network, ACR, ACI/AppSvc
+├── main.dev.bicepparam            # Dev profile (MCP + Admin)
+├── main.prod.bicepparam           # Prod profile (all services)
+├── main.mcp-only.bicepparam       # Minimal MCP-only profile
+├── modules/
+│   ├── aci.bicep                  # Azure Container Instances
+│   ├── acr.bicep                  # Azure Container Registry
+│   ├── app-services.bicep         # Azure App Services (alternative target)
+│   ├── keyvault.bicep             # Azure Key Vault
+│   ├── monitoring.bicep           # Log Analytics + App Insights
+│   ├── network.bicep              # VNet + subnets
+│   ├── sql.bicep                  # Azure SQL Server + DB
+│   └── storage.bicep              # Storage Account
+└── types/
+    └── main.bicep                 # User-defined types used by main.bicep
 ```
 
-## Quick Start
+## Services and Ports
+- MCP Server: 5100
+- Chat UI: 5001
+- Admin API: 5050
+- Admin Client: 80
 
-### 1. MCP Only (AI Development)
+## Quick Deploy
 
-Best for developing AI agents and MCP integrations:
+Set your Azure cloud and login first (Government vs Commercial):
+
+```bash
+# Azure Government
+az cloud set --name AzureUSGovernment
+az login
+
+# or Azure Commercial
+az cloud set --name AzureCloud
+az login
+```
+
+### Dev (MCP + Admin)
 
 ```bash
 az deployment group create \
-  --resource-group rg-platform-engineering-dev \
-  --template-file main.bicep \
-  --parameters main.parameters.mcp.json \
+  --resource-group rg-pecop-dev \
+  --parameters infra/bicep/main.dev.bicepparam \
   --parameters sqlAdminPassword='YourSecurePassword123!'
 ```
 
-### 2. MCP + Chat (End User Demo)
-
-Best for demonstrating AI chat capabilities:
+### MCP-Only
 
 ```bash
 az deployment group create \
-  --resource-group rg-platform-engineering-dev \
-  --template-file main.bicep \
-  --parameters main.parameters.mcp-chat.json \
+  --resource-group rg-pecop-dev \
+  --parameters infra/bicep/main.mcp-only.bicepparam \
   --parameters sqlAdminPassword='YourSecurePassword123!'
 ```
 
-### 3. MCP + Admin (Platform Administration)
-
-Best for template management and platform configuration:
+### Prod (All Services)
 
 ```bash
 az deployment group create \
-  --resource-group rg-platform-engineering-dev \
-  --template-file main.bicep \
-  --parameters main.parameters.mcp-admin.json \
-  --parameters sqlAdminPassword='YourSecurePassword123!'
+  --resource-group rg-pecop-prod \
+  --parameters infra/bicep/main.prod.bicepparam \
+  --parameters sqlAdminPassword='SetSecurelyFromKeyVaultOrPipeline'
 ```
 
-### 4. Full Stack (Production)
+## Parameters (Overview)
+- projectName, environment, location
+- sqlAdminLogin, sqlAdminPassword (secure)
+- keyVaultAdminObjectId (AAD Object ID for initial KV access)
+- deploymentTarget: `aci | aks | appservice | none`
+- deployMcp, deployChat, deployAdminApi, deployAdminClient
+- imageTag, cpuCores, memoryGB (for ACI)
 
-Complete platform deployment:
+Note: `sqlAdminPassword` should be supplied securely (Key Vault or pipeline secret). The `.bicepparam` files include an empty placeholder.
+
+## Validation and Linting
 
 ```bash
-az deployment group create \
-  --resource-group rg-platform-engineering-dev \
-  --template-file main.bicep \
-  --parameters main.parameters.mcp-chat-admin.json \
-  --parameters sqlAdminPassword='YourSecurePassword123!'
+# Validate template compiles
+cd infra/bicep
+bicep build main.bicep
+
+# Lint
+bicep lint main.bicep
+
+# Validate param files
+bicep build-params main.dev.bicepparam
+bicep build-params main.prod.bicepparam
+bicep build-params main.mcp-only.bicepparam
 ```
 
-## Deployment Targets
+## Notes on Warnings
+- You may see BCP318 warnings for conditional module outputs (e.g., ACR, ACI). Access conditions match deployment conditions; builds succeed.
+- The ACR module was updated to remove deprecated properties (`anonymousPullEnabled`, `azureADAuthenticationAsArmPolicy`, `softDeletePolicy`).
 
-The templates support multiple deployment targets:
+## Key Vault Secrets
 
-| Target | Use Case | Parameter |
-|--------|----------|-----------|
-| **ACI** | Development, simple deployments | `containerDeploymentTarget: aci` |
-| **AKS** | Production, high availability | `containerDeploymentTarget: aks` |
-| **App Service** | PaaS, managed services | `containerDeploymentTarget: appservice` |
+Main secrets written by the deployment:
+- SqlConnectionString
+- AppInsightsConnectionString
 
-## Git Sync Configuration
-
-The MCP Server includes Git template synchronization with these environment variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `GitSync__AutoSyncEnabled` | Enable automatic sync | `true` |
-| `GitSync__DefaultSyncIntervalMinutes` | Sync interval | `30` |
-| `GitSync__GitHubToken` | GitHub personal access token | (from Key Vault) |
-| `GitSync__AzureDevOpsToken` | Azure DevOps PAT | (from Key Vault) |
-
-### Store Git Tokens in Key Vault
-
-```bash
-# Store GitHub token
-az keyvault secret set \
-  --vault-name kv-platform-engineering \
-  --name github-token \
-  --value "ghp_your_github_token"
-
-# Store Azure DevOps token
-az keyvault secret set \
-  --vault-name kv-platform-engineering \
-  --name azuredevops-token \
-  --value "your_azuredevops_pat"
-```
-
-## Module Reference
-
-### ACI Module (`modules/aci.bicep`)
-
-Deploys Azure Container Instances with:
-- Health probes (liveness/readiness)
-- Managed identity for ACR pull
-- VNet integration (optional)
-- Environment variables
-- Logging to Log Analytics
-
-### AKS Module (`modules/aks.bicep`)
-
-Deploys Azure Kubernetes Service with:
-- Workload identity
-- OIDC issuer
-- ACR integration
-- Auto-scaling
-- Network policies
-
-### App Services Module (`modules/app-services.bicep`)
-
-Deploys App Service Plan and Web Apps with:
-- VNet integration
-- Private endpoints
-- Managed identity
-- Deployment slots
-
-## Existing Resource Integration
-
-The templates support using existing resources:
-
-```json
-{
-  "useExistingNetwork": { "value": true },
-  "existingVNetName": { "value": "vnet-existing" },
-  "useExistingLogAnalytics": { "value": true },
-  "existingLogAnalyticsWorkspaceName": { "value": "log-existing" },
-  "useExistingKeyVault": { "value": true },
-  "existingKeyVaultName": { "value": "kv-existing" }
-}
-```
-
-## Outputs
-
-The deployment outputs include:
-
-| Output | Description |
-|--------|-------------|
-| `aciMcpFqdn` | MCP Container Instance FQDN |
-| `aciChatFqdn` | Chat Container Instance FQDN |
-| `aciAdminApiFqdn` | Admin API Container Instance FQDN |
-| `aciAdminClientFqdn` | Admin Client Container Instance FQDN |
-| `acrLoginServer` | Container Registry login server |
-| `sqlServerFqdn` | SQL Server FQDN |
-| `keyVaultUri` | Key Vault URI |
-| `deploymentSummary` | Full deployment summary object |
+Ensure `keyVaultAdminObjectId` has access initially; subsequent access is managed via RBAC.
 
 ## Troubleshooting
 
-### Check ACI Status
-
 ```bash
+# Show ACI state
 az container show \
-  --resource-group rg-platform-engineering-dev \
-  --name aci-mcp-platform-engineering-dev \
+  --resource-group rg-pecop-dev \
+  --name <aci-name> \
   --query "{state:instanceView.state, events:containers[0].instanceView.events}"
-```
 
-### View Container Logs
-
-```bash
+# Logs
 az container logs \
-  --resource-group rg-platform-engineering-dev \
-  --name aci-mcp-platform-engineering-dev
-```
+  --resource-group rg-pecop-dev \
+  --name <aci-name>
 
-### Restart Container
-
-```bash
+# Restart
 az container restart \
-  --resource-group rg-platform-engineering-dev \
-  --name aci-mcp-platform-engineering-dev
+  --resource-group rg-pecop-dev \
+  --name <aci-name>
 ```
+
+## Migration (from JSON params)
+- Legacy JSON parameter files remain for reference but are superseded by `.bicepparam`.
+- Recommended to switch to: [main.dev.bicepparam](infra/bicep/main.dev.bicepparam), [main.prod.bicepparam](infra/bicep/main.prod.bicepparam), [main.mcp-only.bicepparam](infra/bicep/main.mcp-only.bicepparam).
+
