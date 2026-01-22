@@ -87,11 +87,24 @@ public class ProvisionedEnvironmentService : IProvisionedEnvironmentService
         // Warnings for non-blocking violations
         result.GuardrailViolations = guardrailViolations.Where(v => v.Action != GuardrailAction.Deny).ToList();
 
-        // Check name uniqueness
-        var isUnique = await _repository.IsNameUniqueAsync(request.EnvironmentName, cancellationToken: cancellationToken);
-        if (!isUnique)
+        // Check name uniqueness - but provide helpful message if environment exists in Failed state
+        var existingEnv = await _repository.GetByNameAsync(request.EnvironmentName, cancellationToken);
+        if (existingEnv != null && !existingEnv.IsDeleted)
         {
-            result.Errors = new List<string> { $"Environment name '{request.EnvironmentName}' is already in use" };
+            var existingStatus = existingEnv.Status;
+            if (existingStatus == "Failed")
+            {
+                result.Errors = new List<string> 
+                { 
+                    $"Environment '{request.EnvironmentName}' already exists but is in Failed status. " +
+                    $"Previous error: {existingEnv.StatusMessage ?? "Unknown error"}. " +
+                    $"To retry, first delete the failed environment using 'delete_environment' with environmentId='{existingEnv.Id}', " +
+                    $"then try creating again. Or use a different environment name."
+                };
+                return result;
+            }
+            
+            result.Errors = new List<string> { $"Environment name '{request.EnvironmentName}' is already in use (status: {existingStatus})" };
             return result;
         }
 
@@ -132,15 +145,28 @@ public class ProvisionedEnvironmentService : IProvisionedEnvironmentService
             environment.StatusMessage = errorMessage.Length > 3900 
                 ? errorMessage[..3900] + "... [truncated]" 
                 : errorMessage;
+            
+            // Return failure immediately with the actual deployment errors
+            // Don't save failed deployments to database - user should retry with corrections
+            result.Success = false;
+            return result;
         }
-        else
+        
+        // Success path - set deployed resources
+        // Note: environment.Status is set by DeployWithStrategyAsync:
+        //   - Running: if deployment completed synchronously
+        //   - Provisioning: if async deployment started (will be polled by background service)
+        environment.DeployedResources = deploymentSuccess.resources;
+        environment.Resources = deploymentSuccess.resources;
+        
+        // Only set to Running if deployment actually completed (not async)
+        if (environment.Status != EnvironmentStatus.Provisioning)
         {
-            environment.DeployedResources = deploymentSuccess.resources;
-            environment.Resources = deploymentSuccess.resources;
+            environment.Status = EnvironmentStatus.Running;
             environment.StatusMessage = "Deployment completed successfully";
         }
 
-        // Save to database
+        // Save to database (only on success)
         var entity = environment.ToEntity();
         await _repository.CreateAsync(entity, cancellationToken);
 
@@ -155,11 +181,14 @@ public class ProvisionedEnvironmentService : IProvisionedEnvironmentService
         result.Environment = environment;
         result.EnvironmentId = environment.Id;
         result.EnvironmentName = environment.Name;
-        result.DeploymentId = Guid.NewGuid().ToString();
+        result.DeploymentId = environment.DeploymentId ?? Guid.NewGuid().ToString();
         result.Status = environment.Status;
 
-        _logger.LogInformation("🚀 Created environment {Name} (ID: {Id}) from template {Template} by {CreatedBy}",
-            environment.Name, environment.Id, template.Name, request.RequestedBy);
+        var statusDesc = environment.Status == EnvironmentStatus.Provisioning 
+            ? "provisioning (async deployment in progress)" 
+            : "running";
+        _logger.LogInformation("🚀 Created environment {Name} (ID: {Id}) from template {Template} - Status: {Status}",
+            environment.Name, environment.Id, template.Name, statusDesc);
 
         return result;
     }
@@ -1030,6 +1059,9 @@ public class ProvisionedEnvironmentService : IProvisionedEnvironmentService
             take: 1000,
             cancellationToken: cancellationToken);
 
+        _logger.LogInformation("GetDeletedEnvironmentsAsync: Found {Total} total entities, {Deleted} with IsDeleted=true",
+            entities.Count, entities.Count(e => e.IsDeleted));
+
         // Filter to only soft-deleted environments
         var deletedEntities = entities.Where(e => e.IsDeleted).ToList();
         return deletedEntities.ToModels().ToList();
@@ -1239,11 +1271,12 @@ public class ProvisionedEnvironmentService : IProvisionedEnvironmentService
 
         // Set overall success
         result.Success = result.TotalResourcesDeleted > 0 && result.TotalResourcesFailed == 0;
-        result.Message = $"Deleted {result.TotalResourcesDeleted} resource group(s)" +
-            (result.TotalResourcesFailed > 0 ? $", {result.TotalResourcesFailed} failed" : "");
+        result.Message = $"Initiated deletion of {result.TotalResourcesDeleted} resource group(s)" +
+            (result.TotalResourcesFailed > 0 ? $", {result.TotalResourcesFailed} failed" : "") +
+            ". Deletion will continue in background.";
 
         await AddAuditEntryAsync(envId, "ResourcesDeleted", deletedBy, 
-            $"Deleted {result.TotalResourcesDeleted} resource group(s): {string.Join(", ", result.DeletedResources)}", cancellationToken);
+            $"Initiated deletion of {result.TotalResourcesDeleted} resource group(s): {string.Join(", ", result.DeletedResources)}", cancellationToken);
 
         return result;
     }
@@ -2009,10 +2042,24 @@ public class ProvisionedEnvironmentService : IProvisionedEnvironmentService
             var allResources = new List<DeployedResource>();
 
             // For MLZ-style deployments, look for resource groups matching the pattern
-            // MLZ creates resource groups like: {envAbbrev}-{envAbbrev}-va-hub-rg-network
-            var envAbbrev = environment.ParameterValues?.GetValueOrDefault("environmentAbbreviation")?.ToString() 
-                ?? environment.Name.Split('-').FirstOrDefault() 
-                ?? "dev";
+            // MLZ creates resource groups like: {identifier}-{identifier}-va-hub-rg-network
+            // The identifier comes from the "identifier" or "environmentAbbreviation" parameter
+            var identifier = environment.ParameterValues?.GetValueOrDefault("identifier")?.ToString()
+                ?? environment.ParameterValues?.GetValueOrDefault("environmentAbbreviation")?.ToString();
+            
+            // If no identifier parameter, check if the resource group name follows a pattern
+            if (string.IsNullOrEmpty(identifier) && !string.IsNullOrEmpty(environment.ResourceGroupName))
+            {
+                // Try to extract identifier from resource group name (e.g., "fs-resource-group" -> "fs")
+                var rgParts = environment.ResourceGroupName.Split('-');
+                if (rgParts.Length > 0)
+                {
+                    identifier = rgParts[0];
+                }
+            }
+            
+            _logger.LogInformation("🔍 Looking for resources with identifier '{Identifier}' for environment {Name}",
+                identifier ?? "none", environment.Name);
             
             // Get all resource groups in the subscription
             var resourceGroups = await _azureResourceService.ListResourceGroupsAsync(
@@ -2020,12 +2067,36 @@ public class ProvisionedEnvironmentService : IProvisionedEnvironmentService
 
             // Find resource groups that match our environment patterns
             var matchingRgs = resourceGroups.Where(rg => 
-                (rg.Name?.StartsWith($"{envAbbrev}-{envAbbrev}-", StringComparison.OrdinalIgnoreCase) == true) ||
-                (rg.Name?.Equals(environment.ResourceGroupName, StringComparison.OrdinalIgnoreCase) == true) ||
-                (environment.Tags != null && rg.Tags != null && 
-                 rg.Tags.TryGetValue("Environment", out var envTag) && 
-                 envTag == environment.Name)
-            ).ToList();
+            {
+                if (string.IsNullOrEmpty(rg.Name)) return false;
+                
+                // Match the primary resource group (exact match)
+                if (rg.Name.Equals(environment.ResourceGroupName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+                
+                // Match MLZ-style pattern: {identifier}-{identifier}-{region}-{spoke}-rg-{type}
+                // Only if we have a valid identifier
+                if (!string.IsNullOrEmpty(identifier))
+                {
+                    // Check if resource group starts with the identifier pattern
+                    if (rg.Name.StartsWith($"{identifier}-", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Make sure it's the full MLZ pattern, not just any RG starting with the identifier
+                        // MLZ RGs typically have patterns like: fs-dev-va-hub-rg-network
+                        return true;
+                    }
+                }
+                
+                // Match by Environment tag
+                if (environment.Tags != null && rg.Tags != null && 
+                    rg.Tags.TryGetValue("Environment", out var envTag) && 
+                    envTag == environment.Name)
+                {
+                    return true;
+                }
+                
+                return false;
+            }).ToList();
 
             _logger.LogInformation("🔍 Found {Count} matching resource groups for environment {Name}: {Groups}",
                 matchingRgs.Count, environment.Name, 
