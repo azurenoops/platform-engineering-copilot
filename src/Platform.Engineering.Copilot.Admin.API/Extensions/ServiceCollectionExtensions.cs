@@ -82,6 +82,10 @@ public static class ServiceCollectionExtensions
         // Register Git sync background service for automatic periodic syncing
         services.AddHostedService<GitTemplateSyncBackgroundService>();
 
+        // Register deployment status polling service for automatic status updates
+        services.Configure<DeploymentPollingOptions>(configuration.GetSection("DeploymentPolling"));
+        services.AddHostedService<DeploymentStatusPollingBackgroundService>();
+
         return services;
     }
 }
