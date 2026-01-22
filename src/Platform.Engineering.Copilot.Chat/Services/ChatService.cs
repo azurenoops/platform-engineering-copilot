@@ -286,8 +286,20 @@ public class ChatService : IChatService
         {
             _logger.LogInformation("Processing message with Intelligent Chat API: {ConversationId}", conversation.Id);
 
+            // Build conversation history from previous messages (last 20 messages)
+            var previousMessages = await _dbContext.Messages
+                .Where(m => m.ConversationId == conversation.Id && m.Id != userMessage.Id)
+                .OrderByDescending(m => m.Timestamp)
+                .Take(20)
+                .OrderBy(m => m.Timestamp) // Re-order chronologically
+                .Select(m => new { role = m.Role == MessageRole.User ? "user" : "assistant", content = m.Content })
+                .ToListAsync();
+
+            var history = previousMessages.Cast<object>().ToList();
+            _logger.LogInformation("Including {HistoryCount} previous messages in request", history.Count);
+
             // Call the new intelligent-query endpoint
-            var intelligentResponse = await CallIntelligentChatApiAsync(userMessage.Content, conversation.Id);
+            var intelligentResponse = await CallIntelligentChatApiAsync(userMessage.Content, conversation.Id, history);
 
             if (intelligentResponse != null && intelligentResponse.Success && intelligentResponse.Data != null)
             {
@@ -385,7 +397,7 @@ public class ChatService : IChatService
     /// Call the MCP Server chat endpoint
     /// Uses AI-powered multi-agent orchestration with intent classification, tool chaining, and proactive suggestions
     /// </summary>
-    private async Task<IntelligentChatApiResponse?> CallIntelligentChatApiAsync(string message, string conversationId)
+    private async Task<IntelligentChatApiResponse?> CallIntelligentChatApiAsync(string message, string conversationId, List<object>? history = null)
     {
         try
         {
@@ -397,7 +409,8 @@ public class ChatService : IChatService
             {
                 message,
                 conversationId,
-                context = (object?)null // Context is managed server-side
+                context = (object?)null, // Context is managed server-side
+                history = history ?? new List<object>()
             };
 
             var json = JsonSerializer.Serialize(request);
