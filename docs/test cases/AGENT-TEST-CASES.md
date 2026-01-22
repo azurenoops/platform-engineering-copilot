@@ -476,6 +476,14 @@ This document provides natural language test queries for each specialized agent.
 | **Parameters** | `requirements: "containerized web app"` |
 | **Expected Result** | Recommended templates (AKS, Container Apps) with suitability scores |
 
+### Test Case 7.3: Find Matching Template
+| Field | Value |
+|-------|-------|
+| **Query** | `I need an environment for a FedRAMP High Compliant Landing Zone` |
+| **Tool Called** | `find_matching_template` |
+| **Parameters** | `requirements: "FedRAMP High Compliant "` |
+| **Expected Result** | Recommended templates (FedRAMP High Compliant Environment) with suitability scores |
+
 ### Test Case 7.4: Create Environment from Template
 | Field | Value |
 |-------|-------|
