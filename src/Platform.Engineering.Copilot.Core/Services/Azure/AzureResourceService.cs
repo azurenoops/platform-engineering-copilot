@@ -346,14 +346,17 @@ public class AzureResourceService : IAzureResourceService
 
             var resourceGroup = await subscription.GetResourceGroups().GetAsync(resourceGroupName, cancellationToken);
 
-            await resourceGroup.Value.DeleteAsync(WaitUntil.Completed, cancellationToken: cancellationToken);
+            // Use WaitUntil.Started to initiate deletion and return immediately
+            // Resource group deletion can take 10+ minutes for large deployments
+            await resourceGroup.Value.DeleteAsync(WaitUntil.Started, cancellationToken: cancellationToken);
 
-            _logger.LogInformation("Successfully deleted resource group {ResourceGroupName}", resourceGroupName);
+            _logger.LogInformation("Initiated deletion of resource group {ResourceGroupName} (deletion will continue in background)", resourceGroupName);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
-            _logger.LogWarning("Resource group {ResourceGroupName} not found - may have already been deleted", resourceGroupName);
-            throw new InvalidOperationException($"Resource group '{resourceGroupName}' not found", ex);
+            // 404 means resource group doesn't exist - this is success for a delete operation
+            _logger.LogInformation("Resource group {ResourceGroupName} not found - already deleted or never existed", resourceGroupName);
+            // Don't throw - the goal was for it to not exist, and it doesn't
         }
     }
 

@@ -168,6 +168,8 @@ public class ProvisionedEnvironmentDto
     public string TemplateVersion { get; set; } = string.Empty;
     public string SubscriptionId { get; set; } = string.Empty;
     public string ResourceGroup { get; set; } = string.Empty;
+    public List<string>? ResourceGroups { get; set; }
+    public string DeploymentScope { get; set; } = "resourceGroup";
     public string Location { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string? StatusMessage { get; set; }

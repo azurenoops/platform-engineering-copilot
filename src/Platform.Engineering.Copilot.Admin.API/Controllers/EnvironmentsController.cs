@@ -974,6 +974,32 @@ public class EnvironmentsController : ControllerBase
 
     private static ProvisionedEnvironmentDto MapToDto(ProvisionedEnvironment env)
     {
+        // Extract unique resource groups from deployed resources
+        var resourceGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        
+        // Add the primary resource group if set
+        if (!string.IsNullOrEmpty(env.ResourceGroup))
+        {
+            resourceGroups.Add(env.ResourceGroup);
+        }
+        
+        // Extract resource groups from deployed resources
+        var deployedResources = env.DeployedResources ?? env.Resources;
+        if (deployedResources?.Any() == true)
+        {
+            foreach (var resource in deployedResources)
+            {
+                var rgName = ExtractResourceGroupFromResourceId(resource.ResourceId);
+                if (!string.IsNullOrEmpty(rgName))
+                {
+                    resourceGroups.Add(rgName);
+                }
+            }
+        }
+        
+        // Determine deployment scope based on resource groups
+        var deploymentScope = resourceGroups.Count > 1 ? "subscription" : "resourceGroup";
+        
         return new ProvisionedEnvironmentDto
         {
             Id = env.Id,
@@ -985,6 +1011,8 @@ public class EnvironmentsController : ControllerBase
             TemplateVersion = env.TemplateVersion,
             SubscriptionId = env.SubscriptionId,
             ResourceGroup = env.ResourceGroup,
+            ResourceGroups = resourceGroups.OrderBy(r => r).ToList(),
+            DeploymentScope = deploymentScope,
             Location = env.Location,
             Status = env.Status.ToString(),
             StatusMessage = env.StatusMessage,
@@ -1012,5 +1040,22 @@ public class EnvironmentsController : ControllerBase
             Tags = env.Tags,
             ParameterValues = env.ParameterValues
         };
+    }
+    
+    private static string? ExtractResourceGroupFromResourceId(string? resourceId)
+    {
+        if (string.IsNullOrEmpty(resourceId))
+            return null;
+
+        // Resource ID format: /subscriptions/{sub}/resourceGroups/{rg}/providers/...
+        var parts = resourceId.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < parts.Length - 1; i++)
+        {
+            if (parts[i].Equals("resourceGroups", StringComparison.OrdinalIgnoreCase))
+            {
+                return parts[i + 1];
+            }
+        }
+        return null;
     }
 }

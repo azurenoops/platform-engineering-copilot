@@ -214,24 +214,63 @@ else
                 <div class="modal-body">
                     <p>Are you sure you want to delete the environment <strong>@_selectedEnvironment?.DisplayName</strong>?</p>
                     
-                    <div class="alert alert-warning">
-                        <i class="fa fa-info-circle me-2"></i>
-                        <strong>Resource Group:</strong> @_selectedEnvironment?.ResourceGroup
-                    </div>
+                    @if (_selectedEnvironment?.DeploymentScope == "subscription" && _selectedEnvironment?.ResourceGroups?.Count > 1)
+                    {
+                        <div class="alert alert-info">
+                            <i class="fa fa-info-circle me-2"></i>
+                            <strong>Subscription-Scoped Deployment</strong><br/>
+                            This environment created @(_selectedEnvironment.ResourceGroups.Count) resource groups:
+                            <ul class="mb-0 mt-2">
+                                @foreach (var rg in _selectedEnvironment.ResourceGroups)
+                                {
+                                    <li><code>@rg</code></li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning">
+                            <i class="fa fa-info-circle me-2"></i>
+                            <strong>Resource Group:</strong> @(_selectedEnvironment?.ResourceGroup ?? "Created by template")
+                        </div>
+                    }
                     
                     <div class="form-check mb-3">
                         <input class="form-check-input" type="checkbox" id="deleteResources" @bind="_deleteAzureResources">
                         <label class="form-check-label text-danger fw-bold" for="deleteResources">
-                            <i class="fa fa-cloud me-1"></i>Also delete Azure resources (resource group)
+                            <i class="fa fa-cloud me-1"></i>Also delete Azure resources
+                            @if (_selectedEnvironment?.ResourceGroups?.Count > 1)
+                            {
+                                <span>(@(_selectedEnvironment.ResourceGroups.Count) resource groups)</span>
+                            }
+                            else
+                            {
+                                <span>(resource group)</span>
+                            }
                         </label>
-                        <div class="form-text">This will permanently delete all Azure resources in the environment's resource group.</div>
+                        <div class="form-text">This will permanently delete all Azure resources in the environment.</div>
                     </div>
                     
                     @if (_deleteAzureResources)
                     {
                         <div class="alert alert-danger">
                             <i class="fa fa-exclamation-circle me-2"></i>
-                            <strong>Warning:</strong> This will permanently delete the resource group <code>@_selectedEnvironment?.ResourceGroup</code> and ALL resources within it. This action cannot be undone!
+                            @if (_selectedEnvironment?.ResourceGroups?.Count > 1)
+                            {
+                                <strong>Warning:</strong> <text>This will permanently delete </text><strong>@(_selectedEnvironment.ResourceGroups.Count) resource groups</strong><text> and ALL resources within them:</text>
+                                <ul class="mb-0 mt-1">
+                                    @foreach (var rg in _selectedEnvironment.ResourceGroups)
+                                    {
+                                        <li><code>@rg</code></li>
+                                    }
+                                </ul>
+                                <text>This action cannot be undone!</text>
+                            }
+                            else
+                            {
+                                <strong>Warning:</strong> <text>This will permanently delete the resource group </text><code>@_selectedEnvironment?.ResourceGroup</code><text> and ALL resources within it. This action cannot be undone!</text>
+                            }
                         </div>
                     }
                 </div>

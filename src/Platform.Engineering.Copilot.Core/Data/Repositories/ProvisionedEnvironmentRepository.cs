@@ -86,7 +86,8 @@ public class ProvisionedEnvironmentRepository : IProvisionedEnvironmentRepositor
         int take = 50,
         CancellationToken cancellationToken = default)
     {
-        var query = _context.ProvisionedEnvironments.AsQueryable();
+        // Use AsNoTracking for read-only queries to get fresh data from DB
+        var query = _context.ProvisionedEnvironments.AsNoTracking().AsQueryable();
 
         if (!includeDeleted)
             query = query.Where(e => !e.IsDeleted);
@@ -165,9 +166,12 @@ public class ProvisionedEnvironmentRepository : IProvisionedEnvironmentRepositor
         entity.DeletedBy = deletedBy;
         entity.Status = "Deleted";
 
-        await _context.SaveChangesAsync(cancellationToken);
+        // Explicitly mark as modified to ensure EF Core tracks the changes
+        _context.Entry(entity).State = EntityState.Modified;
+        
+        var saved = await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Soft deleted provisioned environment {Id}: {Name} by {DeletedBy}", id, entity.Name, deletedBy);
+        _logger.LogInformation("Soft deleted provisioned environment {Id}: {Name} by {DeletedBy} (saved: {Saved})", id, entity.Name, deletedBy, saved);
         return true;
     }
 
