@@ -1,17 +1,18 @@
-using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 using System.Diagnostics;
+using System.Net.Http;
+using System.Text.Json;
+using Azure.Core;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Platform.Engineering.Copilot.Core.Constants;
+using Platform.Engineering.Copilot.Core.Helpers;
+using Platform.Engineering.Copilot.Core.Interfaces.Azure;
+using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
+using Platform.Engineering.Copilot.Core.Interfaces.KnowledgeBase;
+using Platform.Engineering.Copilot.Core.Models.Azure;
 using Platform.Engineering.Copilot.Core.Models.Compliance;
 using Platform.Engineering.Copilot.Agents.Compliance.Configuration;
-using System.Text.Json;
-using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
-using Platform.Engineering.Copilot.Core.Models.Azure;
-using Platform.Engineering.Copilot.Core.Interfaces.KnowledgeBase;
-using Azure.Core;
-using Platform.Engineering.Copilot.Core.Helpers;
-using Platform.Engineering.Copilot.Core.Constants;
 using CF = Platform.Engineering.Copilot.Core.Constants.ComplianceConstants.ControlFamilies;
 
 namespace Platform.Engineering.Copilot.Agents.Compliance.Services.Compliance;
@@ -34,6 +35,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
     private readonly IAssessmentService _assessmentService;
     private readonly IDefenderForCloudService _defenderForCloudService;
     private readonly IEvidenceStorageService _evidenceStorage;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     // Knowledge Base Services for enhanced compliance assessment
     private readonly IRmfKnowledgeService _rmfKnowledgeService;
@@ -61,7 +63,8 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         IDoDWorkflowService dodWorkflowService,
         IDefenderForCloudService defenderForCloudService,
         IEvidenceStorageService evidenceStorage,
-        IStigValidationService stigValidationService)
+        IStigValidationService stigValidationService,
+        IHttpClientFactory httpClientFactory)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _nistControlsService = nistControlsService ?? throw new ArgumentNullException(nameof(nistControlsService));
@@ -80,6 +83,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         _defenderForCloudService = defenderForCloudService ?? throw new ArgumentNullException(nameof(defenderForCloudService));
         _evidenceStorage = evidenceStorage ?? throw new ArgumentNullException(nameof(evidenceStorage));
         _stigValidationService = stigValidationService ?? throw new ArgumentNullException(nameof(stigValidationService));
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
 
         _scanners = InitializeScanners();
         _evidenceCollectors = InitializeEvidenceCollectors();
@@ -849,7 +853,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         return new Dictionary<string, IComplianceScanner>
         {
             { CF.AccessControl, new AccessControlScanner(_logger, _azureResourceService) },
-            { CF.AuditAccountability, new AuditScanner(_logger, _azureResourceService, gatewayOptions) },
+            { CF.AuditAccountability, new AuditScanner(_logger, _azureResourceService, gatewayOptions, _httpClientFactory) },
             { CF.SystemCommunications, new SystemCommunicationScanner(_logger, _azureResourceService) },
             { CF.SystemInformationIntegrity, new SystemIntegrityScanner(_logger, _azureResourceService) },
             { CF.ContingencyPlanning, new ContingencyPlanningScanner(_logger, _azureResourceService) },

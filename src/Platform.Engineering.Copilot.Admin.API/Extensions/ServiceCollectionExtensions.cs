@@ -76,7 +76,7 @@ public static class ServiceCollectionExtensions
             var repository = sp.GetRequiredService<Core.Data.Repositories.IServiceTemplateRepository>();
             var options = sp.GetRequiredService<IOptions<GitSyncOptions>>();
             var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
-            return new GitTemplateSyncService(logger, repository, options, httpClientFactory.CreateClient());
+            return new GitTemplateSyncService(logger, repository, options, httpClientFactory);
         });
 
         // Register Git sync background service for automatic periodic syncing

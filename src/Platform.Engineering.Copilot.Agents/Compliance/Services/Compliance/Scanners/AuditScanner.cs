@@ -1,5 +1,6 @@
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 using System.Text.Json;
+using System.Net.Http;
 using Azure;
 using Azure.Core;
 using Azure.Identity;
@@ -21,13 +22,19 @@ public class AuditScanner : IComplianceScanner
 {
     private readonly ILogger _logger;
     private readonly IAzureResourceService _azureService;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _managementEndpoint;
     private readonly string _managementScope;
 
-    public AuditScanner(ILogger logger, IAzureResourceService azureService, IOptions<GatewayOptions> gatewayOptions)
+    public AuditScanner(
+        ILogger logger, 
+        IAzureResourceService azureService, 
+        IOptions<GatewayOptions> gatewayOptions,
+        IHttpClientFactory httpClientFactory)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _azureService = azureService ?? throw new ArgumentNullException(nameof(azureService));
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
         
         // Determine Azure environment from configuration
         var cloudEnvironment = gatewayOptions?.Value?.Azure?.CloudEnvironment ?? "AzureCloud";
@@ -174,7 +181,7 @@ public class AuditScanner : IComplianceScanner
                             {
                                 var diagnosticSettingsUri = $"{_managementEndpoint}{((GenericResource)resource).Data.Id!}/providers/Microsoft.Insights/diagnosticSettings?api-version=2021-05-01-preview";
                                 
-                                var httpClient = new HttpClient();
+                                using var httpClient = _httpClientFactory.CreateClient("AzureManagement");
                                 var credential = new DefaultAzureCredential();
                                 var token = await credential.GetTokenAsync(
                                     new TokenRequestContext(new[] { _managementScope }),
@@ -531,7 +538,7 @@ REFERENCES:
                             
                             try
                             {
-                                var httpClient = new HttpClient();
+                                using var httpClient = _httpClientFactory.CreateClient("AzureManagement");
                                 var credential = new DefaultAzureCredential();
                                 var token = await credential.GetTokenAsync(
                                     new TokenRequestContext(new[] { _managementScope }),

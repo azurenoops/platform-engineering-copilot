@@ -20,18 +20,18 @@ public class GitTemplateSyncService : IGitTemplateSyncService
     private readonly ILogger<GitTemplateSyncService> _logger;
     private readonly IServiceTemplateRepository _repository;
     private readonly GitSyncOptions _options;
-    private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     public GitTemplateSyncService(
         ILogger<GitTemplateSyncService> logger,
         IServiceTemplateRepository repository,
         IOptions<GitSyncOptions> options,
-        HttpClient? httpClient = null)
+        IHttpClientFactory httpClientFactory)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _options = options?.Value ?? new GitSyncOptions();
-        _httpClient = httpClient ?? new HttpClient();
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
     }
 
     /// <summary>
@@ -597,10 +597,11 @@ public class GitTemplateSyncService : IGitTemplateSyncService
     {
         var url = $"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{filePath}";
         
+        using var httpClient = _httpClientFactory.CreateClient("GitHubRaw");
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Add("User-Agent", "Platform-Engineering-Copilot");
 
-        var response = await _httpClient.SendAsync(request, cancellationToken);
+        var response = await httpClient.SendAsync(request, cancellationToken);
         
         if (!response.IsSuccessStatusCode)
         {
@@ -619,6 +620,7 @@ public class GitTemplateSyncService : IGitTemplateSyncService
     {
         var url = $"https://api.github.com/repos/{owner}/{repo}/contents/{filePath}?ref={branch}";
 
+        using var httpClient = _httpClientFactory.CreateClient("GitHubApi");
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Add("Accept", "application/vnd.github.v3+json");
         request.Headers.Add("User-Agent", "Platform-Engineering-Copilot");
@@ -628,7 +630,7 @@ public class GitTemplateSyncService : IGitTemplateSyncService
             request.Headers.Add("Authorization", $"token {_options.GitHubToken}");
         }
 
-        var response = await _httpClient.SendAsync(request, cancellationToken);
+        var response = await httpClient.SendAsync(request, cancellationToken);
         
         if (!response.IsSuccessStatusCode)
         {
@@ -665,10 +667,11 @@ public class GitTemplateSyncService : IGitTemplateSyncService
     {
         var url = $"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{filePath}";
         
+        using var httpClient = _httpClientFactory.CreateClient("GitHubRaw");
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Add("User-Agent", "Platform-Engineering-Copilot");
 
-        var response = await _httpClient.SendAsync(request, cancellationToken);
+        var response = await httpClient.SendAsync(request, cancellationToken);
         
         if (!response.IsSuccessStatusCode)
         {
@@ -716,6 +719,7 @@ public class GitTemplateSyncService : IGitTemplateSyncService
             var filePath = path ?? "main.bicep";
             var url = $"https://api.github.com/repos/{owner}/{repo}/commits?sha={branch}&path={filePath}&per_page=1";
 
+            using var httpClient = _httpClientFactory.CreateClient("GitHubApi");
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("Accept", "application/vnd.github.v3+json");
             request.Headers.Add("User-Agent", "Platform-Engineering-Copilot");
@@ -725,7 +729,7 @@ public class GitTemplateSyncService : IGitTemplateSyncService
                 request.Headers.Add("Authorization", $"token {_options.GitHubToken}");
             }
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode) return null;
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
