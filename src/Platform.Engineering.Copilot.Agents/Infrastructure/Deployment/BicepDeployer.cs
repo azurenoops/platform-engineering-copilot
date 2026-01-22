@@ -74,43 +74,15 @@ public class BicepDeployer : ITemplateDeployer
 
         try
         {
-            _logger.LogInformation("🚀 Starting Bicep deployment for {Environment} in {ResourceGroup}",
-                request.EnvironmentName, request.ResourceGroupName);
+            _logger.LogInformation("🚀 Starting Bicep deployment for {Environment}",
+                request.EnvironmentName);
 
             // Get subscription
             var subscription = await _armClient.GetSubscriptionResource(
                 new ResourceIdentifier($"/subscriptions/{request.SubscriptionId}"))
                 .GetAsync(cancellationToken);
 
-            // Ensure resource group exists
-            var resourceGroups = subscription.Value.GetResourceGroups();
-            ResourceGroupResource resourceGroup;
-            
-            if (!await resourceGroups.ExistsAsync(request.ResourceGroupName, cancellationToken))
-            {
-                _logger.LogInformation("Creating resource group {ResourceGroup} in {Location}",
-                    request.ResourceGroupName, request.Location);
-                    
-                var rgData = new ResourceGroupData(request.Location);
-                foreach (var tag in request.Tags)
-                {
-                    rgData.Tags.Add(tag.Key, tag.Value);
-                }
-                
-                var rgOperation = await resourceGroups.CreateOrUpdateAsync(
-                    WaitUntil.Completed,
-                    request.ResourceGroupName,
-                    rgData,
-                    cancellationToken);
-                    
-                resourceGroup = rgOperation.Value;
-            }
-            else
-            {
-                resourceGroup = await resourceGroups.GetAsync(request.ResourceGroupName, cancellationToken);
-            }
-
-            // Compile Bicep to ARM JSON if needed
+            // Compile Bicep to ARM JSON FIRST to determine deployment scope
             string templateJson;
             if (request.TemplateContent.TrimStart().StartsWith("{"))
             {
@@ -129,6 +101,51 @@ public class BicepDeployer : ITemplateDeployer
             var deploymentScope = DetermineDeploymentScope(templateJson);
             _logger.LogInformation("📍 Detected deployment scope: {Scope}", deploymentScope);
 
+            // Only create resource group for resource-group-scoped deployments
+            var resourceGroups = subscription.Value.GetResourceGroups();
+            ResourceGroupResource? resourceGroup = null;
+            
+            if (deploymentScope != "subscription")
+            {
+                // Resource group scope - create if needed
+                if (string.IsNullOrEmpty(request.ResourceGroupName))
+                {
+                    throw new InvalidOperationException(
+                        "Resource group name is required for resource-group-scoped deployments");
+                }
+                
+                _logger.LogInformation("📦 Resource group-scoped deployment to {ResourceGroup}", 
+                    request.ResourceGroupName);
+                
+                if (!await resourceGroups.ExistsAsync(request.ResourceGroupName, cancellationToken))
+                {
+                    _logger.LogInformation("Creating resource group {ResourceGroup} in {Location}",
+                        request.ResourceGroupName, request.Location);
+                        
+                    var rgData = new ResourceGroupData(request.Location);
+                    foreach (var tag in request.Tags)
+                    {
+                        rgData.Tags.Add(tag.Key, tag.Value);
+                    }
+                    
+                    var rgOperation = await resourceGroups.CreateOrUpdateAsync(
+                        WaitUntil.Completed,
+                        request.ResourceGroupName,
+                        rgData,
+                        cancellationToken);
+                        
+                    resourceGroup = rgOperation.Value;
+                }
+                else
+                {
+                    resourceGroup = await resourceGroups.GetAsync(request.ResourceGroupName, cancellationToken);
+                }
+            }
+            else
+            {
+                _logger.LogInformation("🌐 Subscription-scoped deployment - template will manage its own resource groups");
+            }
+
             // Prepare deployment
             var deploymentName = $"{request.EnvironmentName}-{DateTime.UtcNow:yyyyMMddHHmmss}";
             ArmDeploymentCollection deployments;
@@ -143,7 +160,7 @@ public class BicepDeployer : ITemplateDeployer
             {
                 // Resource group level deployment
                 _logger.LogInformation("📦 Using resource group-level deployment for {DeploymentName}", deploymentName);
-                deployments = resourceGroup.GetArmDeployments();
+                deployments = resourceGroup!.GetArmDeployments();
             }
 
             // Convert parameters to ARM format, properly handling complex types (arrays, objects)
