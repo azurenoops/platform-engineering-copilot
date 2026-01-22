@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.CostManagement.State;
+using Platform.Engineering.Copilot.Core.Services;
 
 namespace Platform.Engineering.Copilot.Agents.CostManagement.Tools;
 
@@ -11,23 +12,27 @@ namespace Platform.Engineering.Copilot.Agents.CostManagement.Tools;
 public class CostAnomalyTool : BaseTool
 {
     private readonly CostManagementStateAccessors _stateAccessors;
+    private readonly ConfigService _configService;
 
     public override string Name => "detect_cost_anomalies";
 
     public override string Description =>
         "Detect cost anomalies, unusual spending patterns, and seasonality in Azure costs. " +
+        "If subscriptionId is not provided, uses the configured default subscription. " +
         "Identifies spikes, drops, and recurring patterns that may require attention.";
 
     public CostAnomalyTool(
         ILogger<CostAnomalyTool> logger,
-        CostManagementStateAccessors stateAccessors) : base(logger)
+        CostManagementStateAccessors stateAccessors,
+        ConfigService configService) : base(logger)
     {
         _stateAccessors = stateAccessors ?? throw new ArgumentNullException(nameof(stateAccessors));
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
 
         Parameters.Add(new ToolParameter(
             name: "subscriptionId",
-            description: "Azure subscription ID to analyze for anomalies. Required.",
-            required: true));
+            description: "Azure subscription ID to analyze for anomalies. If not provided, uses the configured default subscription.",
+            required: false));
 
         Parameters.Add(new ToolParameter(
             name: "lookbackDays",
@@ -57,9 +62,22 @@ public class CostAnomalyTool : BaseTool
         var sensitivityThreshold = GetOptionalInt(arguments, "sensitivityThreshold") ?? 50;
         var includeSeasonality = GetOptionalBool(arguments, "includeSeasonality", defaultValue: true);
 
+        // Auto-fill subscription from configuration if not provided
         if (string.IsNullOrWhiteSpace(subscriptionId))
         {
-            return ToJson(new { success = false, error = "Subscription ID is required" });
+            subscriptionId = _configService.GetDefaultSubscription();
+            if (!string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                Logger.LogInformation("Using configured default subscription: {SubscriptionId}", subscriptionId);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return ToJson(new { 
+                success = false, 
+                error = "Subscription ID is required. Either provide subscriptionId parameter or set a default using 'Set my subscription to <id>'" 
+            });
         }
 
         lookbackDays = Math.Clamp(lookbackDays, 7, 90);

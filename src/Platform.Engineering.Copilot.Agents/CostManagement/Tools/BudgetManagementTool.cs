@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.CostManagement.State;
+using Platform.Engineering.Copilot.Core.Services;
 
 namespace Platform.Engineering.Copilot.Agents.CostManagement.Tools;
 
@@ -11,23 +12,27 @@ namespace Platform.Engineering.Copilot.Agents.CostManagement.Tools;
 public class BudgetManagementTool : BaseTool
 {
     private readonly CostManagementStateAccessors _stateAccessors;
+    private readonly ConfigService _configService;
 
     public override string Name => "manage_budgets";
 
     public override string Description =>
         "Monitor budget status, get budget alerts, and receive recommendations for budget configuration. " +
+        "If subscriptionId is not provided, uses the configured default subscription. " +
         "Shows current spend vs budget, alert thresholds, and projected overruns.";
 
     public BudgetManagementTool(
         ILogger<BudgetManagementTool> logger,
-        CostManagementStateAccessors stateAccessors) : base(logger)
+        CostManagementStateAccessors stateAccessors,
+        ConfigService configService) : base(logger)
     {
         _stateAccessors = stateAccessors ?? throw new ArgumentNullException(nameof(stateAccessors));
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
 
         Parameters.Add(new ToolParameter(
             name: "subscriptionId",
-            description: "Azure subscription ID to check budgets for. Required.",
-            required: true));
+            description: "Azure subscription ID to check budgets for. If not provided, uses the configured default subscription.",
+            required: false));
 
         Parameters.Add(new ToolParameter(
             name: "budgetName",
@@ -49,9 +54,22 @@ public class BudgetManagementTool : BaseTool
         var budgetName = GetOptionalString(arguments, "budgetName");
         var includeRecommendations = GetOptionalBool(arguments, "includeRecommendations", defaultValue: true);
 
+        // Auto-fill subscription from configuration if not provided
         if (string.IsNullOrWhiteSpace(subscriptionId))
         {
-            return ToJson(new { success = false, error = "Subscription ID is required" });
+            subscriptionId = _configService.GetDefaultSubscription();
+            if (!string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                Logger.LogInformation("Using configured default subscription: {SubscriptionId}", subscriptionId);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return ToJson(new { 
+                success = false, 
+                error = "Subscription ID is required. Either provide subscriptionId parameter or set a default using 'Set my subscription to <id>'" 
+            });
         }
 
         Logger.LogInformation("Getting budget status for {SubscriptionId}", subscriptionId);

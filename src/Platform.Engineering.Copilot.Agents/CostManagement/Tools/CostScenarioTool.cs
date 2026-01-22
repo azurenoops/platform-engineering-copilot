@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.CostManagement.State;
+using Platform.Engineering.Copilot.Core.Services;
 
 namespace Platform.Engineering.Copilot.Agents.CostManagement.Tools;
 
@@ -11,23 +12,27 @@ namespace Platform.Engineering.Copilot.Agents.CostManagement.Tools;
 public class CostScenarioTool : BaseTool
 {
     private readonly CostManagementStateAccessors _stateAccessors;
+    private readonly ConfigService _configService;
 
     public override string Name => "model_cost_scenario";
 
     public override string Description =>
         "Model cost scenarios including infrastructure changes, policy impacts, and what-if analysis. " +
+        "If subscriptionId is not provided, uses the configured default subscription. " +
         "Simulate adding/removing resources, changing tiers, or applying cost policies.";
 
     public CostScenarioTool(
         ILogger<CostScenarioTool> logger,
-        CostManagementStateAccessors stateAccessors) : base(logger)
+        CostManagementStateAccessors stateAccessors,
+        ConfigService configService) : base(logger)
     {
         _stateAccessors = stateAccessors ?? throw new ArgumentNullException(nameof(stateAccessors));
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
 
         Parameters.Add(new ToolParameter(
             name: "subscriptionId",
-            description: "Azure subscription ID for scenario modeling. Required.",
-            required: true));
+            description: "Azure subscription ID for scenario modeling. If not provided, uses the configured default subscription.",
+            required: false));
 
         Parameters.Add(new ToolParameter(
             name: "scenarioType",
@@ -67,9 +72,22 @@ public class CostScenarioTool : BaseTool
         var skuTier = GetOptionalString(arguments, "skuTier");
         var policyName = GetOptionalString(arguments, "policyName");
 
+        // Auto-fill subscription from configuration if not provided
         if (string.IsNullOrWhiteSpace(subscriptionId))
         {
-            return ToJson(new { success = false, error = "Subscription ID is required" });
+            subscriptionId = _configService.GetDefaultSubscription();
+            if (!string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                Logger.LogInformation("Using configured default subscription: {SubscriptionId}", subscriptionId);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return ToJson(new { 
+                success = false, 
+                error = "Subscription ID is required. Either provide subscriptionId parameter or set a default using 'Set my subscription to <id>'" 
+            });
         }
 
         if (string.IsNullOrWhiteSpace(scenarioType))
