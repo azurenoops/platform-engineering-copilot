@@ -16,6 +16,7 @@ public static class McpServiceExtensions
     public static IServiceCollection AddMcpServer(this IServiceCollection services)
     {
         // Register domain-specific MCP tools (wrappers around Agent Framework tools)
+        services.AddScoped<ConfigurationMcpTools>();
         services.AddScoped<ComplianceMcpTools>();
         services.AddScoped<DiscoveryMcpTools>();
         services.AddScoped<InfrastructureMcpTools>();
