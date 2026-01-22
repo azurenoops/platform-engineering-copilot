@@ -3,34 +3,46 @@
   "contentVersion": "1.0.0.0",
   "parameters": {
     "projectName": {
-      "value": "platsup"
+      "value": "pecop"
     },
     "environment": {
       "value": "dev"
     },
     "location": {
-      "value": "East US"
+      "value": "eastus"
     },
     "sqlAdminLogin": {
       "value": "platformadmin"
     },
     "sqlAdminPassword": {
-      "value": "YourSecurePassword123!"
+      "value": ""
     },
     "keyVaultAdminObjectId": {
       "value": "00000000-0000-0000-0000-000000000000"
     },
-    "azureAdAdminObjectId": {
-      "value": ""
+    "deploymentTarget": {
+      "value": "aci"
     },
-    "azureAdAdminLogin": {
-      "value": ""
+    "deployMcp": {
+      "value": true
     },
-    "appServiceSku": {
-      "value": "B1"
+    "deployChat": {
+      "value": false
     },
-    "sqlDatabaseSku": {
-      "value": "S0"
+    "deployAdminApi": {
+      "value": true
+    },
+    "deployAdminClient": {
+      "value": true
+    },
+    "imageTag": {
+      "value": "latest"
+    },
+    "cpuCores": {
+      "value": 1
+    },
+    "memoryGB": {
+      "value": 2
     }
   }
 }

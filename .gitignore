@@ -21,10 +21,15 @@ copilot-*.md
 aci-environment-variables.md
 docker-compose.local.yml
 
-# Configuration files with secrets
-appsettings.json
-appsettings.*.json
+# Configuration files with secrets (local overrides only)
+# Main appsettings.json is tracked with safe defaults
+appsettings.local.json
+appsettings.*.local.json
+appsettings.development.local.json
+appsettings.json.bak
+!appsettings.json
 !appsettings.example.json
+!appsettings.keyvault.json
 
 # Build results
 [Dd]ebug/

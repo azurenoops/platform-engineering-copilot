@@ -52,6 +52,7 @@ using Platform.Engineering.Copilot.Core.Interfaces.Cost;
 using Platform.Engineering.Copilot.Core.Interfaces.Infrastructure;
 using Platform.Engineering.Copilot.Core.Interfaces.KnowledgeBase;
 using Platform.Engineering.Copilot.Core.Interfaces.Templates;
+using Platform.Engineering.Copilot.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Services;
 using Platform.Engineering.Copilot.Agents.Compliance.Services.Compliance.Remediation;
 using Platform.Engineering.Copilot.State.Extensions;
@@ -235,10 +236,10 @@ public static class ServiceCollectionExtensions
     {
         // Bind configuration
         services.Configure<ConfigurationAgentOptions>(
-            configuration.GetSection("Agents:Configuration"));
+            configuration.GetSection(ConfigurationAgentOptions.SectionName));
 
         // Check if agent is enabled
-        var options = configuration.GetSection("Agents:Configuration")
+        var options = configuration.GetSection(ConfigurationAgentOptions.SectionName)
             .Get<ConfigurationAgentOptions>() ?? new ConfigurationAgentOptions();
 
         // Add state accessors (always needed for potential runtime enable)
@@ -306,6 +307,9 @@ public static class ServiceCollectionExtensions
         // Bind configuration
         services.Configure<CostManagementAgentOptions>(
             configuration.GetSection(CostManagementAgentOptions.SectionName));
+        // Governance options needed by AzureCostManagementService (use Core.Configuration to avoid ambiguity with Compliance.Configuration)
+        services.Configure<Core.Configuration.GovernanceOptions>(
+            configuration.GetSection(Core.Configuration.GovernanceOptions.SectionName));
 
         // Check if agent is enabled
         var options = configuration.GetSection(CostManagementAgentOptions.SectionName)
@@ -409,8 +413,10 @@ public static class ServiceCollectionExtensions
         // Bind configuration
         services.Configure<ComplianceAgentOptions>(
             configuration.GetSection(ComplianceAgentOptions.SectionName));
-        services.Configure<NistControlsOptions>(
-            configuration.GetSection("NistControls"));
+        // NistControls is nested under ComplianceAgent in appsettings.json
+        // Use Compliance.Configuration.NistControlsOptions to avoid ambiguity with Core.Configuration
+        services.Configure<Compliance.Configuration.NistControlsOptions>(
+            configuration.GetSection($"{ComplianceAgentOptions.SectionName}:NistControls"));
 
         // Check if agent is enabled
         var options = configuration.GetSection(ComplianceAgentOptions.SectionName)
