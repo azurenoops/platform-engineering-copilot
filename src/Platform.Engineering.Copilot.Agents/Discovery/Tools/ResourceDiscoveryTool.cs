@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.Discovery.State;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
+using Platform.Engineering.Copilot.Core.Services;
 
 namespace Platform.Engineering.Copilot.Agents.Discovery.Tools;
 
@@ -13,28 +14,32 @@ public class ResourceDiscoveryTool : BaseTool
 {
     private readonly DiscoveryStateAccessors _stateAccessors;
     private readonly IAzureResourceService _resourceService;
+    private readonly ConfigService _configService;
 
     public override string Name => "discover_azure_resources";
 
     public override string Description =>
         "Discover and list Azure infrastructure resources (VMs, storage accounts, databases, etc.) with comprehensive filtering. " +
         "Search by subscription, resource group, type, location, or tags. " +
+        "If subscriptionId is not provided, uses the configured default subscription. " +
         "Use for resource inventory, infrastructure discovery, and finding specific Azure resources. " +
         "NOTE: To list PROVISIONED ENVIRONMENTS (template-based deployments), use 'list_provisioned_environments' instead.";
 
     public ResourceDiscoveryTool(
         ILogger<ResourceDiscoveryTool> logger,
         DiscoveryStateAccessors stateAccessors,
-        IAzureResourceService resourceService) : base(logger)
+        IAzureResourceService resourceService,
+        ConfigService configService) : base(logger)
     {
         _stateAccessors = stateAccessors ?? throw new ArgumentNullException(nameof(stateAccessors));
         _resourceService = resourceService ?? throw new ArgumentNullException(nameof(resourceService));
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
 
         // Define parameters
         Parameters.Add(new ToolParameter(
             name: "subscriptionId",
-            description: "Azure subscription ID. Required for resource discovery.",
-            required: true));
+            description: "Azure subscription ID. If not provided, uses the configured default subscription.",
+            required: false));
 
         Parameters.Add(new ToolParameter(
             name: "resourceGroup",
@@ -67,9 +72,22 @@ public class ResourceDiscoveryTool : BaseTool
         var location = GetOptionalString(arguments, "location");
         var tagFilter = GetOptionalString(arguments, "tagFilter");
 
+        // Auto-fill subscription from configuration if not provided
         if (string.IsNullOrWhiteSpace(subscriptionId))
         {
-            return ToJson(new { success = false, error = "Subscription ID is required" });
+            subscriptionId = _configService.GetDefaultSubscription();
+            if (!string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                Logger.LogInformation("Using configured default subscription: {SubscriptionId}", subscriptionId);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return ToJson(new { 
+                success = false, 
+                error = "Subscription ID is required. Either provide subscriptionId parameter or set a default using 'Set my subscription to <id>'" 
+            });
         }
 
         Logger.LogInformation("Discovering Azure resources in subscription {SubscriptionId}", subscriptionId);
@@ -254,17 +272,21 @@ public class ResourceDiscoveryTool : BaseTool
             sb.AppendLine($"| ... | +{byResourceGroup.Skip(10).Sum(x => x.Value)} more |");
         sb.AppendLine();
 
-        // Sample resources
+        // Resource preview (first 5)
         if (resources.Count > 0)
         {
-            sb.AppendLine("### 🔍 Sample Resources");
+            // If all resources are the same type, use that type name; otherwise say "Resources"
+            var typeName = byType.Count == 1 
+                ? DiscoveryFormatHelpers.GetFriendlyTypeName(byType.Keys.First()) + "s"
+                : "Resources";
+            sb.AppendLine($"### 🔍 {typeName}");
             foreach (var r in resources.Take(5))
             {
                 var icon = DiscoveryFormatHelpers.GetResourceTypeIcon(r.Type);
                 sb.AppendLine($"- {icon} **{r.Name}** ({DiscoveryFormatHelpers.GetFriendlyTypeName(r.Type)}) in `{r.ResourceGroup}`");
             }
             if (resources.Count > 5)
-                sb.AppendLine($"- ... and {resources.Count - 5} more resources");
+                sb.AppendLine($"- ... and {resources.Count - 5} more");
             sb.AppendLine();
         }
 

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
+using Platform.Engineering.Copilot.Core.Services;
 using Platform.Engineering.Copilot.Core.Services.Azure.Graph;
 using System.Text;
 
@@ -14,21 +15,25 @@ public class ResourceDetailsTool : BaseTool
 {
     private readonly IAzureResourceService _resourceService;
     private readonly AzureResourceGraphService _resourceGraphService;
+    private readonly ConfigService _configService;
 
     public override string Name => "get_resource_details";
 
     public override string Description =>
         "Get comprehensive details about a specific Azure resource by ID or name. " +
         "Returns properties, configuration, SKU, tags, and provider-specific metadata. " +
+        "If subscriptionId is not provided when using resourceName, uses the configured default subscription. " +
         "Use for deep inspection of individual resources.";
 
     public ResourceDetailsTool(
         ILogger<ResourceDetailsTool> logger,
         IAzureResourceService resourceService,
-        AzureResourceGraphService resourceGraphService) : base(logger)
+        AzureResourceGraphService resourceGraphService,
+        ConfigService configService) : base(logger)
     {
         _resourceService = resourceService ?? throw new ArgumentNullException(nameof(resourceService));
         _resourceGraphService = resourceGraphService ?? throw new ArgumentNullException(nameof(resourceGraphService));
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         Parameters.Add(new ToolParameter(
             name: "resourceId",
             description: "Full Azure resource ID (e.g., /subscriptions/.../resourceGroups/.../providers/...)",
@@ -41,7 +46,7 @@ public class ResourceDetailsTool : BaseTool
 
         Parameters.Add(new ToolParameter(
             name: "subscriptionId",
-            description: "Subscription ID to search in (required if using resourceName)",
+            description: "Subscription ID to search in (required if using resourceName, or uses default if not provided)",
             required: false));
 
         Parameters.Add(new ToolParameter(
@@ -68,9 +73,22 @@ public class ResourceDetailsTool : BaseTool
             return ToJson(new { success = false, error = "Either resourceId or resourceName is required" });
         }
 
+        // Auto-fill subscription from configuration if not provided
+        if (string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            subscriptionId = _configService.GetDefaultSubscription();
+            if (!string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                Logger.LogInformation("Using configured default subscription: {SubscriptionId}", subscriptionId);
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(resourceName) && string.IsNullOrWhiteSpace(subscriptionId))
         {
-            return ToJson(new { success = false, error = "subscriptionId is required when using resourceName" });
+            return ToJson(new { 
+                success = false, 
+                error = "Subscription ID is required when using resourceName. Either provide subscriptionId parameter or set a default using 'Set my subscription to <id>'" 
+            });
         }
 
         try

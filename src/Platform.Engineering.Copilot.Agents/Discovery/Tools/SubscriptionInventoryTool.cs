@@ -4,6 +4,7 @@ using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.Discovery.Configuration;
 using Platform.Engineering.Copilot.Agents.Discovery.State;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
+using Platform.Engineering.Copilot.Core.Services;
 using System.Text;
 
 namespace Platform.Engineering.Copilot.Agents.Discovery.Tools;
@@ -18,11 +19,13 @@ public class SubscriptionInventoryTool : BaseTool
     private readonly IAzureResourceHealthService _healthService;
     private readonly DiscoveryStateAccessors _stateAccessors;
     private readonly DiscoveryAgentOptions _options;
+    private readonly ConfigService _configService;
 
     public override string Name => "get_subscription_inventory";
 
     public override string Description =>
         "Generate a complete inventory summary report for an Azure subscription. " +
+        "If subscription_id is not provided, uses the configured default subscription. " +
         "Provides comprehensive breakdown by resource type, location, resource group, tagging compliance, and health status. " +
         "Use when user asks for 'complete inventory', 'full report', 'what resources do I have', or 'subscription summary'.";
 
@@ -31,17 +34,19 @@ public class SubscriptionInventoryTool : BaseTool
         IAzureResourceService azureResourceService,
         IAzureResourceHealthService healthService,
         DiscoveryStateAccessors stateAccessors,
-        IOptions<DiscoveryAgentOptions> options) : base(logger)
+        IOptions<DiscoveryAgentOptions> options,
+        ConfigService configService) : base(logger)
     {
         _azureResourceService = azureResourceService;
         _healthService = healthService;
         _stateAccessors = stateAccessors;
         _options = options.Value;
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
 
         Parameters.Add(new ToolParameter(
             "subscription_id",
-            "Azure subscription ID to generate inventory for",
-            required: true));
+            "Azure subscription ID to generate inventory for. If not provided, uses the configured default subscription.",
+            required: false));
 
         Parameters.Add(new ToolParameter(
             "include_health",
@@ -58,9 +63,27 @@ public class SubscriptionInventoryTool : BaseTool
         IDictionary<string, object?> arguments,
         CancellationToken cancellationToken = default)
     {
-        var subscriptionId = GetRequiredString(arguments, "subscription_id");
+        var subscriptionId = GetOptionalString(arguments, "subscription_id");
         var includeHealth = GetOptionalBool(arguments, "include_health") ?? true;
         var includeTagsAnalysis = GetOptionalBool(arguments, "include_tags_analysis") ?? true;
+
+        // Auto-fill subscription from configuration if not provided
+        if (string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            subscriptionId = _configService.GetDefaultSubscription();
+            if (!string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                Logger.LogInformation("Using configured default subscription: {SubscriptionId}", subscriptionId);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return ToJson(new { 
+                success = false, 
+                error = "Subscription ID is required. Either provide subscription_id parameter or set a default using 'Set my subscription to <id>'" 
+            });
+        }
 
         Logger.LogInformation("Generating complete inventory for subscription {SubscriptionId}", subscriptionId);
 

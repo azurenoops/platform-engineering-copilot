@@ -4,6 +4,7 @@ using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.Discovery.Configuration;
 using Platform.Engineering.Copilot.Agents.Discovery.State;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
+using Platform.Engineering.Copilot.Core.Services;
 using System.Text;
 
 namespace Platform.Engineering.Copilot.Agents.Discovery.Tools;
@@ -18,29 +19,33 @@ public class ResourceTagSearchTool : BaseTool
     private readonly DiscoveryStateAccessors _stateAccessors;
     private readonly IAzureResourceService _azureResourceService;
     private readonly DiscoveryAgentOptions _options;
+    private readonly ConfigService _configService;
 
     public override string Name => "search_resources_by_tag";
 
     public override string Description =>
         "Search for Azure resources using tags. " +
         "Find resources with specific tag keys or key-value pairs. " +
+        "If subscription_id is not provided, uses the configured default subscription. " +
         "Use for tag-based discovery, compliance checks, and resource organization.";
 
     public ResourceTagSearchTool(
         ILogger<ResourceTagSearchTool> logger,
         DiscoveryStateAccessors stateAccessors,
         IAzureResourceService azureResourceService,
-        IOptions<DiscoveryAgentOptions> options) : base(logger)
+        IOptions<DiscoveryAgentOptions> options,
+        ConfigService configService) : base(logger)
     {
         _stateAccessors = stateAccessors ?? throw new ArgumentNullException(nameof(stateAccessors));
         _azureResourceService = azureResourceService ?? throw new ArgumentNullException(nameof(azureResourceService));
         _options = options?.Value ?? new DiscoveryAgentOptions();
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
 
         // Define parameters
         Parameters.Add(new ToolParameter(
             name: "subscription_id",
-            description: "Azure subscription ID to search in",
-            required: true));
+            description: "Azure subscription ID to search in. If not provided, uses the configured default subscription.",
+            required: false));
 
         Parameters.Add(new ToolParameter(
             name: "tag_key",
@@ -61,9 +66,22 @@ public class ResourceTagSearchTool : BaseTool
         var tagKey = GetOptionalString(arguments, "tag_key");
         var tagValue = GetOptionalString(arguments, "tag_value");
 
+        // Auto-fill subscription from configuration if not provided
         if (string.IsNullOrWhiteSpace(subscriptionId))
         {
-            return ToJson(new { success = false, error = "Subscription ID is required" });
+            subscriptionId = _configService.GetDefaultSubscription();
+            if (!string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                Logger.LogInformation("Using configured default subscription: {SubscriptionId}", subscriptionId);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return ToJson(new { 
+                success = false, 
+                error = "Subscription ID is required. Either provide subscription_id parameter or set a default using 'Set my subscription to <id>'" 
+            });
         }
 
         if (string.IsNullOrWhiteSpace(tagKey))
