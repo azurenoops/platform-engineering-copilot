@@ -46,6 +46,7 @@ public class ServiceTemplateRepository : IServiceTemplateRepository
 
     public async Task<ServiceTemplateEntity?> GetByNameAsync(string name, string? version = null, CancellationToken cancellationToken = default)
     {
+        // First try exact match on Name (slug/ID)
         var query = _context.ServiceTemplates.AsNoTracking().Where(t => t.Name == name);
 
         if (!string.IsNullOrEmpty(version))
@@ -58,7 +59,27 @@ public class ServiceTemplateRepository : IServiceTemplateRepository
             query = query.OrderByDescending(t => t.Version);
         }
 
-        return await query.FirstOrDefaultAsync(cancellationToken);
+        var result = await query.FirstOrDefaultAsync(cancellationToken);
+        
+        // If not found by Name, try matching by DisplayName (for user-friendly lookups)
+        if (result == null)
+        {
+            var displayQuery = _context.ServiceTemplates.AsNoTracking()
+                .Where(t => t.DisplayName == name || t.DisplayName.ToLower() == name.ToLower());
+
+            if (!string.IsNullOrEmpty(version))
+            {
+                displayQuery = displayQuery.Where(t => t.Version == version);
+            }
+            else
+            {
+                displayQuery = displayQuery.OrderByDescending(t => t.Version);
+            }
+
+            result = await displayQuery.FirstOrDefaultAsync(cancellationToken);
+        }
+
+        return result;
     }
 
     public async Task<IReadOnlyList<ServiceTemplateEntity>> GetAllAsync(CancellationToken cancellationToken = default)
