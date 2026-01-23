@@ -1,16 +1,19 @@
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Core.Interfaces.Templates;
+using Platform.Engineering.Copilot.Core.Services.Governance;
 
 namespace Platform.Engineering.Copilot.Agents.Environments.Tools;
 
 /// <summary>
 /// Tool for cloning an existing provisioned environment.
 /// Creates a new environment using the same template and parameters.
+/// Enforces governance policies on the cloned environment.
 /// </summary>
 public class EnvironmentCloneFromTemplateTool : BaseTool
 {
     private readonly IProvisionedEnvironmentService _environmentService;
+    private readonly IGovernanceValidationService _governanceService;
 
     public override string Name => "clone_provisioned_environment";
 
@@ -20,9 +23,11 @@ public class EnvironmentCloneFromTemplateTool : BaseTool
 
     public EnvironmentCloneFromTemplateTool(
         ILogger<EnvironmentCloneFromTemplateTool> logger,
-        IProvisionedEnvironmentService environmentService) : base(logger)
+        IProvisionedEnvironmentService environmentService,
+        IGovernanceValidationService governanceService) : base(logger)
     {
         _environmentService = environmentService ?? throw new ArgumentNullException(nameof(environmentService));
+        _governanceService = governanceService ?? throw new ArgumentNullException(nameof(governanceService));
 
         Parameters.Add(new ToolParameter(
             name: "sourceEnvironmentId",
@@ -63,6 +68,32 @@ public class EnvironmentCloneFromTemplateTool : BaseTool
                     success = false,
                     error = $"Source environment '{sourceEnvironmentId}' not found",
                     hint = "Use 'list_provisioned_environments' to see available environments"
+                });
+            }
+
+            // Validate governance policies on new environment name
+            var governanceResult = await _governanceService.ValidateAsync(new GovernanceValidationRequest
+            {
+                EnvironmentName = newEnvironmentName,
+                Location = sourceEnv.Location,
+                Tags = sourceEnv.Tags,
+                RequestedBy = "environment-agent"
+            }, cancellationToken);
+
+            if (!governanceResult.IsValid)
+            {
+                Logger.LogWarning("❌ Governance validation failed for clone: {Errors}",
+                    string.Join("; ", governanceResult.Errors));
+                return ToJson(new
+                {
+                    success = false,
+                    error = "Governance policy validation failed",
+                    governanceViolations = governanceResult.Violations.Select(v => new
+                    {
+                        policyType = v.PolicyType.ToString(),
+                        message = v.Message,
+                        property = v.Property
+                    })
                 });
             }
 

@@ -4,18 +4,21 @@ using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Core.Interfaces.Templates;
 using Platform.Engineering.Copilot.Core.Models.ServiceTemplates;
 using Platform.Engineering.Copilot.Core.Services;
+using Platform.Engineering.Copilot.Core.Services.Governance;
 
 namespace Platform.Engineering.Copilot.Agents.Environments.Tools;
 
 /// <summary>
 /// Tool for creating environments from approved service templates.
 /// This is the main provisioning interface for developers.
+/// Enforces governance policies before provisioning.
 /// </summary>
 public class CreateEnvironmentFromTemplateTool : BaseTool
 {
     private readonly IServiceTemplateCatalogService _templateCatalog;
     private readonly IProvisionedEnvironmentService _environmentService;
     private readonly ConfigService _configService;
+    private readonly IGovernanceValidationService _governanceService;
 
     public override string Name => "create_environment_from_template";
 
@@ -30,11 +33,13 @@ public class CreateEnvironmentFromTemplateTool : BaseTool
         ILogger<CreateEnvironmentFromTemplateTool> logger,
         IServiceTemplateCatalogService templateCatalog,
         IProvisionedEnvironmentService environmentService,
-        ConfigService configService) : base(logger)
+        ConfigService configService,
+        IGovernanceValidationService governanceService) : base(logger)
     {
         _templateCatalog = templateCatalog ?? throw new ArgumentNullException(nameof(templateCatalog));
         _environmentService = environmentService ?? throw new ArgumentNullException(nameof(environmentService));
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
+        _governanceService = governanceService ?? throw new ArgumentNullException(nameof(governanceService));
 
         Parameters.Add(new ToolParameter(
             name: "templateId",
@@ -200,6 +205,55 @@ public class CreateEnvironmentFromTemplateTool : BaseTool
                 }
             }
 
+            // ═══════════════════════════════════════════════════════════════════
+            // GOVERNANCE VALIDATION - Runtime enforcement of platform policies
+            // ═══════════════════════════════════════════════════════════════════
+            Logger.LogInformation("🛡️ Validating governance policies before provisioning...");
+
+            var governanceRequest = new GovernanceValidationRequest
+            {
+                Location = location,
+                EnvironmentName = environmentName,
+                ResourceGroupName = resourceGroupName,
+                Tags = tags,
+                TemplateId = templateId,
+                Parameters = parameters,
+                RequestedBy = ownerEmail ?? "environment-agent"
+            };
+
+            var governanceResult = await _governanceService.ValidateAsync(governanceRequest, cancellationToken);
+
+            if (!governanceResult.IsValid)
+            {
+                Logger.LogWarning("❌ Governance validation failed: {Errors}", 
+                    string.Join("; ", governanceResult.Errors));
+
+                return ToJson(new
+                {
+                    success = false,
+                    error = "Governance policy validation failed",
+                    governanceViolations = governanceResult.Violations.Select(v => new
+                    {
+                        policyType = v.PolicyType.ToString(),
+                        message = v.Message,
+                        property = v.Property,
+                        providedValue = v.ProvidedValue,
+                        allowedValue = v.AllowedValue,
+                        severity = v.Severity.ToString(),
+                        nistControls = v.NistControls
+                    }),
+                    hint = "Correct the violations and try again. Use approved regions and naming conventions."
+                });
+            }
+
+            // Log any warnings
+            if (governanceResult.Warnings.Any())
+            {
+                Logger.LogWarning("⚠️ Governance warnings: {Warnings}", 
+                    string.Join("; ", governanceResult.Warnings));
+            }
+            // ═══════════════════════════════════════════════════════════════════
+
             // Create request
             var request = new CreateEnvironmentFromTemplateRequest
             {
@@ -211,7 +265,7 @@ public class CreateEnvironmentFromTemplateTool : BaseTool
                 Parameters = parameters,
                 Tags = tags,
                 OwnerEmail = ownerEmail,
-                RequestedBy = "environment-agent", // TODO: Get from context
+                RequestedBy = ownerEmail ?? "environment-agent",
                 ExpiresAt = expirationDays.HasValue
                     ? DateTime.UtcNow.AddDays(expirationDays.Value)
                     : null
