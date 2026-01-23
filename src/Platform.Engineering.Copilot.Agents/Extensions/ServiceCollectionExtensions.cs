@@ -570,6 +570,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IProvisionedEnvironmentService, ProvisionedEnvironmentService>();
         services.AddScoped<Core.Interfaces.Environments.IEnvironmentActivityService, EnvironmentActivityService>();
 
+        // Add governance validation service for runtime policy enforcement
+        services.AddScoped<Core.Services.Governance.IGovernanceValidationService, Core.Services.Governance.GovernanceValidationService>();
+
         // Add template-based tools (Platform Engineering approach)
         services.AddScoped<ServiceTemplateListTool>();
         services.AddScoped<ServiceTemplateDetailsTool>();
