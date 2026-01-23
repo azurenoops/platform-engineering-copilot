@@ -1,6 +1,6 @@
 # Authentication Guide
 
-**Version:** 3.0  
+**Version:** 3.1  
 **Last Updated:** January 2026
 
 ---

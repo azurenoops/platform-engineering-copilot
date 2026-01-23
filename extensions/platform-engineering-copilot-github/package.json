@@ -1,0 +1,142 @@
+{
+  "name": "platform-copilot-github",
+  "displayName": "Platform Engineering Copilot for GitHub Copilot",
+  "description": "GitHub Copilot Chat extension for Platform Engineering - AI-powered Azure infrastructure management with Agent FX multi-agent orchestration",
+  "version": "0.9.0",
+  "publisher": "AzureNoOps",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/azurenoops/platform-engineering-copilot.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "platform engineering",
+    "infrastructure",
+    "azure",
+    "github-copilot",
+    "iac",
+    "bicep",
+    "terraform",
+    "agent-fx",
+    "multi-agent"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "platform",
+        "name": "platform",
+        "fullName": "Platform Engineering Copilot",
+        "description": "AI-powered Azure infrastructure with 6 specialized agents: Infrastructure, Compliance, Cost, Discovery, KnowledgeBase, and Configuration",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "infrastructure",
+            "description": "Generate Bicep/Terraform templates and provision Azure resources (Infrastructure Agent)"
+          },
+          {
+            "name": "compliance",
+            "description": "Run NIST 800-53 compliance scans, remediation, and ATO documentation (Compliance Agent)"
+          },
+          {
+            "name": "cost",
+            "description": "Analyze costs and find optimization opportunities (Cost Management Agent)"
+          },
+          {
+            "name": "discover",
+            "description": "Find and inventory Azure resources across subscriptions (Discovery Agent)"
+          },
+          {
+            "name": "knowledge",
+            "description": "Explain NIST controls, STIGs, and compliance frameworks (KnowledgeBase Agent)"
+          },
+          {
+            "name": "config",
+            "description": "Set subscription context and configure environment settings (Configuration Agent)"
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "platform.checkHealth",
+        "title": "Check Platform API Health",
+        "category": "Platform Copilot"
+      },
+      {
+        "command": "platform.configure",
+        "title": "Configure Platform API Connection",
+        "category": "Platform Copilot"
+      },
+      {
+        "command": "platform.analyzeCurrentFile",
+        "title": "Analyze Current File for Compliance",
+        "category": "Platform Copilot"
+      },
+      {
+        "command": "platform.analyzeWorkspace",
+        "title": "Analyze Workspace for Compliance",
+        "category": "Platform Copilot"
+      }
+    ],
+    "configuration": {
+      "title": "Platform Engineering Copilot",
+      "properties": {
+        "platform-copilot.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:5100",
+          "description": "MCP Server HTTP endpoint URL"
+        },
+        "platform-copilot.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Platform Copilot API Key (optional)"
+        },
+        "platform-copilot.timeout": {
+          "type": "number",
+          "default": 60000,
+          "description": "Request timeout in milliseconds"
+        },
+        "platform-copilot.enableLogging": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable debug logging to Output panel"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "format": "prettier --write 'src/**/*.ts'",
+    "test": "npm run compile && vscode-test",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "axios": "^1.7.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@types/node": "^20.10.6",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@vscode/test-cli": "^0.0.9",
+    "@vscode/test-electron": "^2.4.0",
+    "@vscode/vsce": "^3.0.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.1.1",
+    "typescript": "^5.5.0"
+  }
+}

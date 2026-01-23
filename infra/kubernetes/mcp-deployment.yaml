@@ -34,7 +34,7 @@ spec:
         imagePullPolicy: Always
         ports:
         - name: http
-          containerPort: 5000
+          containerPort: 5100
           protocol: TCP
         env:
         - name: ASPNETCORE_ENVIRONMENT
@@ -43,7 +43,30 @@ spec:
               name: platform-config
               key: ASPNETCORE_ENVIRONMENT
         - name: ASPNETCORE_URLS
-          value: "http://+:5000"
+          value: "http://+:5100"
+        # Git Sync Configuration
+        - name: GitSync__AutoSyncEnabled
+          valueFrom:
+            configMapKeyRef:
+              name: platform-config
+              key: GitSync__AutoSyncEnabled
+        - name: GitSync__DefaultSyncIntervalMinutes
+          valueFrom:
+            configMapKeyRef:
+              name: platform-config
+              key: GitSync__DefaultSyncIntervalMinutes
+        - name: GitSync__GitHubToken
+          valueFrom:
+            secretKeyRef:
+              name: azure-secrets
+              key: github-token
+              optional: true
+        - name: GitSync__AzureDevOpsToken
+          valueFrom:
+            secretKeyRef:
+              name: azure-secrets
+              key: azuredevops-token
+              optional: true
         - name: AZURE_TENANT_ID
           valueFrom:
             configMapKeyRef:
@@ -81,7 +104,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /health/live
-            port: 5000
+            port: 5100
             scheme: HTTP
           initialDelaySeconds: 30
           periodSeconds: 10
@@ -90,7 +113,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /health/ready
-            port: 5000
+            port: 5100
             scheme: HTTP
           initialDelaySeconds: 10
           periodSeconds: 5
@@ -152,8 +175,8 @@ spec:
     app: mcp-server
   ports:
   - name: http
-    port: 5000
-    targetPort: 5000
+    port: 5100
+    targetPort: 5100
     protocol: TCP
   sessionAffinity: None
 ---

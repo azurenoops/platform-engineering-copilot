@@ -14,14 +14,14 @@ public interface ITemplateStorageService
     /// <param name="template">Template object containing all template data</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Created template entity</returns>
-    Task<EnvironmentTemplate> StoreTemplateAsync(string name, object template, CancellationToken cancellationToken = default);
+    Task<InfrastructureTemplate> StoreTemplateAsync(string name, object template, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// List all available templates
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of template entities</returns>
-    Task<List<EnvironmentTemplate>> ListAllTemplatesAsync(CancellationToken cancellationToken = default);
+    Task<List<InfrastructureTemplate>> ListAllTemplatesAsync(CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get a specific template by name
@@ -29,7 +29,7 @@ public interface ITemplateStorageService
     /// <param name="name">Template name</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Template entity or null if not found</returns>
-    Task<EnvironmentTemplate?> GetTemplateByNameAsync(string name, CancellationToken cancellationToken = default);
+    Task<InfrastructureTemplate?> GetTemplateByNameAsync(string name, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get a specific template by ID
@@ -37,7 +37,7 @@ public interface ITemplateStorageService
     /// <param name="id">Template ID (GUID)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Template entity or null if not found</returns>
-    Task<EnvironmentTemplate?> GetTemplateByIdAsync(string id, CancellationToken cancellationToken = default);
+    Task<InfrastructureTemplate?> GetTemplateByIdAsync(string id, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Delete a template by name
@@ -70,7 +70,7 @@ public interface ITemplateStorageService
     /// <param name="template">Updated template object</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Updated template entity</returns>
-    Task<EnvironmentTemplate> UpdateTemplateAsync(string name, object template, CancellationToken cancellationToken = default);
+    Task<InfrastructureTemplate> UpdateTemplateAsync(string name, object template, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get templates by type
@@ -78,7 +78,7 @@ public interface ITemplateStorageService
     /// <param name="templateType">Template type filter</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of filtered templates</returns>
-    Task<List<EnvironmentTemplate>> GetTemplatesByTypeAsync(string templateType, CancellationToken cancellationToken = default);
+    Task<List<InfrastructureTemplate>> GetTemplatesByTypeAsync(string templateType, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get template versions
@@ -94,12 +94,12 @@ public interface ITemplateStorageService
     /// <param name="conversationId">Conversation ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of templates for the conversation</returns>
-    Task<List<EnvironmentTemplate>> GetTemplatesByConversationIdAsync(string conversationId, CancellationToken cancellationToken = default);
+    Task<List<InfrastructureTemplate>> GetTemplatesByConversationIdAsync(string conversationId, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Get the most recently created template
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Latest template or null if none exist</returns>
-    Task<EnvironmentTemplate?> GetLatestTemplateAsync(CancellationToken cancellationToken = default);
+    Task<InfrastructureTemplate?> GetLatestTemplateAsync(CancellationToken cancellationToken = default);
 }

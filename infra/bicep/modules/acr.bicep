@@ -29,17 +29,11 @@ param replicationLocations array = [
   'usgovarizona'
 ]
 
-@description('Enable Microsoft Defender for container registries')
-param enableDefender bool = true
-
 @description('Enable content trust (image signing)')
 param enableContentTrust bool = true
 
 @description('Enable image quarantine (scan before use)')
 param enableQuarantine bool = true
-
-@description('Enable anonymous pull access (false for IL5/IL6)')
-param enableAnonymousPull bool = false
 
 @description('Enable public network access (false for IL5/IL6 with private endpoints)')
 param publicNetworkAccess string = 'Disabled'
@@ -92,83 +86,73 @@ resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' =
     adminUserEnabled: adminUserEnabled
     publicNetworkAccess: publicNetworkAccess
     networkRuleBypassOptions: 'AzureServices'
-    
+
     // Zone redundancy for high availability (Premium SKU)
     zoneRedundancy: sku == 'Premium' ? (zoneRedundancy ? 'Enabled' : 'Disabled') : 'Disabled'
-    
-    // Anonymous pull disabled for security
-    anonymousPullEnabled: enableAnonymousPull
-    
+
     // Data endpoint enabled for peering scenarios
     dataEndpointEnabled: true
-    
+
     // Network rule set
     networkRuleSet: {
       defaultAction: 'Deny'
     }
-    
+
     // Policies
     policies: {
       // Quarantine policy - scan images before use
       quarantinePolicy: {
         status: enableQuarantine ? 'enabled' : 'disabled'
       }
-      
+
       // Trust policy - require signed images
       trustPolicy: {
         type: 'Notary'
         status: enableContentTrust ? 'enabled' : 'disabled'
       }
-      
+
       // Retention policy - cleanup untagged manifests
       retentionPolicy: {
         days: retentionDays
         status: enableRetentionPolicy ? 'enabled' : 'disabled'
       }
-      
+
       // Export policy - prevent export to non-compliant regions
       exportPolicy: {
         status: 'disabled'
       }
-      
-      // Azure AD authentication only
-      azureADAuthenticationAsArmPolicy: {
-        status: 'enabled'
-      }
-      
-      // Soft delete for accidental deletion protection
-      softDeletePolicy: {
-        retentionDays: 7
-        status: 'enabled'
-      }
     }
-    
+
     // Encryption configuration
-    encryption: enableCustomerManagedKey ? {
-      status: 'enabled'
-      keyVaultProperties: {
-        identity: ''
-        keyIdentifier: '${keyVaultId}/keys/${encryptionKeyName}'
-      }
-    } : {
-      status: 'disabled'
-    }
+    encryption: enableCustomerManagedKey
+      ? {
+          status: 'enabled'
+          keyVaultProperties: {
+            identity: ''
+            keyIdentifier: '${keyVaultId}/keys/${encryptionKeyName}'
+          }
+        }
+      : {
+          status: 'disabled'
+        }
   }
 }
 
 // =============================================================================
 // Geo-Replication (Premium SKU only)
 // =============================================================================
-resource replication 'Microsoft.ContainerRegistry/registries/replications@2023-07-01' = [for (replicationLocation, i) in replicationLocations: if (enableGeoReplication && sku == 'Premium') {
-  parent: containerRegistry
-  name: replicationLocation
-  location: replicationLocation
-  tags: tags
-  properties: {
-    regionEndpointEnabled: true
-    zoneRedundancy: zoneRedundancy ? 'Enabled' : 'Disabled'
+resource replication 'Microsoft.ContainerRegistry/registries/replications@2023-07-01' = [
+  for (replicationLocation, i) in replicationLocations: if (enableGeoReplication && sku == 'Premium') {
+    parent: containerRegistry
+    name: replicationLocation
+    location: replicationLocation
+    tags: tags
+    properties: {
+      regionEndpointEnabled: true
+      zoneRedundancy: zoneRedundancy ? 'Enabled' : 'Disabled'
+    }
   }
-}]
+]
 
 // =============================================================================
 // Diagnostic Settings for Audit Logging

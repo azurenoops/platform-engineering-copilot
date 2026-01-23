@@ -1,0 +1,438 @@
+@page "/templates"
+@inject TemplateApiService TemplateApi
+@inject NavigationManager Navigation
+@inject IToastService ToastService
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-0">Template Catalog</h4>
+        <small class="text-muted">Manage service templates for environment provisioning</small>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" @onclick="OpenGitImportModal" title="Import template from Git repository">
+            <i class="fa fa-code-branch me-1"></i>Import from Git
+        </button>
+        <button class="btn btn-outline-info" @onclick="SyncAllTemplates" disabled="@_syncing" title="Sync all Git-sourced templates">
+            @if (_syncing)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+            }
+            else
+            {
+                <i class="fa fa-sync me-1"></i>
+            }
+            Sync All
+        </button>
+        <a href="templates/create" class="btn btn-primary">
+            <i class="fa fa-plus me-1"></i>Create New Service Template
+        </a>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Search</label>
+                <input type="text" class="form-control" placeholder="Search templates..."
+                       @bind="_searchKeyword" @bind:event="oninput" @onkeyup="@(async e => { if (e.Key == "Enter") await LoadTemplates(); })" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Category</label>
+                <select class="form-select" @bind="_selectedCategory">
+                    <option value="">All Categories</option>
+                    @foreach (var cat in _categories)
+                    {
+                        <option value="@cat">@cat</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Status</label>
+                <select class="form-select" @bind="_selectedStatus">
+                    <option value="">All Statuses</option>
+                    <option value="Draft">Draft</option>
+                    <option value="PendingApproval">Pending Approval</option>
+                    <option value="Published">Published</option>
+                    <option value="Deprecated">Deprecated</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-secondary" @onclick="LoadTemplates">
+                    <i class="fa fa-search me-1"></i>Search
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_templates?.Count > 0)
+{
+    <div class="row">
+        @foreach (var template in _templates)
+        {
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span class="fw-bold">@template.DisplayName</span>
+                        <div class="d-flex align-items-center gap-2">
+                            @if (template.HasGitSource)
+                            {
+                                <span class="badge bg-dark" title="@(template.GitRepositoryUrl)">
+                                    <i class="fa fa-code-branch"></i>
+                                </span>
+                            }
+                            <span class="status-badge @GetStatusClass(template.Status)">@template.Status</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">@(template.Description.Length > 100 ? template.Description[..100] + "..." : template.Description)</p>
+                        
+                        <div class="mb-2">
+                            <span class="badge bg-secondary me-1">@template.Category</span>
+                            <span class="badge bg-info">@template.Format</span>
+                            @if (template.HasGitSource && template.GitAutoSync)
+                            {
+                                <span class="badge bg-success" title="Auto-sync enabled"><i class="fa fa-sync-alt"></i></span>
+                            }
+                        </div>
+                        
+                        <div class="d-flex justify-content-between text-muted small">
+                            <span><i class="fa fa-tag me-1"></i>v@(string.IsNullOrWhiteSpace(template.Version) ? "1.0.0" : template.Version)</span>
+                            <span><i class="fa fa-rocket me-1"></i>@template.DeploymentCount deployments</span>
+                        </div>
+                        @if (template.HasGitSource && template.LastSyncedFromGit.HasValue)
+                        {
+                            <div class="text-muted small mt-2">
+                                <i class="fa fa-clock me-1"></i>Synced @FormatRelativeTime(template.LastSyncedFromGit.Value)
+                            </div>
+                        }
+                    </div>
+                    <div class="card-footer bg-transparent">
+                        <div class="d-flex gap-2">
+                            <a href="templates/@template.Id" class="btn btn-sm btn-outline-primary flex-grow-1">
+                                <i class="fa fa-eye me-1"></i>View
+                            </a>
+                            @if (template.HasGitSource)
+                            {
+                                <button class="btn btn-sm btn-outline-info" @onclick="() => SyncTemplate(template.Id, template.DisplayName)" title="Sync from Git">
+                                    <i class="fa fa-sync"></i>
+                                </button>
+                            }
+                            <a href="environments/create?templateId=@template.Id" class="btn btn-sm btn-success flex-grow-1">
+                                <i class="fa fa-rocket me-1"></i>Deploy
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="empty-state">
+                <i class="fa fa-cube"></i>
+                <h5>No templates found</h5>
+                <p class="text-muted">Create your first service template to get started</p>
+                <a href="templates/create" class="btn btn-primary">
+                    <i class="fa fa-plus me-1"></i>Create Template
+                </a>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Git Import Modal -->
+@if (_showGitImportModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fa fa-code-branch me-2"></i>Import Template from Git</h5>
+                    <button type="button" class="btn-close" @onclick="CloseGitImportModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fa fa-info-circle me-2"></i>
+                        Import a Bicep, ARM, or Terraform template directly from a GitHub or Azure DevOps repository.
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Repository URL <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" @bind="_gitImportRequest.RepositoryUrl" 
+                               placeholder="https://github.com/org/repo or https://dev.azure.com/org/project/_git/repo" />
+                        <div class="form-text">Full URL to the GitHub or Azure DevOps repository</div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Branch</label>
+                            <input type="text" class="form-control" @bind="_gitImportRequest.Branch" placeholder="main" />
+                            <div class="form-text">Default: main</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Path to Template <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" @bind="_gitImportRequest.Path" 
+                                   placeholder="templates/storage-account.bicep" />
+                            <div class="form-text">Path to the template file within the repository</div>
+                        </div>
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(_gitImportError))
+                    {
+                        <div class="alert alert-danger">
+                            <i class="fa fa-exclamation-circle me-2"></i>@_gitImportError
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseGitImportModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="ImportFromGit" disabled="@_importing">
+                        @if (_importing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            <span>Importing...</span>
+                        }
+                        else
+                        {
+                            <i class="fa fa-download me-1"></i>
+                            <span>Import Template</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private List<TemplateListItem>? _templates;
+    private List<string> _categories = new();
+    private string _searchKeyword = "";
+    private string _selectedCategory = "";
+    private string _selectedStatus = "";
+    
+    // Git Import state
+    private bool _showGitImportModal;
+    private bool _importing;
+    private bool _syncing;
+    private string _gitImportError = "";
+    private GitImportRequest _gitImportRequest = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var categoriesTask = TemplateApi.GetCategoriesAsync();
+            var templatesTask = TemplateApi.GetTemplatesAsync();
+
+            await Task.WhenAll(categoriesTask, templatesTask);
+
+            _categories = await categoriesTask;
+            _templates = await templatesTask;
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load templates: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadTemplates()
+    {
+        _loading = true;
+        try
+        {
+            _templates = await TemplateApi.GetTemplatesAsync(
+                category: string.IsNullOrEmpty(_selectedCategory) ? null : _selectedCategory,
+                status: string.IsNullOrEmpty(_selectedStatus) ? null : _selectedStatus,
+                keyword: string.IsNullOrEmpty(_searchKeyword) ? null : _searchKeyword
+            );
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to search templates: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string GetStatusClass(string status) => status.ToLower() switch
+    {
+        "published" => "published",
+        "draft" => "draft",
+        "pendingapproval" => "pending",
+        "deprecated" => "deprecated",
+        _ => ""
+    };
+    
+    #region Git Import/Sync
+    
+    private void OpenGitImportModal()
+    {
+        _gitImportRequest = new GitImportRequest { Branch = "main" };
+        _gitImportError = "";
+        _showGitImportModal = true;
+    }
+    
+    private void CloseGitImportModal()
+    {
+        _showGitImportModal = false;
+        _gitImportError = "";
+    }
+    
+    private async Task ImportFromGit()
+    {
+        if (string.IsNullOrWhiteSpace(_gitImportRequest.RepositoryUrl))
+        {
+            _gitImportError = "Repository URL is required";
+            return;
+        }
+        
+        if (string.IsNullOrWhiteSpace(_gitImportRequest.Path))
+        {
+            _gitImportError = "Path to template is required";
+            return;
+        }
+        
+        _importing = true;
+        _gitImportError = "";
+        
+        try
+        {
+            var result = await TemplateApi.ImportFromGitAsync(_gitImportRequest);
+            
+            if (result?.Success == true)
+            {
+                ToastService.ShowSuccess($"Successfully imported template: {result.TemplateName}");
+                CloseGitImportModal();
+                await LoadTemplates();
+                
+                // Navigate to the new template
+                if (!string.IsNullOrEmpty(result.TemplateId))
+                {
+                    Navigation.NavigateTo($"templates/{result.TemplateId}");
+                }
+            }
+            else
+            {
+                _gitImportError = result?.Message ?? "Failed to import template";
+            }
+        }
+        catch (Exception ex)
+        {
+            _gitImportError = $"Import failed: {ex.Message}";
+        }
+        finally
+        {
+            _importing = false;
+        }
+    }
+    
+    private async Task SyncTemplate(string templateId, string templateName)
+    {
+        try
+        {
+            var result = await TemplateApi.SyncTemplateAsync(templateId);
+            
+            if (result?.Success == true)
+            {
+                if (result.WasUpdated)
+                {
+                    ToastService.ShowSuccess($"Template '{templateName}' updated from Git");
+                    await LoadTemplates();
+                }
+                else
+                {
+                    ToastService.ShowInfo($"Template '{templateName}' is already up to date");
+                }
+            }
+            else
+            {
+                ToastService.ShowError(result?.Message ?? "Sync failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Sync failed: {ex.Message}");
+        }
+    }
+    
+    private async Task SyncAllTemplates()
+    {
+        _syncing = true;
+        StateHasChanged();
+        
+        try
+        {
+            var result = await TemplateApi.SyncAllTemplatesAsync();
+            
+            if (result?.Success == true)
+            {
+                var updatedCount = result.Updated?.Count ?? 0;
+                var unchangedCount = result.Unchanged?.Count ?? 0;
+                var failedCount = result.Failed?.Count ?? 0;
+                
+                if (updatedCount > 0)
+                {
+                    ToastService.ShowSuccess($"Synced {updatedCount} template(s) from Git");
+                    await LoadTemplates();
+                }
+                else if (unchangedCount > 0)
+                {
+                    ToastService.ShowInfo($"All {unchangedCount} template(s) are up to date");
+                }
+                
+                if (failedCount > 0)
+                {
+                    ToastService.ShowWarning($"{failedCount} template(s) failed to sync");
+                }
+            }
+            else
+            {
+                ToastService.ShowError(result?.Message ?? "Sync failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Sync failed: {ex.Message}");
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+    
+    private string FormatRelativeTime(DateTime dateTime)
+    {
+        var diff = DateTime.UtcNow - dateTime;
+        
+        if (diff.TotalMinutes < 1) return "just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        
+        return dateTime.ToString("MMM d, yyyy");
+    }
+    
+    #endregion
+}

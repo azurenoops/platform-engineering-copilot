@@ -42,7 +42,7 @@ public class DatabaseValidator
             await DatabaseSeeder.SeedAsync(context);
 
             // Validate data
-            var templateCount = await context.EnvironmentTemplates.CountAsync();
+            var templateCount = await context.InfrastructureTemplates.CountAsync();
             var patternCount = await context.IntentPatterns.CountAsync();
             
             logger.LogInformation("📊 Database validation results:");
@@ -54,7 +54,7 @@ public class DatabaseValidator
                 logger.LogInformation("✅ Database validation successful!");
                 
                 // Show sample data
-                var sampleTemplate = await context.EnvironmentTemplates.FirstAsync();
+                var sampleTemplate = await context.InfrastructureTemplates.FirstAsync();
                 logger.LogInformation("Sample Template: {Name} ({Type})", sampleTemplate.Name, sampleTemplate.TemplateType);
             }
             else

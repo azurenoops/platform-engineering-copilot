@@ -4,6 +4,7 @@ using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.Discovery.Configuration;
 using Platform.Engineering.Copilot.Agents.Discovery.State;
 using Platform.Engineering.Copilot.Core.Interfaces.Azure;
+using System.Text;
 
 namespace Platform.Engineering.Copilot.Agents.Discovery.Tools;
 
@@ -86,12 +87,14 @@ public class ResourceGroupSummaryTool : BaseTool
                 .GroupBy(r => GetDynamicProperty(r, "type") ?? "Unknown")
                 .Select(g => new { type = g.Key, count = g.Count() })
                 .OrderByDescending(x => x.count)
+                .Cast<dynamic>()
                 .ToList();
 
             // Analyze resources by location
             var byLocation = resourceList
                 .GroupBy(r => GetDynamicProperty(r, "location") ?? "Unknown")
                 .Select(g => new { location = g.Key, count = g.Count() })
+                .Cast<dynamic>()
                 .ToList();
 
             // Tag analysis
@@ -122,9 +125,15 @@ public class ResourceGroupSummaryTool : BaseTool
             nextSteps.Add("Use get_resource_details with a resource ID to inspect specific resources in this group.");
             nextSteps.Add("Use get_resource_health to check if any resources have health issues.");
 
+            // Build formatted summary
+            var formattedSummary = BuildFormattedSummary(
+                resourceGroupName, rgLocation, rgProvisioningState,
+                resourceList.Cast<object>().ToList(), byType, byLocation, taggedCount, untaggedCount, tagCoverage);
+
             return ToJson(new
             {
                 success = true,
+                formattedSummary,
                 resourceGroup = new
                 {
                     name = resourceGroupName,
@@ -226,5 +235,88 @@ public class ResourceGroupSummaryTool : BaseTool
         {
             return null;
         }
+    }
+
+    private static string BuildFormattedSummary(
+        string resourceGroupName,
+        string? location,
+        string? provisioningState,
+        List<object> resources,
+        List<dynamic> byType,
+        List<dynamic> byLocation,
+        int taggedCount,
+        int untaggedCount,
+        double tagCoverage)
+    {
+        var sb = new StringBuilder();
+        
+        var statusIcon = provisioningState == "Succeeded" ? "✅" : "⚠️";
+        var locationName = DiscoveryFormatHelpers.GetFriendlyLocationName(location ?? "Unknown");
+        
+        sb.AppendLine($"## 📁 Resource Group: `{resourceGroupName}`");
+        sb.AppendLine();
+        sb.AppendLine($"| Property | Value |");
+        sb.AppendLine($"|----------|-------|");
+        sb.AppendLine($"| **Location** | {locationName} |");
+        sb.AppendLine($"| **Status** | {statusIcon} {provisioningState} |");
+        sb.AppendLine($"| **Total Resources** | {resources.Count} |");
+        sb.AppendLine($"| **Tag Coverage** | {DiscoveryFormatHelpers.FormatPercentage(tagCoverage)} |");
+        sb.AppendLine();
+
+        // Resources by type
+        if (byType.Any())
+        {
+            sb.AppendLine("### 🏷️ Resources by Type");
+            sb.AppendLine("| Type | Count |");
+            sb.AppendLine("|------|-------|");
+            foreach (var item in byType.Take(10))
+            {
+                var icon = DiscoveryFormatHelpers.GetResourceTypeIcon((string)item.type);
+                var friendlyName = DiscoveryFormatHelpers.GetFriendlyTypeName((string)item.type);
+                sb.AppendLine($"| {icon} {friendlyName} | {item.count} |");
+            }
+            if (byType.Count > 10)
+                sb.AppendLine($"| ... | +{byType.Skip(10).Sum(x => (int)x.count)} more |");
+            sb.AppendLine();
+        }
+
+        // Tag analysis
+        sb.AppendLine("### 🏷️ Tag Analysis");
+        if (untaggedCount > 0)
+        {
+            sb.AppendLine($"⚠️ **{untaggedCount}** resources are missing tags ({100 - tagCoverage:F1}% untagged)");
+            sb.AppendLine();
+            sb.AppendLine("> 💡 Adding tags helps with cost allocation, compliance, and resource management.");
+        }
+        else
+        {
+            sb.AppendLine("✅ All resources are properly tagged!");
+        }
+        sb.AppendLine();
+
+        // Sample resources
+        if (resources.Any())
+        {
+            sb.AppendLine("### 🔍 Sample Resources");
+            foreach (var r in resources.Take(5))
+            {
+                var name = GetDynamicProperty(r, "name") ?? "Unknown";
+                var type = GetDynamicProperty(r, "type") ?? "Unknown";
+                var icon = DiscoveryFormatHelpers.GetResourceTypeIcon(type);
+                var friendlyType = DiscoveryFormatHelpers.GetFriendlyTypeName(type);
+                sb.AppendLine($"- {icon} **{name}** ({friendlyType})");
+            }
+            if (resources.Count > 5)
+                sb.AppendLine($"- ... and {resources.Count - 5} more resources");
+            sb.AppendLine();
+        }
+
+        sb.AppendLine("### 💡 Next Steps");
+        sb.AppendLine("- Say **\"Show me details for resource `<name>`\"** to inspect a specific resource");
+        sb.AppendLine("- Say **\"Check health of resources in this group\"** to see any issues");
+        if (untaggedCount > 0)
+            sb.AppendLine($"- Say **\"Tag untagged resources in `{resourceGroupName}`\"** to improve organization");
+
+        return sb.ToString();
     }
 }

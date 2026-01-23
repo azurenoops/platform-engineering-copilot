@@ -49,8 +49,8 @@ public class BackgroundJobService : IBackgroundJobService
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _jobCancellations[job.JobId] = cts;
         
-        // Start job execution in background
-        _ = Task.Run(async () => await ExecuteJobAsync(job, workload, cts.Token), cts.Token);
+        // Start job execution in background with proper exception handling
+        _ = ExecuteJobWithExceptionHandlingAsync(job, workload, cts.Token);
         
         _logger.LogInformation(
             "Started background job {JobId} of type {JobType} for conversation {ConversationId}", 
@@ -59,6 +59,28 @@ public class BackgroundJobService : IBackgroundJobService
             conversationId);
         
         return await Task.FromResult(job);
+    }
+    
+    /// <summary>
+    /// Wrapper to ensure fire-and-forget tasks have proper exception handling
+    /// </summary>
+    private async Task ExecuteJobWithExceptionHandlingAsync(
+        BackgroundJob job,
+        Func<IProgress<JobProgressUpdate>, CancellationToken, Task<object>> workload,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ExecuteJobAsync(job, workload, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // Ensure unhandled exceptions from fire-and-forget are logged
+            _logger.LogError(ex, "Unhandled exception in background job {JobId}", job.JobId);
+            job.Status = JobStatus.Failed;
+            job.CompletedAt = DateTime.UtcNow;
+            job.Error = ex.Message;
+        }
     }
     
     /// <summary>

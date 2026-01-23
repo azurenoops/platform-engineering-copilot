@@ -1,0 +1,1024 @@
+@page "/templates/edit/{Id}"
+@inject TemplateApiService TemplateApi
+@inject NavigationManager Navigation
+@inject IToastService ToastService
+@inject HttpClient Http
+@using Platform.Engineering.Copilot.Admin.Client.Models
+
+<div class="mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="templates">Service Templates</a></li>
+            <li class="breadcrumb-item"><a href="templates/@Id">@(_template?.DisplayName ?? "Template")</a></li>
+            <li class="breadcrumb-item active">Edit</li>
+        </ol>
+    </nav>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_template == null)
+{
+    <div class="alert alert-warning">
+        <h4>Template Not Found</h4>
+        <p>The template you're looking for doesn't exist or has been deleted.</p>
+        <a href="templates" class="btn btn-primary">Back to Templates</a>
+    </div>
+}
+else
+{
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fa fa-edit me-2"></i>Edit Template: @_template.DisplayName
+                </div>
+                <div class="card-body">
+                    <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+                        <DataAnnotationsValidator />
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Template Name</label>
+                                <input class="form-control" value="@_template.Name" disabled />
+                                <small class="text-muted">Name cannot be changed after creation</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Display Name</label>
+                                <InputText class="form-control" @bind-Value="_model.DisplayName" placeholder="e.g., Standard AKS Cluster" />
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <InputTextArea class="form-control" rows="3" @bind-Value="_model.Description" 
+                                           placeholder="Describe what this template provisions and when to use it" />
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Version</label>
+                                <input class="form-control" value="@_template.Version" disabled />
+                                <small class="text-muted">Create a new version to update</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Category</label>
+                                <InputSelect class="form-select" @bind-Value="_model.Category">
+                                    <option value="">Select category...</option>
+                                    <option value="Compute">Compute</option>
+                                    <option value="Kubernetes">Kubernetes</option>
+                                    <option value="Database">Database</option>
+                                    <option value="Storage">Storage</option>
+                                    <option value="Networking">Networking</option>
+                                    <option value="Security">Security</option>
+                                    <option value="AI/ML">AI/ML</option>
+                                    <option value="Development">Development</option>
+                                    <option value="Other">Other</option>
+                                </InputSelect>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label d-block">Template Source</label>
+                            <div class="btn-group mb-3" role="group">
+                                <input type="radio" class="btn-check" name="templateSource" id="sourcePaste" 
+                                       checked="@(!_useGitSource)" @onchange="@(() => _useGitSource = false)" />
+                                <label class="btn btn-outline-primary" for="sourcePaste">
+                                    <i class="fa fa-paste me-1"></i>IaC Source Content
+                                </label>
+                                <input type="radio" class="btn-check" name="templateSource" id="sourceGit"
+                                       checked="@_useGitSource" @onchange="@(() => _useGitSource = true)" />
+                                <label class="btn btn-outline-primary" for="sourceGit">
+                                    <i class="fa fa-code-branch me-1"></i>Import from Git
+                                </label>
+                            </div>
+
+                            @if (_useGitSource)
+                            {
+                                <div class="mb-3">
+                                    <label class="form-label">Repository URL</label>
+                                    <InputText class="form-control" @bind-Value="_gitRepositoryUrl" 
+                                               placeholder="https://github.com/org/repo" />
+                                    <small class="text-muted">GitHub or Azure DevOps repository URL</small>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Branch</label>
+                                        <InputText class="form-control" @bind-Value="_gitBranch" placeholder="main" />
+                                    </div>
+                                    <div class="col-md-8 mb-3">
+                                        <label class="form-label">Path to Template</label>
+                                        <InputText class="form-control" @bind-Value="_gitPath" 
+                                                   placeholder="templates/my-template.bicep" />
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" @bind="_gitAutoSync" id="gitAutoSync" />
+                                            <label class="form-check-label" for="gitAutoSync">
+                                                Enable automatic sync
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Sync Interval (minutes)</label>
+                                        <InputNumber class="form-control" @bind-Value="_gitSyncInterval" min="5" max="1440" />
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <InputTextArea class="form-control code-editor" rows="15" @bind-Value="_model.TemplateContent" 
+                                               placeholder="Paste your Bicep, ARM, or Terraform template here..." />
+                                @if (_template?.Format == "Bicep" && !string.IsNullOrWhiteSpace(_model.TemplateContent))
+                                {
+                                    <div class="mt-2">
+                                        <button type="button" class="btn btn-sm btn-success" @onclick="ParseBicepParameters" disabled="@_isParsing">
+                                            @if (_isParsing)
+                                            {
+                                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                <span>Parsing...</span>
+                                            }
+                                            else
+                                            {
+                                                <i class="fa fa-magic me-1"></i>
+                                                <span>Parse Parameters from Bicep</span>
+                                            }
+                                        </button>
+                                        <small class="text-muted ms-2">Automatically extract and merge parameter definitions</small>
+                                    </div>
+                                }
+                            }
+                        </div>
+
+                        <hr class="my-4" />
+                        <h6 class="mb-3">
+                            <i class="fa fa-sliders me-2"></i>Parameters
+                            @if (_template?.Format == "Bicep" && !string.IsNullOrWhiteSpace(_model.TemplateContent))
+                            {
+                                <button type="button" class="btn btn-sm btn-success float-end" @onclick="ParseBicepParameters" disabled="@_isParsing">
+                                    @if (_isParsing)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                        <span>Parsing...</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="fa fa-magic me-1"></i>
+                                        <span>Parse Parameters from Bicep</span>
+                                    }
+                                </button>
+                            }
+                        </h6>
+
+                        @if (_parameters.Count > 0)
+                        {
+                            <div class="list-group mb-3">
+                                @foreach (var param in _parameters)
+                                {
+                                    <div class="list-group-item">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <div class="flex-grow-1">
+                                                <strong>@param.Name</strong>
+                                                @if (param.Required)
+                                                {
+                                                    <span class="badge bg-danger ms-1">Required</span>
+                                                }
+                                                <p class="text-muted small mb-1">@param.Description</p>
+                                                <span class="badge bg-info">@param.Type</span>
+                                                @if (!string.IsNullOrEmpty(param.DefaultValue))
+                                                {
+                                                    <span class="badge bg-secondary ms-1">Default: @param.DefaultValue</span>
+                                                }
+                                            </div>
+                                            <div class="btn-group">
+                                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => EditParameter(param)" title="Edit parameter">
+                                                    <i class="fa fa-edit"></i>
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveParameter(param)" title="Delete parameter">
+                                                    <i class="fa fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-info">
+                                <i class="fa fa-info-circle me-2"></i>No parameters configured. Click "Add Parameter" to define template inputs.
+                            </div>
+                        }
+
+                        <button type="button" class="btn btn-outline-primary mb-3" @onclick="ShowAddParameterModal">
+                            <i class="fa fa-plus me-1"></i>Add Parameter
+                        </button>
+
+                        <hr class="my-4" />
+                        <h6 class="mb-3"><i class="fa fa-cog me-2"></i>Settings</h6>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Template Status</label>
+                                <InputSelect class="form-select" @bind-Value="_model.Status">
+                                    <option value="Draft">Draft</option>
+                                    <option value="PendingApproval">Pending Approval</option>
+                                    <option value="Published">Published</option>
+                                    <option value="Deprecated">Deprecated</option>
+                                    <option value="Archived">Archived</option>
+                                </InputSelect>
+                                <small class="text-muted">Only Published templates are available for deployment</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Default Expiration (days)</label>
+                                <InputNumber class="form-control" @bind-Value="_model.DefaultExpirationDays" />
+                                <small class="text-muted">Leave empty for no expiration</small>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" id="requiresApproval" @bind-Value="_requiresApproval" />
+                                    <label class="form-check-label" for="requiresApproval">
+                                        Requires Approval
+                                    </label>
+                                    <small class="d-block text-muted">Deployments must be approved before provisioning</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" id="enforceCompliance" @bind-Value="_enforceCompliance" />
+                                    <label class="form-check-label" for="enforceCompliance">
+                                        Enforce Compliance
+                                    </label>
+                                    <small class="d-block text-muted">Block deployments that violate guardrails</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Compliance Frameworks</label>
+                            <InputText class="form-control" @bind-Value="_complianceFrameworks" 
+                                       placeholder="e.g., NIST-800-53, FedRAMP-High, STIG (comma-separated)" />
+                            <small class="text-muted">Compliance standards this template meets</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Keywords</label>
+                            <InputText class="form-control" @bind-Value="_keywordsInput" 
+                                       placeholder="e.g., kubernetes, container, microservices (comma-separated)" />
+                            <small class="text-muted">Help users find this template through search</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Use Cases</label>
+                            <InputText class="form-control" @bind-Value="_useCasesInput" 
+                                       placeholder="e.g., microservices, web apps, api hosting (comma-separated)" />
+                            <small class="text-muted">Typical scenarios for this template</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">AI Selection Hint</label>
+                            <InputTextArea class="form-control" rows="2" @bind-Value="_model.AiSelectionHint" 
+                                           placeholder="Help AI agents select this template: describe ideal use cases, workload types, etc." />
+                            <small class="text-muted">Guidance for AI to understand when to recommend this template</small>
+                        </div>
+
+                        <hr class="my-4" />
+                        <h6 class="mb-3"><i class="fa fa-shield-alt me-2"></i>Guardrails</h6>
+
+                        @if (_guardrails.Count > 0)
+                        {
+                            <div class="list-group mb-3">
+                                @foreach (var guardrail in _guardrails)
+                                {
+                                    <div class="list-group-item">
+                                        <div class="d-flex justify-content-between align-items-start">
+                                            <div>
+                                                <strong>@guardrail.Name</strong>
+                                                <p class="text-muted small mb-1">@guardrail.Description</p>
+                                                <span class="badge bg-@(guardrail.Action == "Deny" ? "danger" : "warning")">@guardrail.Action</span>
+                                                <span class="badge bg-secondary">@guardrail.Type</span>
+                                            </div>
+                                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveGuardrail(guardrail)">
+                                                <i class="fa fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-info">
+                                <i class="fa fa-info-circle me-2"></i>No guardrails configured. Click "Add Guardrail" to define compliance rules.
+                            </div>
+                        }
+
+                        <button type="button" class="btn btn-outline-primary mb-3" @onclick="ShowAddGuardrailModal">
+                            <i class="fa fa-plus me-1"></i>Add Guardrail
+                        </button>
+
+                        <hr class="my-4" />
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary" disabled="@_saving">
+                                @if (_saving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                <i class="fa fa-save me-1"></i>Save Changes
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" @onclick="ValidateTemplate" disabled="@_validating">
+                                @if (_validating)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                <i class="fa fa-check-circle me-1"></i>Validate
+                            </button>
+                            <a href="templates/@Id" class="btn btn-outline-secondary">
+                                <i class="fa fa-times me-1"></i>Cancel
+                            </a>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fa fa-info-circle me-2"></i>Template Info
+                </div>
+                <div class="card-body">
+                    <dl class="mb-0">
+                        <dt>Status</dt>
+                        <dd><span class="badge bg-@GetStatusColor(_template.Status)">@_template.Status</span></dd>
+                        <dt>Format</dt>
+                        <dd>@_template.Format</dd>
+                        <dt>Created</dt>
+                        <dd>@_template.CreatedAt.ToString("g") by @_template.CreatedBy</dd>
+                        @if (_template.UpdatedAt.HasValue)
+                        {
+                            <dt>Last Updated</dt>
+                            <dd>@_template.UpdatedAt.Value.ToString("g") by @(_template.UpdatedBy ?? "unknown")</dd>
+                        }
+                        <dt>Deployments</dt>
+                        <dd>@_template.DeploymentCount</dd>
+                    </dl>
+                </div>
+            </div>
+
+            @if (_validationResult != null)
+            {
+                <div class="card">
+                    <div class="card-header @(_validationResult.IsValid ? "bg-success text-white" : "bg-danger text-white")">
+                        <i class="fa @(_validationResult.IsValid ? "fa-check-circle" : "fa-times-circle") me-2"></i>
+                        Validation Result
+                    </div>
+                    <div class="card-body">
+                        @if (_validationResult.IsValid)
+                        {
+                            <p class="text-success mb-0"><i class="fa fa-check me-1"></i>Template is valid</p>
+                        }
+                        else
+                        {
+                            <h6 class="text-danger">Errors:</h6>
+                            <ul class="text-danger">
+                                @foreach (var error in _validationResult.Errors)
+                                {
+                                    <li>@error</li>
+                                }
+                            </ul>
+                        }
+                        @if (_validationResult.Warnings?.Count > 0)
+                        {
+                            <h6 class="text-warning mt-3">Warnings:</h6>
+                            <ul class="text-warning">
+                                @foreach (var warning in _validationResult.Warnings)
+                                {
+                                    <li>@warning</li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@* Add/Edit Parameter Modal *@
+@if (_showAddParameterModal)
+{
+    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fa fa-sliders me-2"></i>@(_isEditMode ? "Edit" : "Add") Parameter</h5>
+                    <button type="button" class="btn-close" @onclick="CloseParameterModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Name <span class="text-danger">*</span></label>
+                            <InputText class="form-control" @bind-Value="_newParameter.Name" placeholder="e.g., vmSize" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Display Name</label>
+                            <InputText class="form-control" @bind-Value="_newParameter.DisplayName" placeholder="e.g., Virtual Machine Size" />
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <InputTextArea class="form-control" rows="2" @bind-Value="_newParameter.Description" 
+                                       placeholder="Describe what this parameter is for" />
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Type</label>
+                            <InputSelect class="form-select\" @bind-Value="_newParameter.Type">
+                                <option value="String">String</option>
+                                <option value="Number">Number</option>
+                                <option value="Boolean">Boolean</option>
+                                <option value="Choice">Choice</option>
+                                <option value="Secret">Secret</option>
+                                <option value="ResourceId">Resource ID</option>
+                                <option value="Location">Location</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mt-4">
+                                <InputCheckbox class="form-check-input" id="paramRequired" @bind-Value="_newParameter.Required" />
+                                <label class="form-check-label" for="paramRequired">
+                                    Required
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Default Value</label>
+                        <InputText class="form-control" @bind-Value="_newParameter.DefaultValue" placeholder="Optional default value" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseParameterModal">
+                        Cancel
+                    </button>
+                    @if (_isEditMode)
+                    {
+                        <button type="button" class="btn btn-primary" @onclick="SaveEditedParameter">
+                            <i class="fa fa-save me-1"></i>Save Changes
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-primary" @onclick="AddParameter">
+                            <i class="fa fa-plus me-1"></i>Add Parameter
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Add Guardrail Modal *@
+@if (_showAddGuardrailModal)
+{
+    <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fa fa-shield-alt me-2"></i>Add Guardrail</h5>
+                    <button type="button" class="btn-close" @onclick="() => _showAddGuardrailModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name <span class="text-danger">*</span></label>
+                        <InputText class="form-control" @bind-Value="_newGuardrail.Name" placeholder="e.g., Max VM Size Limit" />
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <InputTextArea class="form-control" rows="2" @bind-Value="_newGuardrail.Description" 
+                                       placeholder="Explain what this guardrail enforces" />
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Type</label>
+                            <InputSelect class="form-select" @bind-Value="_newGuardrail.Type">
+                                <option value="Limit">Limit</option>
+                                <option value="Require">Require</option>
+                                <option value="Deny">Deny</option>
+                                <option value="Recommend">Recommend</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Action</label>
+                            <InputSelect class="form-select" @bind-Value="_newGuardrail.Action">
+                                <option value="Deny">Deny (Block)</option>
+                                <option value="Audit">Audit (Log Only)</option>
+                                <option value="Modify">Modify (Auto-correct)</option>
+                                <option value="Warn">Warn (Allow with Warning)</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Property</label>
+                        <InputText class="form-control" @bind-Value="_newGuardrail.Property" 
+                                   placeholder="e.g., vmSize, location, tags.environment" />
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Operator</label>
+                            <InputSelect class="form-select" @bind-Value="_newGuardrail.Operator">
+                                <option value="">Select operator...</option>
+                                <option value="==">Equals (==)</option>
+                                <option value="!=">Not Equals (!=)</option>
+                                <option value="<">&lt; (Less Than)</option>
+                                <option value="<=">&lt;= (Less or Equal)</option>
+                                <option value=">">&gt; (Greater Than)</option>
+                                <option value=">=">&gt;= (Greater or Equal)</option>
+                                <option value="in">In (List)</option>
+                                <option value="notIn">Not In (List)</option>
+                                <option value="matches">Matches (Regex)</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Value</label>
+                            <InputText class="form-control" @bind-Value="_newGuardrail.Value" 
+                                       placeholder="e.g., Standard_D2s_v3 or eastus,westus" />
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Error Message</label>
+                        <InputTextArea class="form-control" rows="2" @bind-Value="_newGuardrail.ErrorMessage" 
+                                       placeholder="Message shown when this guardrail is violated" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _showAddGuardrailModal = false">
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-primary" @onclick="AddGuardrail">
+                        <i class="fa fa-plus me-1"></i>Add Guardrail
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string Id { get; set; } = string.Empty;
+    
+    private TemplateDetail? _template;
+    private UpdateTemplateModel _model = new();
+    
+    private bool _loading = true;
+    private bool _saving;
+    private bool _validating;
+    private bool _isParsing;
+    private string _keywordsInput = "";
+    private string _useCasesInput = "";
+    private string _complianceFrameworks = "";
+    private bool _requiresApproval = true;
+    private bool _enforceCompliance = true;
+    private ValidationResult? _validationResult;
+    
+    // Git source fields
+    private bool _useGitSource;
+    private string _gitRepositoryUrl = "";
+    private string _gitBranch = "main";
+    private string _gitPath = "";
+    private bool _gitAutoSync = true;
+    private int _gitSyncInterval = 15;
+    
+    // Parameters
+    private List<CreateParameterModel> _parameters = new();
+    private bool _showAddParameterModal;
+    private CreateParameterModel _newParameter = new();
+    private CreateParameterModel? _editingParameter;  // Track which parameter is being edited
+    private bool _isEditMode => _editingParameter != null;
+    
+    // Guardrails
+    private List<GuardrailModel> _guardrails = new();
+    private bool _showAddGuardrailModal;
+    private GuardrailModel _newGuardrail = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTemplate();
+    }
+
+    private async Task LoadTemplate()
+    {
+        _loading = true;
+        try
+        {
+            _template = await TemplateApi.GetTemplateAsync(Id);
+            if (_template != null)
+            {
+                _model = new UpdateTemplateModel
+                {
+                    DisplayName = _template.DisplayName,
+                    Description = _template.Description,
+                    Category = _template.Category,
+                    TemplateContent = _template.TemplateContent,
+                    Keywords = _template.Keywords,
+                    UseCases = _template.UseCases,
+                    AiSelectionHint = _template.AiSelectionHint,
+                    DefaultExpirationDays = _template.DefaultExpirationDays,
+                    Status = _template.Status
+                };
+                _keywordsInput = string.Join(", ", _template.Keywords ?? new List<string>());
+                _useCasesInput = string.Join(", ", _template.UseCases ?? new List<string>());
+                _complianceFrameworks = string.Join(", ", _template.ComplianceFrameworks ?? new List<string>());
+                _requiresApproval = _template.RequiresApproval;
+                _enforceCompliance = _template.EnforceCompliance;
+                
+                // Load Git source info
+                if (!string.IsNullOrEmpty(_template.GitRepositoryUrl))
+                {
+                    _gitRepositoryUrl = _template.GitRepositoryUrl;
+                    _gitBranch = _template.GitBranch ?? "main";
+                    _gitPath = _template.GitPath ?? "";
+                    _gitAutoSync = _template.GitAutoSync;
+                    _gitSyncInterval = _template.GitSyncIntervalMinutes;
+                }
+                
+                // Load guardrails
+                if (_template.Guardrails != null && _template.Guardrails.Count > 0)
+                {
+                    _guardrails = _template.Guardrails.Select(g => new GuardrailModel
+                    {
+                        Name = g.Name,
+                        Description = g.Description,
+                        Type = g.Type,
+                        Property = g.Property,
+                        Operator = g.Operator,
+                        Value = g.Value,
+                        Action = g.Action,
+                        ErrorMessage = g.ErrorMessage
+                    }).ToList();
+                }
+                
+                // Load parameters
+                if (_template.Parameters != null && _template.Parameters.Count > 0)
+                {
+                    _parameters = _template.Parameters.Select(p => new CreateParameterModel
+                    {
+                        Name = p.Name,
+                        DisplayName = p.DisplayName,
+                        Description = p.Description,
+                        Type = p.Type,
+                        Required = p.Required,
+                        DefaultValue = p.DefaultValue?.ToString()
+                    }).ToList();
+                }
+                
+                // Check if using Git source
+                _useGitSource = !string.IsNullOrEmpty(_template.GitRepositoryUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load template: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        _saving = true;
+        try
+        {
+            // Parse comma-separated inputs
+            _model.Keywords = string.IsNullOrWhiteSpace(_keywordsInput) 
+                ? null 
+                : _keywordsInput.Split(',').Select(k => k.Trim()).Where(k => !string.IsNullOrEmpty(k)).ToList();
+            
+            _model.UseCases = string.IsNullOrWhiteSpace(_useCasesInput) 
+                ? null 
+                : _useCasesInput.Split(',').Select(k => k.Trim()).Where(k => !string.IsNullOrEmpty(k)).ToList();
+
+            _model.ComplianceFrameworks = string.IsNullOrWhiteSpace(_complianceFrameworks) 
+                ? null 
+                : _complianceFrameworks.Split(',').Select(k => k.Trim()).Where(k => !string.IsNullOrEmpty(k)).ToList();
+
+            _model.RequiresApproval = _requiresApproval;
+            _model.EnforceCompliance = _enforceCompliance;
+
+            // Git source configuration
+            if (!string.IsNullOrWhiteSpace(_gitRepositoryUrl))
+            {
+                _model.GitSource = new GitSourceModel
+                {
+                    RepositoryUrl = _gitRepositoryUrl,
+                    Branch = _gitBranch,
+                    Path = _gitPath,
+                    AutoSync = _gitAutoSync,
+                    SyncIntervalMinutes = _gitSyncInterval
+                };
+            }
+            
+            // Guardrails
+            _model.Guardrails = _guardrails.Count > 0 ? _guardrails : null;
+            
+            // Parameters
+            _model.Parameters = _parameters.Count > 0 ? _parameters : null;
+
+            _model.UpdatedBy = "admin";
+
+            var result = await TemplateApi.UpdateTemplateAsync(Id, _model);
+            
+            ToastService.ShowSuccess($"Template '{result?.DisplayName ?? _template?.DisplayName}' updated successfully");
+            Navigation.NavigateTo($"templates/{Id}");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to update template: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+    
+    private void ShowAddGuardrailModal()
+    {
+        _newGuardrail = new GuardrailModel
+        {
+            Type = "Limit",
+            Action = "Deny"
+        };
+        _showAddGuardrailModal = true;
+    }
+    
+    private void ShowAddParameterModal()
+    {
+        _editingParameter = null;  // Ensure we're in "add" mode, not "edit" mode
+        _newParameter = new CreateParameterModel
+        {
+            Type = "String",
+            Required = false
+        };
+        _showAddParameterModal = true;
+    }
+    
+    private void AddParameter()
+    {
+        if (string.IsNullOrWhiteSpace(_newParameter.Name))
+        {
+            ToastService.ShowError("Parameter name is required");
+            return;
+        }
+        
+        _parameters.Add(_newParameter);
+        _showAddParameterModal = false;
+        ToastService.ShowSuccess("Parameter added");
+    }
+    
+    private void RemoveParameter(CreateParameterModel param)
+    {
+        _parameters.Remove(param);
+        ToastService.ShowSuccess("Parameter removed");
+    }
+    
+    private void EditParameter(CreateParameterModel param)
+    {
+        // Store reference to the parameter being edited
+        _editingParameter = param;
+        
+        // Copy values to the form
+        _newParameter = new CreateParameterModel
+        {
+            Name = param.Name,
+            DisplayName = param.DisplayName,
+            Description = param.Description,
+            Type = param.Type,
+            Required = param.Required,
+            DefaultValue = param.DefaultValue,
+            AllowedValues = param.AllowedValues,
+            MinValue = param.MinValue,
+            MaxValue = param.MaxValue,
+            DisplayOrder = param.DisplayOrder
+        };
+        
+        _showAddParameterModal = true;
+    }
+    
+    private void SaveEditedParameter()
+    {
+        if (string.IsNullOrWhiteSpace(_newParameter.Name))
+        {
+            ToastService.ShowError("Parameter name is required");
+            return;
+        }
+        
+        if (_editingParameter != null)
+        {
+            // Update the existing parameter in place
+            _editingParameter.Name = _newParameter.Name;
+            _editingParameter.DisplayName = _newParameter.DisplayName;
+            _editingParameter.Description = _newParameter.Description;
+            _editingParameter.Type = _newParameter.Type;
+            _editingParameter.Required = _newParameter.Required;
+            _editingParameter.DefaultValue = _newParameter.DefaultValue;
+            _editingParameter.AllowedValues = _newParameter.AllowedValues;
+            _editingParameter.MinValue = _newParameter.MinValue;
+            _editingParameter.MaxValue = _newParameter.MaxValue;
+            _editingParameter.DisplayOrder = _newParameter.DisplayOrder;
+            
+            ToastService.ShowSuccess("Parameter updated");
+        }
+        
+        CloseParameterModal();
+    }
+    
+    private void CloseParameterModal()
+    {
+        _showAddParameterModal = false;
+        _editingParameter = null;
+        _newParameter = new CreateParameterModel();
+    }
+    
+    private void AddGuardrail()
+    {
+        if (string.IsNullOrWhiteSpace(_newGuardrail.Name))
+        {
+            ToastService.ShowError("Guardrail name is required");
+            return;
+        }
+        
+        _guardrails.Add(_newGuardrail);
+        _showAddGuardrailModal = false;
+        ToastService.ShowSuccess("Guardrail added");
+    }
+    
+    private void RemoveGuardrail(GuardrailModel guardrail)
+    {
+        _guardrails.Remove(guardrail);
+        ToastService.ShowSuccess("Guardrail removed");
+    }
+
+    private async Task ParseBicepParameters()
+    {
+        _isParsing = true;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_model.TemplateContent))
+            {
+                ToastService.ShowWarning("Template content is empty");
+                return;
+            }
+
+            var response = await Http.PostAsJsonAsync("api/templates/parse-bicep-parameters", new
+            {
+                BicepContent = _model.TemplateContent
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                var parsedParams = await response.Content.ReadFromJsonAsync<List<TemplateParameterDto>>();
+                if (parsedParams?.Any() == true)
+                {
+                    // Convert DTOs to CreateParameterModel
+                    var newParams = parsedParams.Select(p => new CreateParameterModel
+                    {
+                        Name = p.Name,
+                        DisplayName = p.DisplayName,
+                        Description = p.Description,
+                        Type = p.Type,
+                        Required = p.Required,
+                        DefaultValue = p.DefaultValue,
+                        AllowedValues = p.AllowedValues?.Select(v => v?.ToString() ?? "").ToList() ?? new List<string>(),
+                        MinValue = p.MinValue,
+                        MaxValue = p.MaxValue
+                    }).ToList();
+
+                    // Merge with existing parameters
+                    var existingByName = _parameters.ToDictionary(p => p.Name, p => p);
+                    int added = 0, updated = 0, unchanged = 0;
+
+                    foreach (var newParam in newParams)
+                    {
+                        if (existingByName.TryGetValue(newParam.Name, out var existing))
+                        {
+                            // Parameter exists - check if it needs updating
+                            if (existing.Type != newParam.Type ||
+                                existing.Description != newParam.Description ||
+                                existing.Required != newParam.Required ||
+                                existing.DefaultValue != newParam.DefaultValue)
+                            {
+                                // Update existing parameter
+                                existing.Type = newParam.Type;
+                                existing.Description = newParam.Description;
+                                existing.Required = newParam.Required;
+                                existing.DefaultValue = newParam.DefaultValue;
+                                existing.AllowedValues = newParam.AllowedValues;
+                                existing.MinValue = newParam.MinValue;
+                                existing.MaxValue = newParam.MaxValue;
+                                updated++;
+                            }
+                            else
+                            {
+                                unchanged++;
+                            }
+                        }
+                        else
+                        {
+                            // New parameter - add it
+                            _parameters.Add(newParam);
+                            added++;
+                        }
+                    }
+
+                    // Show summary
+                    var message = $"Parsed {parsedParams.Count} parameters: {added} added, {updated} updated, {unchanged} unchanged";
+                    ToastService.ShowSuccess(message);
+                }
+                else
+                {
+                    ToastService.ShowWarning("No parameters found in Bicep template");
+                }
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                ToastService.ShowError($"Failed to parse parameters: {error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Error parsing Bicep parameters: {ex.Message}");
+        }
+        finally
+        {
+            _isParsing = false;
+        }
+    }
+
+    private async Task ValidateTemplate()
+    {
+        _validating = true;
+        _validationResult = null;
+        
+        try
+        {
+            _validationResult = await TemplateApi.ValidateTemplateAsync(new ValidateTemplateModel
+            {
+                Name = _template?.Name ?? "",
+                TemplateContent = _model.TemplateContent,
+                Format = _template?.Format ?? "Bicep"
+            });
+
+            if (_validationResult.IsValid)
+            {
+                ToastService.ShowSuccess("Template validation passed");
+            }
+            else
+            {
+                ToastService.ShowError($"Validation failed with {_validationResult.Errors.Count} errors");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Validation error: {ex.Message}");
+        }
+        finally
+        {
+            _validating = false;
+        }
+    }
+
+    private string GetStatusColor(string status) => status switch
+    {
+        "Published" => "success",
+        "Draft" => "secondary",
+        "PendingApproval" => "warning",
+        "Deprecated" => "danger",
+        _ => "secondary"
+    };
+}

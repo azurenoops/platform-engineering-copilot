@@ -20,9 +20,8 @@ Azure Arc extends Azure management and services to any infrastructure, enabling:
 | Agent | Capabilities | Functions |
 |-------|-------------|-----------|
 | 🔍 **Discovery** | Inventory, health monitoring, extension tracking | 4 functions |
-| 🛡️ **Compliance** | STIG/CIS/Azure compliance scanning, Guest Configuration | 3 functions |
+| 🛡️ **Compliance** | STIG/CIS/Azure compliance scanning, Guest Configuration, security posture | 6 functions |
 | 🏗️ **Infrastructure** | Onboarding scripts, extension deployment at scale | 3 functions |
-| 🔐 **Security** | Security posture, Defender status, recommendations | 3 functions |
 
 ---
 
@@ -247,9 +246,9 @@ Check the onboarding and connection status of Arc machines.
 
 ---
 
-## 🔐 Security Agent - Arc Functions
+## 🔐 Compliance Agent - Arc Security Functions
 
-The Security Agent assesses security posture and manages threat protection.
+The Compliance Agent assesses security posture and manages threat protection for Arc machines.
 
 ### Functions
 

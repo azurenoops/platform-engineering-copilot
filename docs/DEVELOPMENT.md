@@ -1,20 +1,19 @@
 # Development Guide
 
-**Last Updated:** October 29, 2025  
-**Version:** 2.1
+**Last Updated:** January 2026  
+**Version:** 3.1
 
-This comprehensive guide covers the MCP-centric architecture, development setup, contribution guidelines, and API documentation for the Platform Engineering Copilot.
+This comprehensive guide covers the BaseAgent/BaseTool architecture, development setup, contribution guidelines, and API documentation for the Platform Engineering Copilot.
 
 ## 📋 Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
 2. [Development Setup](#development-setup)
-3. [Project Structure](#project-structure)
-4. [Contributing Guidelines](#contributing-guidelines)
-5. [API Reference](#api-reference)
-6. [Testing](#testing)
-7. [Building and Packaging](#building-and-packaging)
-8. [Debugging](#debugging)
+3. [Contributing Guidelines](#contributing-guidelines)
+4. [API Reference](#api-reference)
+5. [Testing](#testing)
+6. [Building and Packaging](#building-and-packaging)
+7. [Debugging](#debugging)
 
 ---
 
@@ -22,75 +21,281 @@ This comprehensive guide covers the MCP-centric architecture, development setup,
 
 ### System Architecture
 
-The Platform Engineering Copilot is now an **MCP-centric platform** with dual-mode operation. The MCP Server (port 5100) orchestrates six specialized AI agents and services both web clients (HTTP) and AI clients (stdio MCP protocol).
+The Platform Engineering Copilot is an **MCP-centric multi-agent platform** with dual-mode operation. The MCP Server (port 5100) orchestrates **7 specialized AI agents** (52 tools) and serves both web clients (HTTP) and AI clients (stdio MCP protocol).
 
 ```mermaid
 graph TB
   subgraph "Client Layer"
-    ChatUI[Platform Chat :5001]
-    AdminUI[Admin Client :5003]
-    MCPClients[GitHub Copilot / Claude Desktop]
+    ChatUI[Platform Chat<br/>:5001]
+    AdminUI[Admin Client<br/>:5000]
+    MCPClients[GitHub Copilot /<br/>Claude Desktop]
+  end
+
+  subgraph "API Layer"
+    AdminAPI[Admin API<br/>:5050]
   end
 
   subgraph "MCP Server Layer"
-    MCP[MCP Server :5100\nHTTP + stdio]
+    MCP[MCP Server :5100<br/>HTTP + stdio dual-mode]
   end
-    ```
-    platform-engineering-copilot/
-    ├── Platform.Engineering.Copilot.sln               # Solution root
-    ├── appsettings.json                               # Shared configuration (loaded by Admin API)
-    ├── docs/                                          # Architecture, development, integration guides
-    ├── extensions/                                    # MCP extension packages (GitHub, M365)
-    ├── infra/                                         # Bicep and Terraform infrastructure modules
-    ├── scripts/                                       # Utility scripts (Docker, data seeding, tooling)
-    ├── src/
-    │   ├── Platform.Engineering.Copilot.Mcp/          # Dual-mode MCP server (stdio + HTTP bridge)
-    │   │   ├── Server/                                # Minimal API bridge for /mcp/chat
-    │   │   └── Tools/                                 # MCP tool surface backed by Semantic Kernel
-    │   ├── Platform.Engineering.Copilot.Chat/         # Chat service + React SPA host
-    │   │   ├── Controllers/                           # REST endpoints for conversations/messages
-    │   │   ├── Hubs/                                  # SignalR hubs for streaming responses
-    │   │   ├── Services/                              # Chat orchestration services
-    │   │   └── ClientApp/                             # React 18 front-end with Tailwind
-    │   ├── Platform.Engineering.Copilot.Admin.API/    # Admin REST API (Swagger-enabled)
-    │   │   ├── Controllers/                           # Template, deployment, governance endpoints
-    │   │   └── Services/                              # Business logic wiring to Core & Data
-    │   ├── Platform.Engineering.Copilot.Admin.Client/ # Admin SPA host + React client
-    │   │   ├── Controllers/                           # Razor fallback endpoints
-    │   │   └── ClientApp/                             # React 18 admin dashboard
-    │   ├── Platform.Engineering.Copilot.Core/         # Multi-agent orchestration, plugins, services
-    │   │   ├── Plugins/                               # Semantic Kernel plugins per agent domain
-    │   │   ├── Services/                              # Cost, compliance, infrastructure engines
-    │   │   └── Models/                                # Domain models shared across services
-    │   └── Platform.Engineering.Copilot.Data/         # EF Core context, migrations, seeding
-    │       ├── Context/                               # `PlatformEngineeringCopilotContext`
-    │       ├── Entities/                              # Persistent entity definitions
-    │       ├── Migrations/                            # EF Core migrations history
-    │       └── Seed/                                  # Optional data seeding helpers
-    ├── tests/
-    │   ├── Platform.Engineering.Copilot.Tests.Unit/   # xUnit + FluentAssertions unit tests
-    │   ├── Platform.Engineering.Copilot.Tests.Integration/
-    │   └── Platform.Engineering.Copilot.Tests.Manual/
-    ├── docker-compose.yml                             # Full platform deployment
-    ├── docker-compose.dev.yml                         # Hot-reload friendly developer compose file
-    ├── DOCKER.md                                      # Container orchestration documentation
-    └── README.md                                      # Project overview and quick start
-    ```
-  - Provides services for infrastructure provisioning, compliance assessments, cost analysis, security scanning, documentation automation
-  - Shared abstractions used by MCP Server, Platform Chat, and Admin services
 
-#### Data Layer (`Platform.Engineering.Copilot.Data`)
-- **Technology**: Entity Framework Core 9.0
-- **Responsibilities**:
-  - Hosts the consolidated `PlatformEngineeringCopilotContext` for templates, deployments, approvals, and analytics
-  - Provides migrations, seed scripts, and data access services consumed by MCP, Chat, and Admin workloads
-  - Ships with SQLite by default and can switch to SQL Server for shared environments
+  subgraph "Agent Layer"
+    Infra[Infrastructure Agent<br/>6 tools]
+    Compliance[Compliance Agent<br/>12 tools]
+    Cost[Cost Management Agent<br/>6 tools]
+    Discovery[Discovery Agent<br/>9 tools]
+    Environment[Environment Agent<br/>10 tools]
+    KnowledgeBase[Knowledge Base Agent<br/>8 tools]
+    Configuration[Configuration Agent<br/>1 tool]
+  end
 
-#### Test Projects (`Platform.Engineering.Copilot.Tests.*`)
-- **Technology**: xUnit, FluentAssertions, AutoFixture
+  subgraph "Data Layer"
+    EFCore[(EF Core 9.0<br/>SQLite / SQL Server)]
+    Redis[(Redis Cache)]
+  end
+
+  subgraph "Azure Services"
+    ARM[Azure Resource Manager]
+    CostMgmt[Cost Management API]
+    Policy[Azure Policy]
+    Monitor[Azure Monitor]
+    KeyVault[Key Vault]
+  end
+
+  ChatUI --> MCP
+  AdminUI --> AdminAPI
+  AdminAPI --> MCP
+  MCPClients --> MCP
+
+  MCP --> Infra
+  MCP --> Compliance
+  MCP --> Cost
+  MCP --> Discovery
+  MCP --> Environment
+  MCP --> KnowledgeBase
+  MCP --> Configuration
+
+  Infra --> ARM
+  Cost --> CostMgmt
+  Compliance --> Policy
+  Discovery --> Monitor
+  Configuration --> KeyVault
+
+  MCP --> EFCore
+  MCP --> Redis
+```
+
+### Service Architecture
+
+| Service | Port | Protocol | Description |
+|---------|------|----------|-------------|
+| **MCP Server** | 5100 | HTTP + stdio | Dual-mode orchestration hub for all agents |
+| **Platform Chat** | 5001 | HTTP + WebSocket | SignalR-based chat UI with streaming responses |
+| **Admin API** | 5050 | HTTP/REST | Swagger-enabled admin operations |
+| **Admin Client** | 5000 | HTTP | Blazor WebAssembly UI served by Nginx |
+
+### Agent Architecture
+
+The platform uses a **fast-path agent selection pattern** where the `PlatformSelectionStrategy` routes requests to specialized agents based on intent:
+
+| Agent | ID | Tools | Domain |
+|-------|-----|-------|--------|
+| **Compliance** | `compliance` | 12 | NIST 800-53, FedRAMP, remediation |
+| **Infrastructure** | `infrastructure` | 6 | Azure provisioning, IaC generation |
+| **Cost Management** | `cost-management` | 6 | Cost analysis, optimization |
+| **Discovery** | `discovery` | 9 | Resource inventory, health |
+| **Environment** | `environment` | 10 | Template lifecycle, drift detection |
+| **Knowledge Base** | `knowledgebase` | 8 | Compliance education, NIST/STIG |
+| **Configuration** | `configuration` | 1 | Subscription settings |
+
+> **Remediation Boundary**: Compliance Agent handles configuration-level changes (tags, encryption, firewall rules via ARM PATCH). Infrastructure Agent handles resource lifecycle changes (create/delete, topology).
+
+### Project Structure
+
+```
+platform-engineering-copilot/
+├── Platform.Engineering.Copilot.sln               # Solution root
+├── appsettings.json                               # Shared configuration
+├── docs/                                          # Architecture and development guides
+├── extensions/                                    # MCP extension packages (GitHub, M365)
+├── infra/                                         # Bicep, Terraform, Kubernetes IaC
+│   ├── bicep/                                     # Azure Bicep modules
+│   ├── terraform/                                 # Terraform modules
+│   └── kubernetes/                                # K8s manifests
+├── scripts/                                       # Utility scripts
+├── src/
+│   ├── Platform.Engineering.Copilot.Mcp/          # Dual-mode MCP server (stdio + HTTP)
+│   │   ├── Server/                                # Minimal API HTTP bridge
+│   │   ├── Tools/                                 # MCP tool surface
+│   │   └── Middleware/                            # Request/response middleware
+│   ├── Platform.Engineering.Copilot.Agents/       # All specialized agents (consolidated)
+│   │   ├── Common/                                # BaseAgent, BaseTool, SystemPromptLoader
+│   │   ├── Prompts/                               # Externalized agent prompts (*.prompt.txt)
+│   │   ├── Orchestration/                         # Agent orchestration & selection strategies
+│   │   ├── Infrastructure/                        # Infrastructure agent (6 tools)
+│   │   ├── Compliance/                            # Compliance agent (12 tools)
+│   │   ├── CostManagement/                        # Cost management agent (6 tools)
+│   │   ├── Discovery/                             # Discovery agent (9 tools)
+│   │   ├── Environment/                           # Environment agent (10 tools)
+│   │   ├── KnowledgeBase/                         # Knowledge base agent (8 tools)
+│   │   └── Configuration/                         # Configuration agent (1 tool)
+│   ├── Platform.Engineering.Copilot.Chat/         # Chat UI with SignalR
+│   │   ├── Controllers/                           # REST endpoints
+│   │   ├── Hubs/                                  # SignalR hubs
+│   │   ├── Services/                              # Chat orchestration services
+│   │   ├── Data/                                  # Chat-specific EF Core context
+│   │   ├── ClientApp/                             # Frontend static assets
+│   │   └── wwwroot/                               # Static files
+│   ├── Platform.Engineering.Copilot.Admin.API/    # Admin REST API
+│   │   ├── Controllers/                           # Admin endpoints
+│   │   └── Extensions/                            # Service registration
+│   ├── Platform.Engineering.Copilot.Admin.Client/ # Blazor WebAssembly client
+│   │   ├── Pages/                                 # Razor component pages
+│   │   ├── Shared/                                # Shared layout components
+│   │   ├── Services/                              # HTTP client services
+│   │   └── wwwroot/                               # Static assets
+│   ├── Platform.Engineering.Copilot.Core/         # Shared core library
+│   │   ├── Data/                                  # EF Core context & migrations
+│   │   ├── Models/                                # Domain models
+│   │   ├── Services/                              # Domain services
+│   │   │   ├── Azure/                             # Azure SDK integrations
+│   │   │   ├── Compliance/                        # Compliance scanning services
+│   │   │   ├── Chat/                              # Chat processing services
+│   │   │   ├── GitHub/                            # GitHub integration
+│   │   │   ├── TemplateGeneration/                # IaC template generation
+│   │   │   └── Validation/                        # Validation services
+│   │   ├── Interfaces/                            # Service contracts
+│   │   ├── Configuration/                         # Configuration models
+│   │   ├── Authorization/                         # Auth policies & handlers
+│   │   ├── Constants/                             # Application constants
+│   │   └── Helpers/                               # Utility helpers
+│   ├── Platform.Engineering.Copilot.State/        # State management
+│   │   ├── Abstractions/                          # State interfaces
+│   │   ├── Stores/                                # State store implementations
+│   │   ├── Models/                                # State models
+│   │   └── Services/                              # State services
+│   └── Platform.Engineering.Copilot.Channels/     # Communication channels
+│       ├── Abstractions/                          # Channel interfaces
+│       ├── Configuration/                         # Channel configuration
+│       └── Services/                              # Channel implementations
+├── tests/
+│   ├── Platform.Engineering.Copilot.Tests.Unit/
+│   ├── Platform.Engineering.Copilot.Tests.Integration/
+│   └── Platform.Engineering.Copilot.Tests.Manual/
+├── docker-compose.mcp.yml                         # MCP-only deployment
+├── docker-compose.mcp-chat.yml                    # MCP + Chat
+├── docker-compose.mcp-admin.yml                   # MCP + Admin
+└── docker-compose.mcp-chat-admin.yml              # Full platform
+```
+
+### Layer Responsibilities
+
+#### MCP Server Layer (`Platform.Engineering.Copilot.Mcp`)
+- **Technology**: .NET 9.0 Minimal API + ModelContextProtocol SDK
+- **Key Components**:
+  - `Server/` - HTTP bridge endpoints (`/mcp/chat`, `/health`)
+  - `Tools/` - MCP tool definitions backed by Semantic Kernel
+  - `Prompts/` - System prompts and agent instructions
+  - `Middleware/` - Request logging, error handling, telemetry
 - **Responsibilities**:
-  - Unit, integration, and manual tests covering MCP Server, agents, web applications
-  - Regression validation for agent workflows and infrastructure provisioning scenarios
+  - Dual-mode operation: stdio for AI clients (GitHub Copilot, Claude Desktop), HTTP for web clients
+  - Routes requests through Orchestrator for intent detection and agent selection
+  - Exposes MCP tools that invoke Semantic Kernel plugins
+
+#### Agent Layer (`Platform.Engineering.Copilot.Agents`)
+- **Technology**: .NET 9.0 + Semantic Kernel 1.26.0
+- **Key Components**:
+  - `Orchestration/` - `PlatformAgentGroupChat`, `PlatformSelectionStrategy`, `PlatformTerminationStrategy`
+  - `{Domain}/` - Domain-specific agent implementations (Infrastructure, Compliance, Cost, etc.)
+  - `Common/` - Shared agent abstractions and base classes
+- **Responsibilities**:
+  - Implements multi-agent orchestration using Semantic Kernel Agent Framework
+  - Selection strategy routes to appropriate specialized agent based on intent
+  - Termination strategy determines when agent conversation is complete
+  - Domain agents implement `ISpecializedAgent` and expose `[KernelFunction]` operations
+
+#### Core Layer (`Platform.Engineering.Copilot.Core`)
+- **Technology**: .NET 9.0 Class Library + Entity Framework Core 9.0
+- **Key Components**:
+  - `Data/` - `PlatformEngineeringCopilotContext`, entities, migrations
+  - `Services/Azure/` - ARM SDK wrappers for resource management
+  - `Services/Compliance/` - NIST 800-53 scanning and remediation
+  - `Services/TemplateGeneration/` - Bicep/Terraform generation
+  - `Services/GitHub/` - Repository automation (ATO workflows)
+  - `Interfaces/` - Service contracts for dependency injection
+- **Responsibilities**:
+  - Shared domain logic consumed by MCP, Agents, Chat, and Admin
+  - Azure SDK integrations (ARM, Cost Management, Policy, Monitor)
+  - EF Core data access with SQLite (default) or SQL Server
+  - Cross-cutting concerns: logging, configuration, validation
+
+#### State Layer (`Platform.Engineering.Copilot.State`)
+- **Technology**: .NET 9.0 Class Library
+- **Key Components**:
+  - `Abstractions/` - `IStateStore`, `IConversationState`, `IAgentMemory`
+  - `Stores/` - In-memory, Redis, and persistent store implementations
+  - `Models/` - State models (conversation history, agent context)
+- **Responsibilities**:
+  - Manages conversation and session state across requests
+  - Provides memory/context providers for Semantic Kernel agents
+  - Supports both volatile (in-memory) and durable (Redis, database) persistence
+
+#### Channels Layer (`Platform.Engineering.Copilot.Channels`)
+- **Technology**: .NET 9.0 Class Library
+- **Key Components**:
+  - `Abstractions/` - `IChannel`, `IMessageHandler`, channel interfaces
+  - `Services/` - SignalR, HTTP, and stdio channel implementations
+  - `Configuration/` - Channel-specific settings
+- **Responsibilities**:
+  - Abstracts communication transport from business logic
+  - SignalR channel for real-time streaming to Chat UI
+  - HTTP channel for REST API clients
+  - stdio channel for MCP protocol with AI clients
+
+#### Chat Layer (`Platform.Engineering.Copilot.Chat`)
+- **Technology**: ASP.NET Core 9.0 + SignalR
+- **Key Components**:
+  - `Controllers/` - REST API for conversations and messages
+  - `Hubs/` - `ChatHub` for real-time streaming
+  - `Services/` - Chat orchestration and message processing
+  - `Data/` - Chat-specific SQLite context for transcripts
+- **Responsibilities**:
+  - Web-based chat interface with SignalR streaming
+  - Persists conversation history and message attachments
+  - Proxies requests to MCP Server for agent processing
+
+#### Admin API Layer (`Platform.Engineering.Copilot.Admin.API`)
+- **Technology**: ASP.NET Core 9.0 + Swagger
+- **Key Components**:
+  - `Controllers/` - Template, Environment, Deployment, Governance, Cost endpoints
+  - `Extensions/` - Service registration and middleware configuration
+- **Responsibilities**:
+  - RESTful admin operations with Swagger documentation
+  - CRUD for templates, environments, deployments
+  - Governance workflows and compliance snapshots
+
+#### Admin Client Layer (`Platform.Engineering.Copilot.Admin.Client`)
+- **Technology**: Blazor WebAssembly (standalone) + Nginx
+- **Key Components**:
+  - `Pages/` - Razor component pages (Templates, Environments, Deployments)
+  - `Shared/` - Layout components (MainLayout, NavMenu)
+  - `Services/` - Typed HTTP clients for Admin API
+- **Responsibilities**:
+  - Browser-based admin dashboard
+  - Template management with Git sync configuration
+  - Environment lifecycle monitoring
+  - Served by Nginx in Docker (port 5000 → 80)
+
+#### Test Layer (`Platform.Engineering.Copilot.Tests.*`)
+- **Technology**: xUnit 2.9+, FluentAssertions, Moq
+- **Test Projects**:
+  - `Tests.Unit/` - Isolated component tests with mocked dependencies
+  - `Tests.Integration/` - API and database integration tests
+  - `Tests.Manual/` - Manual verification scenarios
+- **Responsibilities**:
+  - 80%+ code coverage for unit tests
+  - WebApplicationFactory-based integration testing
+  - Agent workflow regression validation
 
 ### Technology Stack
 
@@ -104,15 +309,13 @@ graph TB
 - **Swashbuckle 9.0.5** for Admin API Swagger documentation
 
 #### Frontend
-- **React 18** single-page applications (Admin Client)
-- **ASP.NET Core Razor + React hybrid** for Platform Chat (SignalR streaming UI)
-- **TypeScript 4.9** for client-side typing
-- **Tailwind CSS 3.3** for utility-first styling
-- **Axios** for Admin API and MCP HTTP calls
+- **Blazor WebAssembly** for Admin Client (standalone WASM, served by Nginx in Docker)
+- **ASP.NET Core Razor** for Platform Chat (SignalR streaming UI)
+- **Bootstrap 5.3** for styling
+- **Blazored.Toast/Modal** for UI components
 
 #### AI & ML
 - **Azure OpenAI GPT-4o** (primary LLM) with function calling enabled
-- **Semantic Kernel Plugins** (`InfrastructurePlugin`, `CompliancePlugin`, `CostManagementPlugin`, etc.)
 - **ManagedAgentRouter** for intent detection and multi-agent handoffs
 - **Context Memory Providers** for session persistence across HTTP and stdio modes
 
@@ -154,9 +357,6 @@ cd platform-engineering-copilot
 dotnet restore Platform.Engineering.Copilot.sln
 dotnet build Platform.Engineering.Copilot.sln
 dotnet test Platform.Engineering.Copilot.sln
-
-npm install --prefix src/Platform.Engineering.Copilot.Chat/ClientApp
-npm install --prefix src/Platform.Engineering.Copilot.Admin.Client/ClientApp
 ```
 
 ### 2. Database Setup
@@ -202,83 +402,38 @@ Update `ConnectionStrings:SqlServerConnection` to `Server=localhost,1433` and re
 az cloud set --name AzureUSGovernment
 az login
 
-# Azure Commercial (uncomment if applicable)
+# Azure Commercial
 # az cloud set --name AzureCloud
 # az login
 
-dotnet clean Platform.Engineering.Copilot.sln
-dotnet restore Platform.Engineering.Copilot.sln
-dotnet build Platform.Engineering.Copilot.sln --configuration Debug
+# Set tenant for token passthrough
+export AZURE_TENANT_ID=$(az account show --query tenantId -o tsv)
+```
 
-# Build individual services in Release if needed
-dotnet build src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj --configuration Release
-dotnet build src/Platform.Engineering.Copilot.Chat/Platform.Engineering.Copilot.Chat.csproj --configuration Release
-dotnet build src/Platform.Engineering.Copilot.Admin.API/Platform.Engineering.Copilot.Admin.API.csproj --configuration Release
-dotnet build src/Platform.Engineering.Copilot.Admin.Client/Platform.Engineering.Copilot.Admin.Client.csproj --configuration Release
+### 4. Configuration
+
+Configuration is centralized at the repository root (`appsettings.json`):
+
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Data Source=/path/to/platform_engineering_copilot_management.db",
-    "SqlServerConnection": "Server=localhost,1433;Database=PlatformCopilot;User Id=sa;Password=YourStrongPassword!;TrustServerCertificate=true"
-dotnet build Platform.Engineering.Copilot.sln --configuration Release --no-restore
-
-dotnet publish src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj \
-  --configuration Release \
-  --output ./publish/mcp \
-  --runtime linux-x64 \
-  --self-contained false
-
-dotnet publish src/Platform.Engineering.Copilot.Chat/Platform.Engineering.Copilot.Chat.csproj \
-  --configuration Release \
-  --output ./publish/chat \
-  --runtime linux-x64 \
-  --self-contained false
-
-dotnet publish src/Platform.Engineering.Copilot.Admin.API/Platform.Engineering.Copilot.Admin.API.csproj \
-  --configuration Release \
-  --output ./publish/admin-api \
-  --runtime linux-x64 \
-  --self-contained false
-
-# Build the Admin SPA assets before publishing the host
-npm run build --prefix src/Platform.Engineering.Copilot.Admin.Client/ClientApp
-dotnet publish src/Platform.Engineering.Copilot.Admin.Client/Platform.Engineering.Copilot.Admin.Client.csproj \
-  --configuration Release \
-  --output ./publish/admin-client \
-  --runtime linux-x64 \
-  --self-contained false
+    "DefaultConnection": "Data Source=platform_engineering_copilot_management.db"
+  },
+  "Gateway": {
     "AzureOpenAI": {
-      "Endpoint": "https://your-openai-endpoint/",
+      "Endpoint": "https://your-openai-endpoint.openai.azure.us/",
       "ApiKey": "<api-key>",
-      "DeploymentName": "gpt-4o",
-      "ChatDeploymentName": "gpt-4o",
-      "EmbeddingDeploymentName": "text-embedding-ada-002"
-```dockerfile
-# src/Platform.Engineering.Copilot.Mcp/Dockerfile
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
-WORKDIR /src
-
-COPY ["src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj", "src/Platform.Engineering.Copilot.Mcp/"]
-COPY ["src/Platform.Engineering.Copilot.Core/Platform.Engineering.Copilot.Core.csproj", "src/Platform.Engineering.Copilot.Core/"]
-RUN dotnet restore "src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj"
-
-COPY . .
-WORKDIR "/src/src/Platform.Engineering.Copilot.Mcp"
-RUN dotnet publish "Platform.Engineering.Copilot.Mcp.csproj" -c Release -o /app/publish
-
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
-WORKDIR /app
-COPY --from=build /app/publish .
-ENTRYPOINT ["dotnet", "Platform.Engineering.Copilot.Mcp.dll", "--http"]
+      "DeploymentName": "gpt-4o"
+    }
+  },
+  "GitSync": {
+    "AutoSyncEnabled": true,
+    "DefaultSyncIntervalMinutes": 30
+  }
+}
+```
 
 > Keep secrets outside source control. Use environment variables, `.env` (for Docker), or [user secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets).
-
-#### User Secrets (optional)
-
-docker build -t platform-copilot-mcp:latest -f src/Platform.Engineering.Copilot.Mcp/Dockerfile .
-docker build -t platform-copilot-chat:latest -f src/Platform.Engineering.Copilot.Chat/Dockerfile .
-docker build -t platform-copilot-admin-api:latest -f src/Platform.Engineering.Copilot.Admin.API/Dockerfile .
-docker build -t platform-copilot-admin-client:latest -f src/Platform.Engineering.Copilot.Admin.Client/Dockerfile .
 
 ### 5. Running the Application
 
@@ -289,24 +444,23 @@ docker build -t platform-copilot-admin-client:latest -f src/Platform.Engineering
 dotnet run --project src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj
 
 # HTTP bridge for web clients (default port 5100)
-    <TargetFramework>net9.0</TargetFramework>
+dotnet run --project src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj -- --http
 ```
 
 #### Platform Chat (REST + SignalR)
 
 ```bash
 dotnet run --project src/Platform.Engineering.Copilot.Chat/Platform.Engineering.Copilot.Chat.csproj --urls http://0.0.0.0:5001
-npm start --prefix src/Platform.Engineering.Copilot.Chat/ClientApp
 ```
 
-Run `npm run build --prefix src/Platform.Engineering.Copilot.Chat/ClientApp` if you prefer serving static assets instead of the React dev server.
-
-#### Admin API & Admin Client
+#### Admin API & Admin Client (Blazor WebAssembly)
 
 ```bash
-dotnet run --project src/Platform.Engineering.Copilot.Admin.API/Platform.Engineering.Copilot.Admin.API.csproj --urls http://0.0.0.0:5002
-dotnet run --project src/Platform.Engineering.Copilot.Admin.Client/Platform.Engineering.Copilot.Admin.Client.csproj --urls http://0.0.0.0:5003
-npm start --prefix src/Platform.Engineering.Copilot.Admin.Client/ClientApp
+# Admin API
+dotnet run --project src/Platform.Engineering.Copilot.Admin.API/Platform.Engineering.Copilot.Admin.API.csproj --urls http://0.0.0.0:5050
+
+# Admin Client (Blazor WASM - runs on port 5000)
+dotnet run --project src/Platform.Engineering.Copilot.Admin.Client/Platform.Engineering.Copilot.Admin.Client.csproj --urls http://0.0.0.0:5000
 ```
 
 #### IDE Tooling
@@ -317,13 +471,13 @@ npm start --prefix src/Platform.Engineering.Copilot.Admin.Client/ClientApp
 #### Docker Compose (Development)
 
 ```bash
-docker-compose -f docker-compose.dev.yml up --build
+docker-compose -f docker-compose.mcp-chat-admin.yml up --build
 docker-compose logs -f platform-mcp
 ```
 
 ---
 
-## 📁 Project Structure
+## 🤝 Contributing Guidelines
 
 ### Getting Started
 
@@ -560,7 +714,8 @@ Feature requests should include:
 
 - **MCP HTTP Bridge**: `http://localhost:5100`
 - **Platform Chat API**: `http://localhost:5001`
-- **Admin API**: `http://localhost:5002`
+- **Admin API**: `http://localhost:5050`
+- **Admin Client**: `http://localhost:5000`
 - **SignalR Hub**: `ws://localhost:5001/chathub`
 
 ### MCP HTTP Bridge
@@ -670,7 +825,7 @@ await connection.invoke("SendMessage", "john.doe", "/mcp show_cost_trends subscr
 
 ### Admin API
 
-Swagger UI is available at `http://localhost:5002` (development). Core controller routes include:
+Swagger UI is available at `http://localhost:5050` (development). Core controller routes include:
 
 | Controller | Route | Highlights |
 | --- | --- | --- |
@@ -971,11 +1126,9 @@ dotnet publish src/Platform.Engineering.Copilot.Admin.API/Platform.Engineering.C
   --self-contained false \
   --output ./publish/admin-api
 
-npm run build --prefix src/Platform.Engineering.Copilot.Admin.Client/ClientApp
+# Admin Client (Blazor WASM - publishes to wwwroot)
 dotnet publish src/Platform.Engineering.Copilot.Admin.Client/Platform.Engineering.Copilot.Admin.Client.csproj \
   --configuration Release \
-  --runtime linux-x64 \
-  --self-contained false \
   --output ./publish/admin-client
 ```
 
@@ -1074,7 +1227,7 @@ Example: `1.2.3`
    - `Platform.Engineering.Copilot.Chat` → **Start**
    - `Platform.Engineering.Copilot.Admin.API` → **Start**
    - `Platform.Engineering.Copilot.Admin.Client` → **Start**
-3. Press F5. Visual Studio will launch each service with the configured ports (5100/5001/5002/5003).
+3. Press F5. Visual Studio will launch each service with the configured ports (MCP=5100, Chat=5001, Admin API=5050, Admin Client=5000).
 4. Use **Debug → Windows → Output** and Serilog sinks for detailed diagnostics.
 
 #### VS Code
@@ -1126,7 +1279,7 @@ RUN dotnet publish src/Platform.Engineering.Copilot.Admin.API/Platform.Engineeri
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
-EXPOSE 5002
+EXPOSE 5050
 
 RUN apt-get update && apt-get install -y unzip procps \
   && rm -rf /var/lib/apt/lists/*

@@ -33,7 +33,7 @@ public class MultiAgentOrchestrationManualTests : McpHttpTestBase
         // Assert
         AssertSuccessfulResponse(response);
         
-        Output.WriteLine($"Agents invoked: {string.Join(", ", response.AgentsInvoked)}");
+        Output.WriteLine($"Agents invoked: {string.Join(", ", response.AgentsInvoked ?? new List<string>())}");
     }
 
     [ManualTestFact]

@@ -77,11 +77,22 @@ public class McpHttpBridge
 
                 try
                 {
+                    // Convert conversation history to tuple format
+                    List<(string Role, string Content)>? history = null;
+                    if (requestBody.History != null && requestBody.History.Count > 0)
+                    {
+                        history = requestBody.History
+                            .Select(h => (h.Role, h.Content))
+                            .ToList();
+                        logger.LogInformation("📜 Passing {Count} history messages to orchestrator", history.Count);
+                    }
+
                     logger.LogInformation("🔄 Processing message through McpServer orchestrator");
                     var result = await mcpServer.ProcessChatRequestAsync(
                         requestBody.Message,
                         requestBody.ConversationId,
                         requestBody.Context,
+                        history,
                         context.RequestAborted);
 
                     logger.LogInformation("✅ Got result from orchestrator | Success: {Success}", result.Success);
@@ -170,10 +181,21 @@ public class McpHttpBridge
                     requestBody.Message.Substring(0, Math.Min(50, requestBody.Message.Length)), 
                     requestBody.ConversationId ?? "new");
 
+                // Convert conversation history to tuple format
+                List<(string Role, string Content)>? history = null;
+                if (requestBody.History != null && requestBody.History.Count > 0)
+                {
+                    history = requestBody.History
+                        .Select(h => (h.Role, h.Content))
+                        .ToList();
+                    logger.LogInformation("📜 Passing {Count} history messages to orchestrator", history.Count);
+                }
+
                 var result = await mcpServer.ProcessChatRequestAsync(
                     requestBody.Message,
                     requestBody.ConversationId,
                     requestBody.Context,
+                    history,
                     context.RequestAborted);
 
                 logger.LogInformation("✅ Got result from orchestrator | Success: {Success}", result.Success);
@@ -444,7 +466,7 @@ public class McpHttpBridge
                 
                 try
                 {
-                    templateCount = await dbContext.EnvironmentTemplates.CountAsync();
+                    templateCount = await dbContext.InfrastructureTemplates.CountAsync();
                     fileCount = await dbContext.TemplateFiles.CountAsync();
                 }
                 catch (Exception ex)
@@ -595,6 +617,21 @@ public class ChatRequest
     public string? ConversationId { get; set; }
     public Dictionary<string, object>? Context { get; set; }
     public List<FileAttachment>? Attachments { get; set; }
+    
+    /// <summary>
+    /// Conversation history from previous turns.
+    /// Each entry has "role" (user/assistant) and "content" fields.
+    /// </summary>
+    public List<ConversationHistoryEntry>? History { get; set; }
+}
+
+/// <summary>
+/// A single entry in conversation history
+/// </summary>
+public class ConversationHistoryEntry
+{
+    public string Role { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
 }
 
 // File attachment model (base64-encoded)

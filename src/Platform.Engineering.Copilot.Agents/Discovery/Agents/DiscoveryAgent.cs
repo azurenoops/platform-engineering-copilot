@@ -20,9 +20,11 @@ public class DiscoveryAgent : BaseAgent
     public override string AgentId => "discovery";
     public override string AgentName => "Discovery Agent";
     public override string Description =>
-        "Handles Azure resource discovery, inventory management, resource dependency mapping, " +
-        "and health monitoring. Can discover resources across subscriptions, analyze tagging compliance, " +
-        "and identify orphaned or unused resources.";
+        "Handles Azure RESOURCE discovery, inventory management, resource dependency mapping, " +
+        "and health monitoring. Can discover individual Azure resources (VMs, storage, databases, etc.) across subscriptions, " +
+        "list resource groups, analyze tagging compliance, and identify orphaned or unused resources. " +
+        "NOTE: For PROVISIONED ENVIRONMENTS (template-based deployments), use Environment Agent instead. " +
+        "If user asks about 'environments', route to Environment Agent.";
 
     protected override float Temperature => (float)_options.Temperature;
     protected override int MaxTokens => _options.MaxTokens;
@@ -42,6 +44,10 @@ public class DiscoveryAgent : BaseAgent
         ResourceDetailsTool resourceDetailsTool,
         DependencyMappingTool dependencyMappingTool,
         ResourceHealthTool resourceHealthTool,
+        ResourceGroupListTool resourceGroupListTool,
+        ResourceGroupSummaryTool resourceGroupSummaryTool,
+        ResourceTagSearchTool resourceTagSearchTool,
+        SubscriptionInventoryTool subscriptionInventoryTool,
         IAgentStateManager? agentStateManager = null,
         ISharedMemory? sharedMemory = null,
         IChannelManager? channelManager = null,
@@ -59,6 +65,10 @@ public class DiscoveryAgent : BaseAgent
         RegisterTool(resourceDetailsTool);
         RegisterTool(dependencyMappingTool);
         RegisterTool(resourceHealthTool);
+        RegisterTool(resourceGroupListTool);
+        RegisterTool(resourceGroupSummaryTool);
+        RegisterTool(resourceTagSearchTool);
+        RegisterTool(subscriptionInventoryTool);
 
         Logger.LogInformation("✅ Discovery Agent initialized (Temperature: {Temperature}, MaxTokens: {MaxTokens}, " +
             "HealthMonitoring: {HealthMonitoring}, DependencyMapping: {DependencyMapping})",
@@ -147,13 +157,11 @@ public class DiscoveryAgent : BaseAgent
     {
         var subscriptionInfo = !string.IsNullOrEmpty(_options.DefaultSubscriptionId)
             ? $@"
-
 ## Default Configuration
 - **Default Subscription ID**: {_options.DefaultSubscriptionId}
 - When users don't specify a subscription, automatically use the default subscription ID
 - ALWAYS use the default subscription when available unless user explicitly specifies a different one"
             : @"
-
 ## No Default Subscription
 - No default subscription is configured
 - Ask user for subscription ID when needed, or use list_subscriptions tool first";
@@ -166,56 +174,15 @@ public class DiscoveryAgent : BaseAgent
             ? "- `map_resource_dependencies`: Map dependencies between resources (NICs, Disks, VNets)"
             : "";
 
-        return $"""
-            You are the Discovery Agent for the Platform Engineering Copilot system. Your expertise is in:
+        var variables = new Dictionary<string, string>
+        {
+            ["DependencyTool"] = dependencyInfo,
+            ["HealthTool"] = healthInfo,
+            ["SubscriptionInfo"] = subscriptionInfo
+        };
 
-            ## Core Capabilities
-            - Comprehensive Azure resource discovery and inventory
-            - Resource filtering by type, location, tags, and resource group
-            - Resource dependency mapping and visualization
-            - Resource health monitoring and troubleshooting
-            - Tagging analysis and compliance checking
-            - Orphaned resource detection
-
-            ## Available Tools
-            - `list_subscriptions`: List all accessible Azure subscriptions
-            - `discover_azure_resources`: Discover resources with filtering options
-            - `get_resource_details`: Get detailed properties of a specific resource
-            {dependencyInfo}
-            {healthInfo}
-            {subscriptionInfo}
-
-            ## Discovery Workflow
-            1. If subscription is unknown, use list_subscriptions to find available subscriptions
-            2. Use discover_azure_resources with appropriate filters
-            3. For specific resources, use get_resource_details
-            4. For architecture understanding, use map_resource_dependencies
-            5. For troubleshooting, use get_resource_health
-
-            ## Response Guidelines
-            - When listing resources, provide counts and summaries by type/location
-            - Include resource IDs in responses for follow-up operations
-            - Highlight any issues (missing tags, unhealthy resources, orphaned items)
-            - Suggest related operations when helpful (e.g., "I can also map dependencies for this VM")
-
-            ## Discovery Boundaries
-            You handle DISCOVERY and INVENTORY operations:
-            ✅ List and discover Azure resources
-            ✅ Get resource details and properties
-            ✅ Map resource dependencies
-            ✅ Check resource health status
-            ✅ Analyze tagging and compliance
-
-            You do NOT handle:
-            ❌ Creating or modifying resources (hand off to Infrastructure Agent)
-            ❌ Compliance remediation (hand off to Compliance Agent)
-            ❌ Cost analysis and optimization (hand off to Cost Management Agent)
-
-            ## Important
-            - Use tools proactively when you have enough information
-            - Don't ask for subscription if a default is configured
-            - Provide concise summaries with option for more details
-            """;
+        var template = SystemPromptLoader.LoadFromType<DiscoveryAgent>("DiscoveryAgent.prompt.txt") ?? "";
+        return SystemPromptLoader.ApplyVariables(template, variables);
     }
 
     /// <summary>

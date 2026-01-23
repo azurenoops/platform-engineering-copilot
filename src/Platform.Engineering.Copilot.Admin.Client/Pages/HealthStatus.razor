@@ -1,0 +1,260 @@
+@page "/health"
+@inject EnvironmentApiService EnvironmentApi
+@inject IToastService ToastService
+
+<PageTitle>Health Status</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4><i class="fa fa-heartbeat me-2"></i>Health Status</h4>
+    <button class="btn btn-primary" @onclick="RefreshHealth" disabled="@_refreshing">
+        @if (_refreshing)
+        {
+            <span class="spinner-border spinner-border-sm me-1"></span>
+            <span>Refreshing...</span>
+        }
+        else
+        {
+            <i class="fa fa-sync me-1"></i>
+            <span>Refresh All</span>
+        }
+    </button>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading health status...</span>
+        </div>
+    </div>
+}
+else if (_environments.Count == 0)
+{
+    <div class="alert alert-info">
+        <i class="fa fa-info-circle me-2"></i>
+        No environments found. <a href="environments/create">Provision a new environment</a> to get started.
+    </div>
+}
+else
+{
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card border-success">
+                <div class="card-body text-center">
+                    <h2 class="text-success">@_healthyCount</h2>
+                    <small class="text-muted"><i class="fa fa-check-circle me-1"></i>Healthy</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-warning">
+                <div class="card-body text-center">
+                    <h2 class="text-warning">@_degradedCount</h2>
+                    <small class="text-muted"><i class="fa fa-exclamation-circle me-1"></i>Degraded</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-danger">
+                <div class="card-body text-center">
+                    <h2 class="text-danger">@_unhealthyCount</h2>
+                    <small class="text-muted"><i class="fa fa-times-circle me-1"></i>Unhealthy</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <i class="fa fa-server me-2"></i>Environment Health
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Environment</th>
+                        <th>Template</th>
+                        <th>Status</th>
+                        <th>Health</th>
+                        <th>Est. Cost</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var env in _environments)
+                    {
+                        <tr>
+                            <td>
+                                <a href="environments/@env.Id">@env.Name</a>
+                                @if (!string.IsNullOrEmpty(env.DisplayName))
+                                {
+                                    <br /><small class="text-muted">@env.DisplayName</small>
+                                }
+                            </td>
+                            <td>@env.TemplateName</td>
+                            <td>
+                                <span class="badge @GetStatusBadgeClass(env.Status)">@env.Status</span>
+                            </td>
+                            <td>
+                                @{
+                                    var health = _healthStatus.GetValueOrDefault(env.Id);
+                                }
+                                @if (health != null)
+                                {
+                                    <span class="badge @GetHealthBadgeClass(health.OverallHealth)">
+                                        @health.OverallHealth
+                                    </span>
+                                    @if (health.HasDrift)
+                                    {
+                                        <span class="badge bg-warning text-dark ms-1">Drift</span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td>
+                                @if (env.EstimatedMonthlyCost > 0)
+                                {
+                                    <span>@env.EstimatedMonthlyCost.ToString("C0")/mo</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" 
+                                        @onclick="() => CheckHealth(env.Id)"
+                                        disabled="@(_checkingHealth.Contains(env.Id))">
+                                    @if (_checkingHealth.Contains(env.Id))
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="fa fa-stethoscope"></i>
+                                    }
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _refreshing;
+    private List<EnvironmentListItem> _environments = new();
+    private Dictionary<string, EnvironmentHealth> _healthStatus = new();
+    private HashSet<string> _checkingHealth = new();
+    
+    private int _healthyCount => _healthStatus.Count(h => h.Value.OverallHealth == "Healthy");
+    private int _degradedCount => _healthStatus.Count(h => h.Value.OverallHealth == "Degraded");
+    private int _unhealthyCount => _healthStatus.Count(h => h.Value.OverallHealth == "Unhealthy");
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _environments = await EnvironmentApi.GetEnvironmentsAsync();
+            
+            // Load health for each environment
+            foreach (var env in _environments)
+            {
+                try
+                {
+                    var health = await EnvironmentApi.GetHealthAsync(env.Id);
+                    if (health != null)
+                    {
+                        _healthStatus[env.Id] = health;
+                    }
+                }
+                catch
+                {
+                    // Ignore individual health check failures
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load data: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CheckHealth(string id)
+    {
+        _checkingHealth.Add(id);
+        StateHasChanged();
+        
+        try
+        {
+            var health = await EnvironmentApi.GetHealthAsync(id);
+            if (health != null)
+            {
+                _healthStatus[id] = health;
+                ToastService.ShowSuccess($"Health: {health.OverallHealth}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Health check failed: {ex.Message}");
+        }
+        finally
+        {
+            _checkingHealth.Remove(id);
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshHealth()
+    {
+        _refreshing = true;
+        StateHasChanged();
+        
+        try
+        {
+            _healthStatus.Clear();
+            foreach (var env in _environments)
+            {
+                await CheckHealth(env.Id);
+            }
+            ToastService.ShowSuccess("Health status refreshed");
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private string GetStatusBadgeClass(string status) => status switch
+    {
+        "Running" => "bg-success",
+        "Provisioning" => "bg-info",
+        "Updating" => "bg-warning text-dark",
+        "Failed" => "bg-danger",
+        "Stopped" => "bg-secondary",
+        _ => "bg-secondary"
+    };
+
+    private string GetHealthBadgeClass(string health) => health switch
+    {
+        "Healthy" => "bg-success",
+        "Degraded" => "bg-warning text-dark",
+        "Unhealthy" => "bg-danger",
+        _ => "bg-secondary"
+    };
+}

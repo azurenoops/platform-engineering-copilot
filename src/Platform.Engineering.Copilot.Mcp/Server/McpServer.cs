@@ -15,6 +15,7 @@ namespace Platform.Engineering.Copilot.Mcp.Server;
 /// </summary>
 public class McpServer
 {
+    private readonly ConfigurationMcpTools _configurationTools;
     private readonly ComplianceMcpTools _complianceTools;
     private readonly DiscoveryMcpTools _discoveryTools;
     private readonly InfrastructureMcpTools _infrastructureTools;
@@ -25,6 +26,7 @@ public class McpServer
     private readonly JsonSerializerOptions _jsonOptions;
 
     public McpServer(
+        ConfigurationMcpTools configurationTools,
         ComplianceMcpTools complianceTools,
         DiscoveryMcpTools discoveryTools,
         InfrastructureMcpTools infrastructureTools,
@@ -33,6 +35,7 @@ public class McpServer
         PlatformAgentGroupChat agentGroupChat,
         ILogger<McpServer> logger)
     {
+        _configurationTools = configurationTools;
         _complianceTools = complianceTools;
         _discoveryTools = discoveryTools;
         _infrastructureTools = infrastructureTools;
@@ -55,12 +58,14 @@ public class McpServer
         string message,
         string? conversationId = null,
         Dictionary<string, object>? context = null,
+        List<(string Role, string Content)>? conversationHistory = null,
         CancellationToken cancellationToken = default)
     {
         conversationId ??= Guid.NewGuid().ToString();
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation("📨 Processing chat request via McpServer | ConvId: {ConvId}", conversationId);
+        _logger.LogInformation("📨 Processing chat request via McpServer | ConvId: {ConvId} | HistoryCount: {HistoryCount}", 
+            conversationId, conversationHistory?.Count ?? 0);
 
         try
         {
@@ -70,6 +75,16 @@ public class McpServer
                 ConversationId = conversationId,
                 UserId = "mcp-user"
             };
+
+            // Populate message history from conversation history
+            if (conversationHistory != null && conversationHistory.Count > 0)
+            {
+                foreach (var (role, content) in conversationHistory)
+                {
+                    agentContext.AddMessage(content, isUser: role.Equals("user", StringComparison.OrdinalIgnoreCase));
+                }
+                _logger.LogDebug("📜 Loaded {Count} messages from conversation history", conversationHistory.Count);
+            }
 
             // Add any additional context from MCP client
             if (context != null)
@@ -209,6 +224,19 @@ public class McpServer
     private McpResponse HandleToolsList(McpRequest request)
     {
         var tools = new List<McpTool>();
+
+        // Configuration Tools
+        tools.Add(CreateTool("configure_subscription", "Configure the default Azure subscription for all Platform Engineering Copilot operations. " +
+            "Actions: 'set' to configure, 'get' to show current, 'clear' to remove. This setting persists across sessions.", new
+        {
+            type = "object",
+            properties = new
+            {
+                action = new { type = "string", description = "Action to perform: 'set', 'get', 'clear', or 'show'" },
+                subscriptionId = new { type = "string", description = "Azure subscription ID (GUID) when action is 'set'" }
+            },
+            required = new[] { "action" }
+        }));
 
         // Compliance Tools
         tools.Add(CreateTool("compliance_assess", "Run a NIST 800-53 compliance assessment against Azure resources", new
@@ -595,6 +623,11 @@ public class McpServer
         {
             string result = toolName switch
             {
+                // Configuration Tools
+                "configure_subscription" => await _configurationTools.ConfigureSubscriptionAsync(
+                    GetArg<string>(args, "action") ?? "get",
+                    GetArg<string>(args, "subscriptionId")),
+
                 // Compliance Tools - signatures match ComplianceMcpTools
                 "compliance_assess" => await _complianceTools.RunComplianceAssessmentAsync(
                     GetArg<string>(args, "subscription_id"),

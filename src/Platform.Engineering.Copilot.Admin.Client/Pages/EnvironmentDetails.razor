@@ -1,0 +1,1151 @@
+@page "/environments/{id}"
+@inject EnvironmentApiService EnvironmentApi
+@inject NavigationManager Navigation
+@inject IToastService ToastService
+
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">Home</a></li>
+        <li class="breadcrumb-item"><a href="environments">Environments</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@(_environment?.DisplayName ?? "Details")</li>
+    </ol>
+</nav>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_environment == null)
+{
+    <div class="alert alert-warning">
+        <h5 class="alert-heading">Environment Not Found</h5>
+        <p>The environment you're looking for doesn't exist or has been deleted.</p>
+        <hr>
+        <a href="environments" class="btn btn-primary">Back to All Environments</a>
+    </div>
+}
+else
+{
+    <!-- Header Section -->
+    <div class="d-flex justify-content-between align-items-start mb-4">
+        <div>
+            <h4 class="mb-1">@_environment.DisplayName</h4>
+            <div class="text-muted">
+                <span class="me-3"><i class="fa fa-folder me-1"></i>@_environment.ResourceGroup</span>
+                <span class="me-3"><i class="fa fa-map-marker me-1"></i>@_environment.Location</span>
+                <span class="me-3"><i class="fa fa-layer-group me-1"></i>@_environment.TemplateName v@_environment.TemplateVersion</span>
+            </div>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-outline-warning" @onclick="DetectDrift" disabled="@_detectingDrift">
+                @if (_detectingDrift)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+                    <i class="fa fa-exchange-alt me-1"></i>
+                }
+                Detect Drift
+            </button>
+            <button class="btn btn-outline-danger" @onclick="ShowDeleteConfirmation">
+                <i class="fa fa-trash me-1"></i>Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- Status Banner -->
+    @if (_environment.Status == "Failed" || _environment.HasDrift)
+    {
+        <div class="alert alert-@(_environment.Status == "Failed" ? "danger" : "warning") mb-4">
+            <div class="d-flex align-items-center">
+                <i class="fa fa-@(_environment.Status == "Failed" ? "exclamation-circle" : "exclamation-triangle") fa-2x me-3"></i>
+                <div>
+                    <h6 class="alert-heading mb-1">@(_environment.Status == "Failed" ? "Deployment Failed" : "Configuration Drift Detected")</h6>
+                    <p class="mb-0">
+                        @if (_environment.Status == "Failed")
+                        {
+                            <text>@(_environment.StatusMessage ?? "The environment deployment has failed. Check the logs for details.")</text>
+                        }
+                        else
+                        {
+                            <text>@_environment.DriftCount configuration drift(s) detected. The environment has diverged from the template definition.</text>
+                        }
+                    </p>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Overview Cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="text-muted small mb-1">Status</div>
+                    <h5 class="mb-0">
+                        <span class="status-badge @GetStatusClass(_environment.Status)">
+                            @_environment.Status
+                        </span>
+                    </h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="text-muted small mb-1">Estimated Cost/mo</div>
+                    <h5 class="mb-0 text-success">$@_environment.EstimatedMonthlyCost.ToString("N2")</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="text-muted small mb-1">Drift Status</div>
+                    <h5 class="mb-0">
+                        @if (_environment.HasDrift)
+                        {
+                            <span class="badge bg-warning text-dark">
+                                <i class="fa fa-exclamation-triangle me-1"></i>@_environment.DriftCount drift(s)
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-success">
+                                <i class="fa fa-check-circle me-1"></i>No Drift
+                            </span>
+                        }
+                    </h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="text-muted small mb-1">Expires</div>
+                    <h5 class="mb-0">
+                        @if (_environment.ExpiresAt.HasValue)
+                        {
+                            var daysUntilExpiration = (_environment.ExpiresAt.Value - DateTime.UtcNow).Days;
+                            <span class="@(daysUntilExpiration <= 7 ? "text-danger" : "text-muted")">
+                                @_environment.ExpiresAt.Value.ToString("MMM dd, yyyy")
+                            </span>
+                            <div class="text-muted small">@daysUntilExpiration days</div>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Never</span>
+                        }
+                    </h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Details Tabs -->
+    <ul class="nav nav-tabs mb-3" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(_activeTab == "overview" ? "active" : "")" 
+                    @onclick="@(() => SetActiveTab("overview"))" 
+                    type="button">
+                Overview
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(_activeTab == "parameters" ? "active" : "")" 
+                    @onclick="@(() => SetActiveTab("parameters"))" 
+                    type="button">
+                Parameters
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(_activeTab == "tags" ? "active" : "")" 
+                    @onclick="@(() => SetActiveTab("tags"))" 
+                    type="button">
+                Tags
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(_activeTab == "resources" ? "active" : "")" 
+                    @onclick="@(() => SetActiveTab("resources"))" 
+                    type="button">
+                Resources
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(_activeTab == "logs" ? "active" : "")" 
+                    @onclick="@(() => SetActiveTab("logs"))" 
+                    type="button">
+                Logs
+                @if (_environment?.Status == "Failed")
+                {
+                    <span class="badge bg-danger ms-1">!</span>
+                }
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(_activeTab == "activity" ? "active" : "")" 
+                    @onclick="@(() => SetActiveTab("activity"))" 
+                    type="button">
+                Activity Log
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link @(_activeTab == "drift" ? "active" : "")" 
+                    @onclick="@(() => SetActiveTab("drift"))" 
+                    type="button">
+                Drift
+                @if (_environment?.HasDrift == true)
+                {
+                    <span class="badge bg-warning text-dark ms-1">@_environment.DriftCount</span>
+                }
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- Overview Tab -->
+        @if (_activeTab == "overview")
+        {
+            <div class="card">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="mb-3">Environment Information</h6>
+                            <dl class="row">
+                                <dt class="col-sm-4">Environment Name</dt>
+                                <dd class="col-sm-8">@_environment.Name</dd>
+
+                                <dt class="col-sm-4">Display Name</dt>
+                                <dd class="col-sm-8">@_environment.DisplayName</dd>
+
+                                <dt class="col-sm-4">Description</dt>
+                                <dd class="col-sm-8">@(_environment.Description ?? "N/A")</dd>
+
+                                <dt class="col-sm-4">Environment ID</dt>
+                                <dd class="col-sm-8"><code>@_environment.Id</code></dd>
+
+                                <dt class="col-sm-4">Subscription ID</dt>
+                                <dd class="col-sm-8"><code>@_environment.SubscriptionId</code></dd>
+
+                                <dt class="col-sm-4">Resource Group</dt>
+                                <dd class="col-sm-8">@_environment.ResourceGroup</dd>
+
+                                <dt class="col-sm-4">Location</dt>
+                                <dd class="col-sm-8">@_environment.Location</dd>
+                            </dl>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="mb-3">Template & Lifecycle</h6>
+                            <dl class="row">
+                                <dt class="col-sm-4">Template</dt>
+                                <dd class="col-sm-8">
+                                    <a href="templates/@_environment.TemplateId">@_environment.TemplateName</a>
+                                </dd>
+
+                                <dt class="col-sm-4">Template Version</dt>
+                                <dd class="col-sm-8">@_environment.TemplateVersion</dd>
+
+                                <dt class="col-sm-4">Owner</dt>
+                                <dd class="col-sm-8">@(_environment.OwnerEmail ?? "N/A")</dd>
+
+                                <dt class="col-sm-4">Created At</dt>
+                                <dd class="col-sm-8">@_environment.CreatedAt.ToString("MMM dd, yyyy HH:mm:ss")</dd>
+
+                                <dt class="col-sm-4">Created By</dt>
+                                <dd class="col-sm-8">@_environment.CreatedBy</dd>
+
+                                @if (_environment.UpdatedAt.HasValue)
+                                {
+                                    <dt class="col-sm-4">Updated At</dt>
+                                    <dd class="col-sm-8">@_environment.UpdatedAt.Value.ToString("MMM dd, yyyy HH:mm:ss")</dd>
+                                }
+
+                                <dt class="col-sm-4">Auto-Delete</dt>
+                                <dd class="col-sm-8">
+                                    @if (_environment.AutoDelete)
+                                    {
+                                        <span class="badge bg-warning">Enabled</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Disabled</span>
+                                    }
+                                </dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Parameters Tab -->
+        @if (_activeTab == "parameters")
+        {
+            <div class="card">
+                <div class="card-body">
+                    @if (_environment.ParameterValues?.Any() == true)
+                    {
+                        @foreach (var param in _environment.ParameterValues)
+                        {
+                            <div class="list-group-item mb-2">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <strong>@param.Key</strong>
+                                        <p class="text-muted small mb-1">
+                                            @if (param.Value is System.Text.Json.JsonElement jsonElement)
+                                            {
+                                                @jsonElement.ToString()
+                                            }
+                                            else
+                                            {
+                                                @param.Value?.ToString()
+                                            }
+                                        </p>
+                                        <span class="badge bg-info">@GetParameterType(param.Value)</span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">No parameters configured for this environment.</p>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Tags Tab -->
+        @if (_activeTab == "tags")
+        {
+            <div class="card">
+                <div class="card-body">
+                    @if (_environment.Tags?.Any() == true)
+                    {
+                        @foreach (var tag in _environment.Tags)
+                        {
+                            <div class="list-group-item mb-2">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <strong>@tag.Key</strong>
+                                        <p class="text-muted small mb-0">@tag.Value</p>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">No tags configured for this environment.</p>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Resources Tab -->
+        @if (_activeTab == "resources")
+        {
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>
+                        <i class="fa fa-cubes me-2"></i>Deployed Resources
+                        @if (_resources?.TotalCount > 0)
+                        {
+                            <span class="badge bg-secondary ms-2">@_resources.TotalCount</span>
+                        }
+                    </span>
+                    <div>
+                        <button class="btn btn-outline-primary btn-sm me-2" @onclick="SyncResourcesFromAzure" disabled="@_syncingResources">
+                            @if (_syncingResources)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            else
+                            {
+                                <i class="fa fa-cloud-download-alt me-1"></i>
+                            }
+                            Sync from Azure
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="LoadResources" disabled="@_loadingResources">
+                            @if (_loadingResources)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            else
+                            {
+                                <i class="fa fa-sync-alt me-1"></i>
+                            }
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    @if (_loadingResources || _syncingResources)
+                    {
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="text-muted mt-2">@(_syncingResources ? "Syncing resources from Azure..." : "Loading resources...")</p>
+                        </div>
+                    }
+                    else if (_resources == null || !_resources.Items.Any())
+                    {
+                        <div class="text-center py-5">
+                            <i class="fa fa-cloud fa-3x text-muted mb-3"></i>
+                            <p class="text-muted mb-3">No resources deployed yet for this environment.</p>
+                            <button class="btn btn-primary" @onclick="SyncResourcesFromAzure">
+                                <i class="fa fa-cloud-download-alt me-1"></i>Sync Resources from Azure
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var resource in _resources.Items)
+                        {
+                            <div class="list-group-item mb-2">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex align-items-center mb-1">
+                                            <i class="@GetResourceTypeIcon(resource.ResourceType) me-2 text-primary"></i>
+                                            @if (!string.IsNullOrEmpty(resource.AzurePortalUrl))
+                                            {
+                                                <a href="@resource.AzurePortalUrl" target="_blank" class="text-decoration-none">
+                                                    <strong>@resource.Name</strong>
+                                                    <i class="fa fa-external-link-alt fa-xs ms-1"></i>
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <strong>@resource.Name</strong>
+                                            }
+                                        </div>
+                                        <p class="text-muted small mb-1">@resource.ResourceId</p>
+                                        <div>
+                                            <span class="badge bg-info me-1">@GetResourceTypeShort(resource.ResourceType)</span>
+                                            <span class="badge bg-secondary me-1">@resource.Location</span>
+                                            <span class="badge @GetProvisioningStateBadge(resource.ProvisioningState)">@resource.ProvisioningState</span>
+                                        </div>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(resource.AzurePortalUrl))
+                                    {
+                                        <a href="@resource.AzurePortalUrl" target="_blank" class="btn btn-sm btn-outline-primary" title="View in Azure Portal">
+                                            <i class="fa fa-external-link-alt"></i>
+                                        </a>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Logs Tab -->
+        @if (_activeTab == "logs")
+        {
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Deployment Logs</h5>
+                </div>
+                <div class="card-body">
+                    @if (_environment?.Status == "Failed")
+                    {
+                        <div class="alert alert-danger">
+                            <h6 class="alert-heading"><i class="bi bi-exclamation-triangle-fill me-2"></i>Deployment Error</h6>
+                            <hr>
+                            <pre class="mb-0 text-wrap" style="white-space: pre-wrap; word-break: break-word; font-size: 0.85rem;">@(_environment.StatusMessage ?? "No error details available. Check container logs for more information.")</pre>
+                        </div>
+                    }
+                    else if (_environment?.Status == "Running")
+                    {
+                        <div class="alert alert-success">
+                            <h6 class="alert-heading"><i class="bi bi-check-circle-fill me-2"></i>Deployment Successful</h6>
+                            <p class="mb-0">@(_environment.StatusMessage ?? "Environment deployed successfully.")</p>
+                        </div>
+                    }
+                    else if (_environment?.Status == "Provisioning")
+                    {
+                        <div class="alert alert-info">
+                            <h6 class="alert-heading"><i class="bi bi-hourglass-split me-2"></i>Deployment In Progress</h6>
+                            <p class="mb-0">The environment is currently being provisioned...</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-secondary">
+                            <p class="mb-0">Status: @(_environment?.Status ?? "Unknown")</p>
+                            @if (!string.IsNullOrEmpty(_environment?.StatusMessage))
+                            {
+                                <hr>
+                                <pre class="mb-0 text-wrap" style="white-space: pre-wrap;">@_environment.StatusMessage</pre>
+                            }
+                        </div>
+                    }
+
+                    <div class="mt-4">
+                        <h6>Deployment Details</h6>
+                        <dl class="row mb-0">
+                            <dt class="col-sm-3">Environment ID</dt>
+                            <dd class="col-sm-9"><code>@_environment?.Id</code></dd>
+
+                            <dt class="col-sm-3">Template</dt>
+                            <dd class="col-sm-9">@_environment?.TemplateName v@_environment?.TemplateVersion</dd>
+
+                            <dt class="col-sm-3">Resource Group</dt>
+                            <dd class="col-sm-9">@_environment?.ResourceGroup</dd>
+
+                            <dt class="col-sm-3">Location</dt>
+                            <dd class="col-sm-9">@_environment?.Location</dd>
+
+                            <dt class="col-sm-3">Created At</dt>
+                            <dd class="col-sm-9">@_environment?.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")</dd>
+
+                            <dt class="col-sm-3">Created By</dt>
+                            <dd class="col-sm-9">@_environment?.CreatedBy</dd>
+                        </dl>
+                    </div>
+
+                    <div class="mt-4 text-muted small">
+                        <i class="bi bi-info-circle me-1"></i>
+                        For detailed container logs, run: <code>docker logs pec-admin-api --tail 100</code>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Activity Log Tab -->
+        @if (_activeTab == "activity")
+        {
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Activity History</h5>
+                    <button class="btn btn-outline-primary btn-sm" @onclick="LoadActivities" disabled="@_loadingActivities">
+                        @if (_loadingActivities)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-arrow-clockwise me-1"></i> Refresh
+                    </button>
+                </div>
+                <div class="card-body">
+                    @if (_loadingActivities)
+                    {
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="text-muted mt-2">Loading activities...</p>
+                        </div>
+                    }
+                    else if (_activities == null || !_activities.Items.Any())
+                    {
+                        <div class="text-center py-4">
+                            <i class="bi bi-clock-history display-4 text-muted"></i>
+                            <p class="text-muted mt-2">No activity recorded yet for this environment.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="timeline">
+                            @foreach (var activity in _activities.Items)
+                            {
+                                <div class="timeline-item mb-3">
+                                    <div class="d-flex align-items-start">
+                                        <div class="timeline-icon @GetActivityIconClass(activity.ActivityType) me-3">
+                                            <i class="bi @GetActivityIcon(activity.ActivityType)"></i>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <div class="d-flex justify-content-between align-items-start">
+                                                <div>
+                                                    <strong>@activity.ActivityType</strong>
+                                                    <span class="badge @GetStatusBadgeClass(activity.Status) ms-2">@activity.Status</span>
+                                                </div>
+                                                <small class="text-muted">@activity.Timestamp.ToString("g")</small>
+                                            </div>
+                                            <p class="mb-1">@activity.Description</p>
+                                            @if (!string.IsNullOrEmpty(activity.UserName))
+                                            {
+                                                <small class="text-muted">By: @activity.UserName</small>
+                                            }
+                                            @if (!string.IsNullOrEmpty(activity.ErrorMessage))
+                                            {
+                                                <div class="alert alert-danger mt-2 mb-0 py-1 px-2 small">
+                                                    <i class="bi bi-exclamation-triangle me-1"></i>@activity.ErrorMessage
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        @if (_activities.HasMore)
+                        {
+                            <div class="text-center mt-3">
+                                <button class="btn btn-outline-secondary btn-sm" @onclick="LoadMoreActivities">
+                                    Load More (@(_activities.TotalCount - _activities.Items.Count) remaining)
+                                </button>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Drift Tab -->
+        @if (_activeTab == "drift")
+        {
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fa fa-exchange-alt me-2"></i>Drift Detection
+                        @if (_environment?.HasDrift == true)
+                        {
+                            <span class="badge bg-warning text-dark ms-2">@_environment.DriftCount items</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-success ms-2">In Sync</span>
+                        }
+                    </h5>
+                    <div>
+                        <button class="btn btn-outline-primary btn-sm" @onclick="DetectDrift" disabled="@_detectingDrift">
+                            @if (_detectingDrift)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                                <span>Detecting...</span>
+                            }
+                            else
+                            {
+                                <i class="fa fa-search me-1"></i>
+                                <span>Detect Drift</span>
+                            }
+                        </button>
+                        @if (_environment?.HasDrift == true)
+                        {
+                            <button class="btn btn-outline-success btn-sm ms-2" @onclick="RemediateDrift" disabled="@_remediating">
+                                @if (_remediating)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                    <span>Remediating...</span>
+                                }
+                                else
+                                {
+                                    <i class="fa fa-wrench me-1"></i>
+                                    <span>Remediate All</span>
+                                }
+                            </button>
+                        }
+                    </div>
+                </div>
+                <div class="card-body">
+                    @if (_environment?.DriftItems == null || !_environment.DriftItems.Any())
+                    {
+                        <div class="text-center py-5">
+                            <i class="fa fa-check-circle display-1 text-success mb-3"></i>
+                            <h5 class="text-muted">No Drift Detected</h5>
+                            <p class="text-muted">This environment is in sync with its template definition.</p>
+                            <button class="btn btn-primary" @onclick="DetectDrift" disabled="@_detectingDrift">
+                                <i class="fa fa-search me-1"></i>Run Drift Detection
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Drift Summary Cards -->
+                        <div class="row mb-4">
+                            <div class="col-md-3">
+                                <div class="card bg-danger text-white">
+                                    <div class="card-body text-center py-2">
+                                        <h3 class="mb-0">@(_environment.DriftItems.Count(d => d.DriftType == "Missing"))</h3>
+                                        <small>Missing</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card bg-warning text-dark">
+                                    <div class="card-body text-center py-2">
+                                        <h3 class="mb-0">@(_environment.DriftItems.Count(d => d.DriftType == "Extra"))</h3>
+                                        <small>Extra</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card bg-info text-white">
+                                    <div class="card-body text-center py-2">
+                                        <h3 class="mb-0">@(_environment.DriftItems.Count(d => d.DriftType == "Configuration"))</h3>
+                                        <small>Config Changes</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card bg-success text-white">
+                                    <div class="card-body text-center py-2">
+                                        <h3 class="mb-0">@(_environment.DriftItems.Count(d => d.CanAutoRemediate))</h3>
+                                        <small>Auto-Remediable</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Drift Items List -->
+                        <div class="list-group">
+                            @foreach (var drift in _environment.DriftItems.OrderByDescending(d => d.Severity == "Critical").ThenByDescending(d => d.Severity == "Warning"))
+                            {
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div class="flex-grow-1">
+                                            <div class="d-flex align-items-center mb-1">
+                                                <span class="badge @GetDriftTypeBadgeClass(drift.DriftType) me-2">@drift.DriftType</span>
+                                                <span class="badge @GetSeverityBadgeClass(drift.Severity) me-2">@drift.Severity</span>
+                                                @if (drift.CanAutoRemediate)
+                                                {
+                                                    <span class="badge bg-success" title="Can be automatically remediated">
+                                                        <i class="fa fa-wrench"></i> Auto
+                                                    </span>
+                                                }
+                                            </div>
+                                            <h6 class="mb-1">@drift.ResourceName</h6>
+                                            <p class="mb-1 text-muted small">
+                                                <strong>Property:</strong> @drift.PropertyPath
+                                            </p>
+                                            <div class="row small">
+                                                <div class="col-md-6">
+                                                    <span class="text-success"><strong>Expected:</strong></span> 
+                                                    <code>@(drift.ExpectedValue ?? "N/A")</code>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <span class="text-danger"><strong>Actual:</strong></span> 
+                                                    <code>@(drift.ActualValue ?? "N/A")</code>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-2 small text-muted text-truncate" title="@drift.ResourceId">
+                                        <strong>Resource ID:</strong> @drift.ResourceId
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<!-- Delete Confirmation Modal -->
+@if (_showDeleteModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirm Deletion</h5>
+                    <button type="button" class="btn-close" @onclick="() => _showDeleteModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete the environment <strong>@_environment?.DisplayName</strong>?</p>
+                    <p class="text-danger mb-0">This action cannot be undone. All resources in this environment will be permanently deleted.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _showDeleteModal = false">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="DeleteEnvironment" disabled="@_deleting">
+                        @if (_deleting)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Delete Environment
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string Id { get; set; } = string.Empty;
+
+    private EnvironmentDetail? _environment;
+    private EnvironmentActivityList? _activities;
+    private DeployedResourceList? _resources;
+    private bool _loading = true;
+    private bool _loadingActivities = false;
+    private bool _loadingResources = false;
+    private bool _syncingResources = false;
+    private bool _detectingDrift = false;
+    private bool _remediating = false;
+    private bool _deleting = false;
+    private bool _showDeleteModal = false;
+    private string _activeTab = "overview";
+    private int _activitySkip = 0;
+    private const int _activityPageSize = 20;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEnvironment();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(Id))
+        {
+            await LoadEnvironment();
+        }
+    }
+
+    private async Task LoadEnvironment()
+    {
+        try
+        {
+            _loading = true;
+            _environment = await EnvironmentApi.GetEnvironmentAsync(Id);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load environment: {ex.Message}");
+            _environment = null;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadActivities()
+    {
+        try
+        {
+            _loadingActivities = true;
+            _activitySkip = 0;
+            _activities = await EnvironmentApi.GetActivitiesAsync(Id, null, null, null, _activitySkip, _activityPageSize);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load activities: {ex.Message}");
+        }
+        finally
+        {
+            _loadingActivities = false;
+        }
+    }
+
+    private async Task LoadMoreActivities()
+    {
+        if (_activities == null) return;
+        
+        try
+        {
+            _activitySkip += _activityPageSize;
+            var moreActivities = await EnvironmentApi.GetActivitiesAsync(Id, null, null, null, _activitySkip, _activityPageSize);
+            if (moreActivities != null)
+            {
+                _activities.Items.AddRange(moreActivities.Items);
+                _activities.TotalCount = moreActivities.TotalCount;
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load more activities: {ex.Message}");
+        }
+    }
+
+    private async Task LoadResources()
+    {
+        try
+        {
+            _loadingResources = true;
+            _resources = await EnvironmentApi.GetResourcesAsync(Id);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load resources: {ex.Message}");
+        }
+        finally
+        {
+            _loadingResources = false;
+        }
+    }
+
+    private async Task SyncResourcesFromAzure()
+    {
+        try
+        {
+            _syncingResources = true;
+            StateHasChanged();
+            
+            var result = await EnvironmentApi.SyncResourcesAsync(Id);
+            if (result != null)
+            {
+                if (!string.IsNullOrEmpty(result.Error))
+                {
+                    ToastService.ShowError($"Sync failed: {result.Error}");
+                }
+                else
+                {
+                    ToastService.ShowSuccess($"Synced {result.ResourcesAdded} new resources from Azure ({result.ResourcesFound} total found)");
+                    // Reload resources to show the updated list
+                    await LoadResources();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to sync resources: {ex.Message}");
+        }
+        finally
+        {
+            _syncingResources = false;
+        }
+    }
+
+    private string GetActivityIcon(string activityType)
+    {
+        return activityType switch
+        {
+            "Created" => "bi-plus-circle-fill",
+            "Updated" => "bi-pencil-fill",
+            "Scaled" => "bi-arrows-expand",
+            "Cloned" => "bi-files",
+            "Deleted" => "bi-trash-fill",
+            "DriftDetected" => "bi-exclamation-triangle-fill",
+            "DriftRemediated" => "bi-check-circle-fill",
+            "ExpirationExtended" => "bi-calendar-plus",
+            "HealthCheckCompleted" => "bi-heart-pulse-fill",
+            "ComplianceScanCompleted" => "bi-shield-check",
+            "StatusChanged" => "bi-arrow-repeat",
+            _ => "bi-circle-fill"
+        };
+    }
+
+    private string GetActivityIconClass(string activityType)
+    {
+        return activityType switch
+        {
+            "Created" => "text-success",
+            "Deleted" => "text-danger",
+            "DriftDetected" => "text-warning",
+            "DriftRemediated" => "text-success",
+            "Failed" => "text-danger",
+            _ => "text-primary"
+        };
+    }
+
+    private string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            "Completed" => "bg-success",
+            "InProgress" => "bg-primary",
+            "Started" => "bg-info",
+            "Failed" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private async Task DetectDrift()
+    {
+        try
+        {
+            _detectingDrift = true;
+            await EnvironmentApi.DetectDriftAsync(Id);
+            ToastService.ShowSuccess("Drift detection completed");
+            
+            // Reload environment to get updated drift status
+            await LoadEnvironment();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to detect drift: {ex.Message}");
+        }
+        finally
+        {
+            _detectingDrift = false;
+        }
+    }
+
+    private async Task RemediateDrift()
+    {
+        try
+        {
+            _remediating = true;
+            var result = await EnvironmentApi.RemediateDriftAsync(Id);
+            if (result?.Success == true)
+            {
+                ToastService.ShowSuccess($"Remediated {result.ItemsRemediated} drift items");
+            }
+            else
+            {
+                var errors = result?.Errors != null ? string.Join(", ", result.Errors) : "Unknown error";
+                ToastService.ShowError($"Remediation failed: {errors}");
+            }
+            
+            // Reload environment to get updated drift status
+            await LoadEnvironment();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to remediate drift: {ex.Message}");
+        }
+        finally
+        {
+            _remediating = false;
+        }
+    }
+
+    private string GetDriftTypeBadgeClass(string driftType)
+    {
+        return driftType switch
+        {
+            "Missing" => "bg-danger",
+            "Extra" => "bg-warning text-dark",
+            "Configuration" => "bg-info",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetSeverityBadgeClass(string severity)
+    {
+        return severity switch
+        {
+            "Critical" => "bg-danger",
+            "Warning" => "bg-warning text-dark",
+            "Info" => "bg-info",
+            _ => "bg-secondary"
+        };
+    }
+
+    private void ShowDeleteConfirmation()
+    {
+        _showDeleteModal = true;
+    }
+
+    private async Task DeleteEnvironment()
+    {
+        try
+        {
+            _deleting = true;
+            await EnvironmentApi.DeleteEnvironmentAsync(Id);
+            ToastService.ShowSuccess("Environment deletion initiated");
+            Navigation.NavigateTo("/environments");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to delete environment: {ex.Message}");
+        }
+        finally
+        {
+            _deleting = false;
+            _showDeleteModal = false;
+        }
+    }
+
+    private string GetStatusClass(string status)
+    {
+        return status?.ToLower() switch
+        {
+            "running" => "status-running",
+            "provisioning" => "status-provisioning",
+            "updating" => "status-updating",
+            "failed" => "status-failed",
+            "deleted" => "status-deleted",
+            _ => "status-unknown"
+        };
+    }
+
+    private string GetParameterType(object? value)
+    {
+        if (value is System.Text.Json.JsonElement jsonElement)
+        {
+            return jsonElement.ValueKind switch
+            {
+                System.Text.Json.JsonValueKind.String => "String",
+                System.Text.Json.JsonValueKind.Number => "Number",
+                System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False => "Boolean",
+                System.Text.Json.JsonValueKind.Array => "Array",
+                System.Text.Json.JsonValueKind.Object => "Object",
+                _ => "Unknown"
+            };
+        }
+        
+        if (value == null) return "Null";
+        if (value is string) return "String";
+        if (value is int or long or double or decimal) return "Number";
+        if (value is bool) return "Boolean";
+        
+        return value.GetType().Name;
+    }
+
+    private async Task SetActiveTab(string tab)
+    {
+        _activeTab = tab;
+        if (tab == "activity" && _activities == null)
+        {
+            await LoadActivities();
+        }
+        else if (tab == "resources" && _resources == null)
+        {
+            await LoadResources();
+        }
+    }
+
+    private string GetResourceTypeIcon(string resourceType)
+    {
+        var typeLower = resourceType.ToLowerInvariant();
+        return typeLower switch
+        {
+            var t when t.Contains("virtualmachine") => "bi bi-pc-display",
+            var t when t.Contains("storageaccount") => "bi bi-hdd-stack",
+            var t when t.Contains("webapp") || t.Contains("sites") => "bi bi-globe",
+            var t when t.Contains("sqldatabase") || t.Contains("sqlserver") => "bi bi-database",
+            var t when t.Contains("keyvault") => "bi bi-key",
+            var t when t.Contains("virtualnetwork") || t.Contains("network") => "bi bi-diagram-3",
+            var t when t.Contains("containerregistry") => "bi bi-box-seam",
+            var t when t.Contains("kubernetes") || t.Contains("aks") => "bi bi-boxes",
+            var t when t.Contains("appinsights") || t.Contains("applicationinsights") => "bi bi-graph-up",
+            var t when t.Contains("loganalytics") => "bi bi-list-check",
+            var t when t.Contains("cosmosdb") => "bi bi-collection",
+            var t when t.Contains("redis") => "bi bi-lightning",
+            var t when t.Contains("serviceb") => "bi bi-mailbox",
+            var t when t.Contains("functionapp") => "bi bi-lightning-charge",
+            var t when t.Contains("loadbalancer") => "bi bi-distribute-horizontal",
+            var t when t.Contains("publicip") => "bi bi-broadcast",
+            var t when t.Contains("networkinterface") || t.Contains("nic") => "bi bi-ethernet",
+            var t when t.Contains("disk") => "bi bi-device-hdd",
+            _ => "bi bi-cloud"
+        };
+    }
+
+    private string GetResourceTypeShort(string resourceType)
+    {
+        // Extract the short type from Microsoft.xxx/yyy format
+        var parts = resourceType.Split('/');
+        if (parts.Length >= 2)
+        {
+            return parts[^1]; // Return last segment (e.g., "virtualMachines" from "Microsoft.Compute/virtualMachines")
+        }
+        return resourceType;
+    }
+
+    private string GetProvisioningStateBadge(string state)
+    {
+        return state?.ToLowerInvariant() switch
+        {
+            "succeeded" => "bg-success",
+            "running" => "bg-success",
+            "creating" => "bg-info",
+            "updating" => "bg-info",
+            "deleting" => "bg-warning",
+            "failed" => "bg-danger",
+            "canceled" => "bg-secondary",
+            _ => "bg-secondary"
+        };
+    }
+}

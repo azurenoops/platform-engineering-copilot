@@ -1,27 +1,32 @@
 using FluentAssertions;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
-using Platform.Engineering.Copilot.Compliance.Core.Configuration;
-using Platform.Engineering.Copilot.Core.Models.Agents;
-using Platform.Engineering.Copilot.Core.Services.Agents;
+using Platform.Engineering.Copilot.Agents.Common;
+using Platform.Engineering.Copilot.Agents.Compliance.Agents;
+using Platform.Engineering.Copilot.Agents.Compliance.Configuration;
+using Platform.Engineering.Copilot.Agents.Compliance.State;
+using Platform.Engineering.Copilot.Agents.Compliance.Tools;
+using Platform.Engineering.Copilot.Agents.Configuration.Tools;
+using Platform.Engineering.Copilot.State.Abstractions;
 using Xunit;
 
 namespace Platform.Engineering.Copilot.Tests.Unit.Agents;
 
 /// <summary>
-/// Unit tests for ComplianceAgent
-/// Tests agent initialization, task processing, and response handling
+/// Unit tests for ComplianceAgent using Microsoft Agent Framework pattern.
+/// Tests agent initialization, tool registration, and configuration.
 /// </summary>
 public class ComplianceAgentTests
 {
+    #region Configuration Tests
+
     [Fact]
-    public void AgentType_ShouldReturnCompliance()
+    public void ComplianceAgentOptions_SectionName_IsCorrect()
     {
-        // This test verifies the AgentType property returns the correct enum value
-        // We need to test this without full initialization due to Kernel dependencies
-        
-        // Assert - verify the expected agent type constant
-        AgentType.Compliance.Should().Be(AgentType.Compliance);
+        // Assert
+        ComplianceAgentOptions.SectionName.Should().Be("AgentConfiguration:ComplianceAgent");
     }
 
     [Fact]
@@ -31,6 +36,7 @@ public class ComplianceAgentTests
         var options = new ComplianceAgentOptions();
 
         // Assert
+        options.Enabled.Should().BeTrue();
         options.Temperature.Should().Be(0.2);
         options.MaxTokens.Should().Be(6000);
         options.EnableAutomatedRemediation.Should().BeTrue();
@@ -40,6 +46,7 @@ public class ComplianceAgentTests
 
     [Theory]
     [InlineData(0.0)]
+    [InlineData(0.2)]
     [InlineData(0.5)]
     [InlineData(1.0)]
     [InlineData(2.0)]
@@ -50,6 +57,19 @@ public class ComplianceAgentTests
 
         // Assert
         options.Temperature.Should().Be(temperature);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(6000)]
+    [InlineData(128000)]
+    public void ComplianceAgentOptions_MaxTokens_AcceptsValidRange(int maxTokens)
+    {
+        // Arrange & Act
+        var options = new ComplianceAgentOptions { MaxTokens = maxTokens };
+
+        // Assert
+        options.MaxTokens.Should().Be(maxTokens);
     }
 
     [Theory]
@@ -67,137 +87,92 @@ public class ComplianceAgentTests
         options.DefaultFramework.Should().Be(framework);
     }
 
-    [Fact]
-    public void AgentTask_WithComplianceType_IsCorrectlyIdentified()
+    [Theory]
+    [InlineData("FedRAMPHigh")]
+    [InlineData("FedRAMPModerate")]
+    [InlineData("DoD IL5")]
+    [InlineData("DoD IL4")]
+    public void ComplianceAgentOptions_DefaultBaseline_AcceptsValidBaselines(string baseline)
     {
-        // Arrange
-        var task = new AgentTask
-        {
-            TaskId = Guid.NewGuid().ToString(),
-            AgentType = AgentType.Compliance,
-            Description = "Run compliance assessment for subscription",
-            Priority = 1,
-            IsCritical = false
-        };
+        // Arrange & Act
+        var options = new ComplianceAgentOptions { DefaultBaseline = baseline };
 
         // Assert
-        task.AgentType.Should().Be(AgentType.Compliance);
-        task.Description.Should().Contain("compliance");
-    }
-
-    [Fact]
-    public void AgentResponse_WithComplianceScore_IsCorrectlySet()
-    {
-        // Arrange
-        var response = new AgentResponse
-        {
-            TaskId = Guid.NewGuid().ToString(),
-            AgentType = AgentType.Compliance,
-            Success = true,
-            Content = "Assessment completed with 85% compliance score",
-            ComplianceScore = 85,
-            IsApproved = true
-        };
-
-        // Assert
-        response.AgentType.Should().Be(AgentType.Compliance);
-        response.Success.Should().BeTrue();
-        response.ComplianceScore.Should().Be(85);
-        response.IsApproved.Should().BeTrue();
+        options.DefaultBaseline.Should().Be(baseline);
     }
 
     [Theory]
-    [InlineData(80, true)]
-    [InlineData(85, true)]
-    [InlineData(100, true)]
-    [InlineData(79, false)]
-    [InlineData(50, false)]
-    [InlineData(0, false)]
-    public void AgentResponse_IsApproved_BasedOnComplianceScoreThreshold(int score, bool expectedApproval)
-    {
-        // Arrange - 80% is the threshold for approval based on ComplianceAgent logic
-        var response = new AgentResponse
-        {
-            TaskId = Guid.NewGuid().ToString(),
-            AgentType = AgentType.Compliance,
-            Success = true,
-            ComplianceScore = score,
-            IsApproved = score >= 80 // Matches ComplianceAgent threshold
-        };
-
-        // Assert
-        response.IsApproved.Should().Be(expectedApproval);
-    }
-
-    [Fact]
-    public void SharedMemory_AddAgentCommunication_StoresComplianceResult()
-    {
-        // Arrange
-        var loggerMock = new Mock<ILogger<SharedMemory>>();
-        var memory = new SharedMemory(loggerMock.Object);
-        var conversationId = "test-conversation-123";
-        var complianceData = new Dictionary<string, object>
-        {
-            ["complianceScore"] = 85,
-            ["isApproved"] = true,
-            ["assessment"] = "All controls implemented correctly"
-        };
-
-        // Act
-        memory.AddAgentCommunication(
-            conversationId,
-            AgentType.Compliance,
-            AgentType.Orchestrator,
-            "Compliance assessment completed. Score: 85%, Approved: True",
-            complianceData
-        );
-
-        // Assert
-        var communications = memory.GetAgentCommunications(conversationId);
-        communications.Should().NotBeEmpty();
-        communications.Should().ContainSingle(c => 
-            c.FromAgent == AgentType.Compliance && 
-            c.ToAgent == AgentType.Orchestrator);
-    }
-
-    [Fact]
-    public void SharedMemory_GetContext_ReturnsEmptyContextForNonExistentConversation()
-    {
-        // Arrange
-        var loggerMock = new Mock<ILogger<SharedMemory>>();
-        var memory = new SharedMemory(loggerMock.Object);
-
-        // Act
-        var context = memory.GetContext("non-existent-conversation");
-
-        // Assert - SharedMemory returns a new context, not null
-        context.Should().NotBeNull();
-        context.ConversationId.Should().Be("non-existent-conversation");
-    }
-
-    [Fact]
-    public void DefenderForCloudOptions_DefaultValues_AreCorrect()
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ComplianceAgentOptions_EnableAutomatedRemediation_CanBeToggled(bool enabled)
     {
         // Arrange & Act
-        var options = new DefenderForCloudOptions();
+        var options = new ComplianceAgentOptions { EnableAutomatedRemediation = enabled };
 
         // Assert
-        options.Enabled.Should().BeFalse(); // Disabled by default
-        options.IncludeSecureScore.Should().BeTrue();
+        options.EnableAutomatedRemediation.Should().Be(enabled);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ComplianceAgentOptions_Enabled_CanBeToggled(bool enabled)
+    {
+        // Arrange & Act
+        var options = new ComplianceAgentOptions { Enabled = enabled };
+
+        // Assert
+        options.Enabled.Should().Be(enabled);
+    }
+
+    #endregion
+
+    #region Nested Options Tests
+
     [Fact]
-    public void ComplianceAgentOptions_CodeScanningOptions_DefaultValues()
+    public void ComplianceAgentOptions_AzureOpenAI_DefaultValues()
     {
         // Arrange & Act
         var options = new ComplianceAgentOptions();
 
         // Assert
-        options.CodeScanning.Should().NotBeNull();
+        options.AzureOpenAI.Should().NotBeNull();
     }
 
     [Fact]
-    public void ComplianceAgentOptions_EvidenceOptions_DefaultValues()
+    public void ComplianceAgentOptions_Gateway_DefaultValues()
+    {
+        // Arrange & Act
+        var options = new ComplianceAgentOptions();
+
+        // Assert
+        options.Gateway.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void ComplianceAgentOptions_DefenderForCloud_DefaultValues()
+    {
+        // Arrange & Act
+        var options = new ComplianceAgentOptions();
+
+        // Assert
+        options.DefenderForCloud.Should().NotBeNull();
+        options.DefenderForCloud.Enabled.Should().BeFalse(); // Disabled by default
+        options.DefenderForCloud.IncludeSecureScore.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ComplianceAgentOptions_Assessment_DefaultValues()
+    {
+        // Arrange & Act
+        var options = new ComplianceAgentOptions();
+
+        // Assert
+        options.Assessment.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void ComplianceAgentOptions_Evidence_DefaultValues()
     {
         // Arrange & Act
         var options = new ComplianceAgentOptions();
@@ -207,22 +182,54 @@ public class ComplianceAgentTests
     }
 
     [Fact]
-    public void ComplianceAgentOptions_GovernanceOptions_DefaultValues()
+    public void ComplianceAgentOptions_Remediation_DefaultValues()
     {
         // Arrange & Act
         var options = new ComplianceAgentOptions();
 
         // Assert
-        options.Governance.Should().NotBeNull();
+        options.Remediation.Should().NotBeNull();
+    }
+
+    #endregion
+
+    #region AgentResponse Tests
+
+    [Fact]
+    public void AgentResponse_WithComplianceContext_IsCorrectlySet()
+    {
+        // Arrange & Act
+        var response = new AgentResponse
+        {
+            Success = true,
+            AgentName = "Compliance Agent",
+            Content = "Assessment completed with 85% compliance score",
+            RequiresHandoff = false
+        };
+
+        // Assert
+        response.Success.Should().BeTrue();
+        response.AgentName.Should().Be("Compliance Agent");
+        response.RequiresHandoff.Should().BeFalse();
     }
 
     [Fact]
-    public void ComplianceAgentOptions_NistControlsOptions_DefaultValues()
+    public void AgentResponse_WithHandoff_SetsHandoffTarget()
     {
         // Arrange & Act
-        var options = new ComplianceAgentOptions();
+        var response = new AgentResponse
+        {
+            Success = true,
+            AgentName = "Compliance Agent",
+            Content = "Found issues requiring infrastructure changes",
+            RequiresHandoff = true,
+            HandoffTarget = "Infrastructure Agent"
+        };
 
         // Assert
-        options.NistControls.Should().NotBeNull();
+        response.RequiresHandoff.Should().BeTrue();
+        response.HandoffTarget.Should().Be("Infrastructure Agent");
     }
+
+    #endregion
 }

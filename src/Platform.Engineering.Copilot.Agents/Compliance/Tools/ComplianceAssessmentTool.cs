@@ -3,7 +3,9 @@ using Microsoft.Extensions.Options;
 using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.Compliance.Configuration;
 using Platform.Engineering.Copilot.Agents.Compliance.State;
+using Platform.Engineering.Copilot.Core.Interfaces;
 using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
+using Platform.Engineering.Copilot.Core.Interfaces.Templates;
 using Platform.Engineering.Copilot.Core.Models.Compliance;
 
 namespace Platform.Engineering.Copilot.Agents.Compliance.Tools;
@@ -18,6 +20,7 @@ public class ComplianceAssessmentTool : BaseTool
     private readonly ComplianceStateAccessors _stateAccessors;
     private readonly ComplianceAgentOptions _options;
     private readonly IAtoComplianceEngine _complianceEngine;
+    private readonly IProvisionedEnvironmentService _environmentService;
 
     public override string Name => "run_compliance_assessment";
 
@@ -30,12 +33,15 @@ public class ComplianceAssessmentTool : BaseTool
         ILogger<ComplianceAssessmentTool> logger,
         ComplianceStateAccessors stateAccessors,
         IOptions<ComplianceAgentOptions> options,
-        IAtoComplianceEngine complianceEngine) : base(logger)
+        IAtoComplianceEngine complianceEngine,
+        IProvisionedEnvironmentService environmentService) : base(logger)
     {
         _stateAccessors = stateAccessors ?? throw new ArgumentNullException(nameof(stateAccessors));
         _options = options?.Value ?? new ComplianceAgentOptions();
         _complianceEngine = complianceEngine ?? throw new ArgumentNullException(nameof(complianceEngine));
+        _environmentService = environmentService ?? throw new ArgumentNullException(nameof(environmentService));
 
+        Parameters.Add(new ToolParameter("environment_id", "Environment ID to assess (scans all subscriptions in environment). If provided, subscription_id is ignored.", false));
         Parameters.Add(new ToolParameter("subscription_id", "Azure subscription ID to assess", false));
         Parameters.Add(new ToolParameter("resource_group", "Optional resource group to scope assessment", false));
         Parameters.Add(new ToolParameter("control_families", "Comma-separated control families to assess (e.g., AC,AU,SC). Default: all", false));
@@ -53,11 +59,75 @@ public class ComplianceAssessmentTool : BaseTool
         try
         {
             var conversationId = GetOptionalString(arguments, "conversation_id") ?? Guid.NewGuid().ToString();
+            var environmentId = GetOptionalString(arguments, "environment_id");
             var resourceGroup = GetOptionalString(arguments, "resource_group");
             var controlFamiliesStr = GetOptionalString(arguments, "control_families");
             var includePassed = GetOptionalBool(arguments, "include_passed", false);
             var skipCache = GetOptionalBool(arguments, "skip_cache", false);
 
+            // ENVIRONMENT-SCOPED SCANNING
+            if (!string.IsNullOrEmpty(environmentId))
+            {
+                Logger.LogInformation("Running environment-scoped compliance assessment for environment: {EnvironmentId}", environmentId);
+
+                // Fetch provisioned environment
+                var environment = await _environmentService.GetEnvironmentAsync(environmentId, cancellationToken);
+                if (environment == null)
+                {
+                    return ToJson(new {
+                        success = false,
+                        error = $"Environment '{environmentId}' not found. Use 'list_provisioned_environments' tool to see available environments."
+                    });
+                }
+
+                // ProvisionedEnvironment has a single SubscriptionId, not a list
+                var subscriptionIds = new List<string> { environment.SubscriptionId };
+                if (string.IsNullOrEmpty(environment.SubscriptionId))
+                {
+                    return ToJson(new {
+                        success = false,
+                        error = $"Environment '{environment.Name}' ({environmentId}) has no subscription configured."
+                    });
+                }
+
+                Logger.LogInformation("Scanning environment '{EnvironmentName}' ({EnvironmentId}) with subscription {SubId}",
+                    environment.Name, environmentId, environment.SubscriptionId);
+
+                // Run environment assessment using the engine (with single subscription)
+                var envAssessment = await _complianceEngine.RunEnvironmentAssessmentAsync(
+                    environmentId,
+                    environment.Name,
+                    subscriptionIds,
+                    !string.IsNullOrEmpty(environment.ResourceGroup) ? new[] { environment.ResourceGroup } : null,
+                    null, // No progress reporter in tool
+                    cancellationToken);
+
+                // Track the operation
+                await _stateAccessors.TrackComplianceOperationAsync(
+                    conversationId,
+                    "environment_assessment",
+                    _options.DefaultFramework,
+                    environmentId,
+                    true,
+                    envAssessment.TotalFindings,
+                    envAssessment.Duration,
+                    cancellationToken);
+
+                // Format results for LLM
+                var duration = DateTime.UtcNow - startTime;
+                var envResult = FormatAssessmentResult(envAssessment, null, includePassed, isEnvironmentScan: true);
+                
+                return ToJson(new
+                {
+                    success = true,
+                    assessment = envResult,
+                    message = $"Scanned environment '{environment.Name}' ({environmentId}) in subscription {environment.SubscriptionId}. " +
+                              $"Compliance: {envAssessment.OverallComplianceScore:F1}% ({envAssessment.TotalFindings} total findings: " +
+                              $"{envAssessment.CriticalFindings} critical, {envAssessment.HighFindings} high, {envAssessment.MediumFindings} medium, {envAssessment.LowFindings} low)"
+                });
+            }
+
+            // SUBSCRIPTION-SCOPED SCANNING (existing logic)
             // Get subscription from argument or state
             var subscriptionId = GetOptionalString(arguments, "subscription_id")
                 ?? await _stateAccessors.GetCurrentSubscriptionAsync(conversationId, cancellationToken)
@@ -121,7 +191,7 @@ public class ComplianceAssessmentTool : BaseTool
                     .ToHashSet();
 
             // Format and return results
-            var result = FormatAssessmentResult(assessment, controlFamilies, includePassed);
+            var result = FormatAssessmentResult(assessment, controlFamilies, includePassed, isEnvironmentScan: false);
 
             // Share summary with other agents
             var summary = new AssessmentSummary
@@ -173,7 +243,8 @@ public class ComplianceAssessmentTool : BaseTool
     private object FormatAssessmentResult(
         AtoComplianceAssessment assessment, 
         HashSet<string>? controlFamilyFilter,
-        bool includePassed)
+        bool includePassed,
+        bool isEnvironmentScan = false)
     {
         var filteredFamilies = assessment.ControlFamilyResults
             .Where(kv => controlFamilyFilter == null || controlFamilyFilter.Contains(kv.Key))
@@ -188,6 +259,10 @@ public class ComplianceAssessmentTool : BaseTool
         {
             assessmentId = assessment.AssessmentId,
             subscriptionId = assessment.SubscriptionId,
+            environmentId = assessment.EnvironmentId,
+            environmentName = assessment.EnvironmentName,
+            additionalSubscriptions = assessment.AdditionalSubscriptionIds,
+            isEnvironmentScan = isEnvironmentScan,
             startTime = assessment.StartTime,
             endTime = assessment.EndTime,
             duration = assessment.Duration.TotalSeconds,

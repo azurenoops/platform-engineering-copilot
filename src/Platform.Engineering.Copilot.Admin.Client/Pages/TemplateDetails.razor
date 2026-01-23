@@ -1,0 +1,460 @@
+@page "/templates/{Id}"
+@inject TemplateApiService TemplateApi
+@inject NavigationManager Navigation
+@inject IToastService ToastService
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="templates">Templates</a></li>
+                <li class="breadcrumb-item active">@(_template?.DisplayName ?? "Loading...")</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0">@(_template?.DisplayName ?? "Template Details")</h4>
+    </div>
+    <div class="d-flex gap-2">
+        @if (_template != null)
+        {
+            @if (_template.HasGitSource)
+            {
+                <button class="btn btn-outline-info" @onclick="SyncFromGit" disabled="@_syncing">
+                    @if (_syncing)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                    }
+                    else
+                    {
+                        <i class="fa fa-sync me-1"></i>
+                    }
+                    Sync from Git
+                </button>
+            }
+            <a href="templates/edit/@Id" class="btn btn-outline-primary">
+                <i class="fa fa-edit me-1"></i>Edit
+            </a>
+            <a href="environments/create?templateId=@Id" class="btn btn-success">
+                <i class="fa fa-rocket me-1"></i>Deploy
+            </a>
+        }
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger">
+        <i class="fa fa-exclamation-circle me-2"></i>@_error
+    </div>
+}
+else if (_template != null)
+{
+    <div class="row">
+        <!-- Main Content -->
+        <div class="col-lg-8">
+            <!-- Overview Card -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fa fa-info-circle me-2"></i>Overview</span>
+                    <span class="status-badge @GetStatusClass(_template.Status)">@_template.Status</span>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">@_template.Description</p>
+                    
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <strong>Version:</strong> @_template.Version
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Category:</strong> @_template.Category
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Format:</strong> <span class="badge bg-info">@_template.Format</span>
+                        </div>
+                    </div>
+                    
+                    @if (_template.Keywords?.Count > 0)
+                    {
+                        <div class="mt-3">
+                            <strong>Keywords:</strong>
+                            @foreach (var kw in _template.Keywords)
+                            {
+                                <span class="badge bg-secondary me-1">@kw</span>
+                            }
+                        </div>
+                    }
+                    
+                    @if (_template.ComplianceFrameworks?.Count > 0)
+                    {
+                        <div class="mt-2">
+                            <strong>Compliance:</strong>
+                            @foreach (var cf in _template.ComplianceFrameworks)
+                            {
+                                <span class="badge bg-warning text-dark me-1">@cf</span>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+            
+            <!-- Template Content -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fa fa-code me-2"></i>Template Content
+                </div>
+                <div class="card-body">
+                    <pre class="bg-dark text-light p-3 rounded" style="max-height: 400px; overflow: auto;"><code>@_template.TemplateContent</code></pre>
+                </div>
+            </div>
+            
+            <!-- Additional Files (Bicep Modules) -->
+            @if (_template.AdditionalFiles?.Count > 0)
+            {
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="fa fa-folder-tree me-2"></i>Module Files (@_template.AdditionalFiles.Count)</span>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleAllModules">
+                            @(_allModulesExpanded ? "Collapse All" : "Expand All")
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">
+                            <i class="fa fa-info-circle me-1"></i>
+                            These module files were automatically synced from Git and will be included when deploying.
+                        </p>
+                        @foreach (var file in _template.AdditionalFiles)
+                        {
+                            <div class="module-file-card mb-3">
+                                <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded-top border" 
+                                     style="cursor: pointer;" 
+                                     @onclick="() => ToggleModuleExpanded(file.RelativePath)">
+                                    <div>
+                                        <i class="fa @GetFileIcon(file.FileType) me-2 text-info"></i>
+                                        <code>@(string.IsNullOrEmpty(file.RelativePath) ? file.FileName : file.RelativePath)</code>
+                                        <span class="badge bg-secondary ms-2">@file.FileType</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-muted small me-2">@FormatFileSize(file.Content?.Length ?? 0)</span>
+                                        <i class="fa @(_expandedModules.Contains(file.RelativePath) ? "fa-chevron-up" : "fa-chevron-down")"></i>
+                                    </div>
+                                </div>
+                                @if (_expandedModules.Contains(file.RelativePath))
+                                {
+                                    <pre class="bg-dark text-light p-3 rounded-bottom mb-0" style="max-height: 300px; overflow: auto; margin-top: -1px;"><code>@file.Content</code></pre>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            
+            <!-- Parameters -->
+            @if (_template.Parameters?.Count > 0)
+            {
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="fa fa-sliders-h me-2"></i>Parameters (@_template.Parameters.Count)
+                    </div>
+                    <div class="card-body">
+                        @foreach (var param in _template.Parameters)
+                        {
+                            <div class="list-group-item mb-2">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <div class="flex-grow-1">
+                                        <strong>@param.Name</strong>
+                                        @if (param.Required)
+                                        {
+                                            <span class="badge bg-danger ms-1">Required</span>
+                                        }
+                                        <p class="text-muted small mb-1">@param.Description</p>
+                                        <div>
+                                            <span class="badge bg-info me-1">@param.Type</span>
+                                            @if (param.DefaultValue != null)
+                                            {
+                                                <span class="text-muted small">Default: <code>@param.DefaultValue</code></span>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            
+            <!-- Guardrails -->
+            @if (_template.Guardrails?.Count > 0)
+            {
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="fa fa-shield-alt me-2"></i>Guardrails (@_template.Guardrails.Count)
+                    </div>
+                    <div class="card-body">
+                        @foreach (var guardrail in _template.Guardrails)
+                        {
+                            <div class="list-group-item mb-2">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>@guardrail.Name</strong>
+                                        <p class="text-muted small mb-0">@guardrail.Description</p>
+                                    </div>
+                                    <span class="badge bg-@(guardrail.Action == "Block" || guardrail.Action == "Deny" ? "warning" : "info")">@guardrail.Action</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Git Source Info -->
+            @if (_template.HasGitSource)
+            {
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="fa fa-code-branch me-2"></i>Git Source
+                    </div>
+                    <div class="card-body">
+                        <dl class="mb-0">
+                            <dt>Repository</dt>
+                            <dd class="text-break small">@_template.GitRepositoryUrl</dd>
+                            
+                            <dt>Branch</dt>
+                            <dd>@(_template.GitBranch ?? "main")</dd>
+                            
+                            <dt>Path</dt>
+                            <dd><code>@_template.GitPath</code></dd>
+                            
+                            @if (!string.IsNullOrEmpty(_template.GitCommitSha))
+                            {
+                                <dt>Commit SHA</dt>
+                                <dd><code class="small">@_template.GitCommitSha[..Math.Min(8, _template.GitCommitSha.Length)]</code></dd>
+                            }
+                            
+                            @if (_template.LastSyncedFromGit.HasValue)
+                            {
+                                <dt>Last Synced</dt>
+                                <dd>@_template.LastSyncedFromGit.Value.ToString("g")</dd>
+                            }
+                            
+                            <dt>Auto Sync</dt>
+                            <dd>
+                                @if (_template.GitAutoSync)
+                                {
+                                    <span class="badge bg-success">Enabled</span>
+                                    <span class="text-muted small">every @_template.GitSyncIntervalMinutes min</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Disabled</span>
+                                }
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            }
+            
+            <!-- Metadata -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fa fa-info me-2"></i>Metadata
+                </div>
+                <div class="card-body">
+                    <dl class="mb-0">
+                        <dt>Created By</dt>
+                        <dd>@_template.CreatedBy</dd>
+                        
+                        <dt>Created At</dt>
+                        <dd>@_template.CreatedAt.ToString("g")</dd>
+                        
+                        @if (_template.UpdatedAt.HasValue)
+                        {
+                            <dt>Updated At</dt>
+                            <dd>@_template.UpdatedAt.Value.ToString("g")</dd>
+                        }
+                        
+                        <dt>Deployments</dt>
+                        <dd><span class="badge bg-primary">@_template.DeploymentCount</span></dd>
+                        
+                        <dt>Requires Approval</dt>
+                        <dd>@(_template.RequiresApproval ? "Yes" : "No")</dd>
+                        
+                        @if (_template.DefaultExpirationDays.HasValue)
+                        {
+                            <dt>Default Expiration</dt>
+                            <dd>@_template.DefaultExpirationDays days</dd>
+                        }
+                    </dl>
+                </div>
+            </div>
+            
+            <!-- Approval Info -->
+            @if (_template.Approval != null)
+            {
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="fa fa-check-circle me-2"></i>Approval
+                    </div>
+                    <div class="card-body">
+                        <dl class="mb-0">
+                            <dt>Approved By</dt>
+                            <dd>@_template.Approval.ApprovedBy</dd>
+                            
+                            <dt>Approved At</dt>
+                            <dd>@_template.Approval.ApprovedAt.ToString("g")</dd>
+                            
+                            @if (!string.IsNullOrEmpty(_template.Approval.Comments))
+                            {
+                                <dt>Comments</dt>
+                                <dd class="text-muted small">@_template.Approval.Comments</dd>
+                            }
+                        </dl>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string Id { get; set; } = string.Empty;
+    
+    private TemplateDetail? _template;
+    private bool _loading = true;
+    private bool _syncing;
+    private string? _error;
+    
+    // Module expansion state
+    private HashSet<string> _expandedModules = new();
+    private bool _allModulesExpanded;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTemplate();
+    }
+    
+    private async Task LoadTemplate()
+    {
+        _loading = true;
+        _error = null;
+        
+        try
+        {
+            _template = await TemplateApi.GetTemplateAsync(Id);
+            if (_template == null)
+            {
+                _error = "Template not found";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load template: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+    
+    private async Task SyncFromGit()
+    {
+        _syncing = true;
+        try
+        {
+            var result = await TemplateApi.SyncTemplateAsync(Id);
+            if (result?.Success == true)
+            {
+                if (result.WasUpdated)
+                {
+                    ToastService.ShowSuccess("Template updated from Git");
+                    await LoadTemplate();
+                }
+                else
+                {
+                    ToastService.ShowInfo("Template is already up to date");
+                }
+            }
+            else
+            {
+                ToastService.ShowError(result?.Message ?? "Sync failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Sync failed: {ex.Message}");
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+    
+    private void ToggleModuleExpanded(string path)
+    {
+        if (_expandedModules.Contains(path))
+        {
+            _expandedModules.Remove(path);
+        }
+        else
+        {
+            _expandedModules.Add(path);
+        }
+    }
+    
+    private void ToggleAllModules()
+    {
+        if (_allModulesExpanded)
+        {
+            _expandedModules.Clear();
+            _allModulesExpanded = false;
+        }
+        else
+        {
+            if (_template?.AdditionalFiles != null)
+            {
+                foreach (var file in _template.AdditionalFiles)
+                {
+                    _expandedModules.Add(file.RelativePath);
+                }
+            }
+            _allModulesExpanded = true;
+        }
+    }
+    
+    private static string GetFileIcon(string fileType) => fileType?.ToLower() switch
+    {
+        "bicep" => "fa-file-code",
+        "json" => "fa-file-alt",
+        "yaml" or "yml" => "fa-file-alt",
+        "tf" or "terraform" => "fa-file-code",
+        _ => "fa-file"
+    };
+    
+    private static string FormatFileSize(int bytes)
+    {
+        if (bytes < 1024)
+            return $"{bytes} B";
+        if (bytes < 1024 * 1024)
+            return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+    
+    private string GetStatusClass(string status) => status.ToLower() switch
+    {
+        "published" => "published",
+        "draft" => "draft",
+        "pendingapproval" => "pending",
+        "deprecated" => "deprecated",
+        _ => ""
+    };
+}

@@ -1,4 +1,7 @@
 # syntax=docker/dockerfile:1.4
+# Multi-architecture Dockerfile for Platform Engineering Copilot MCP Server
+# Supports: linux/amd64 (Azure ACI) and linux/arm64 (Apple Silicon local dev)
+
 # Stage 1: Restore dependencies (cached layer)
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS restore
 WORKDIR /src
@@ -13,9 +16,8 @@ COPY ["src/Platform.Engineering.Copilot.State/Platform.Engineering.Copilot.State
 COPY ["src/Platform.Engineering.Copilot.Channels/Platform.Engineering.Copilot.Channels.csproj", "src/Platform.Engineering.Copilot.Channels/"]
 COPY ["src/Platform.Engineering.Copilot.Chat/Platform.Engineering.Copilot.Chat.csproj", "src/Platform.Engineering.Copilot.Chat/"]
 
-# Restore dependencies
-RUN dotnet restore "src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj" \
-    --runtime linux-x64
+# Restore dependencies (architecture-independent)
+RUN dotnet restore "src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj"
 
 # Stage 2: Build
 FROM restore AS build
@@ -24,13 +26,12 @@ WORKDIR /src
 # Copy all source code
 COPY . .
 
-# Build with optimizations
+# Build with optimizations (architecture-independent, uses container's native arch)
 WORKDIR "/src/src/Platform.Engineering.Copilot.Mcp"
 RUN dotnet build "Platform.Engineering.Copilot.Mcp.csproj" \
     -c Release \
     -o /app/build \
     --no-restore \
-    --runtime linux-x64 \
     /p:PublishReadyToRun=false \
     /p:PublishSingleFile=false
 
@@ -40,7 +41,6 @@ RUN dotnet publish "Platform.Engineering.Copilot.Mcp.csproj" \
     -c Release \
     -o /app/publish \
     --no-restore \
-    --runtime linux-x64 \
     /p:UseAppHost=false \
     /p:PublishReadyToRun=false \
     /p:PublishTrimmed=false
@@ -49,13 +49,35 @@ RUN dotnet publish "Platform.Engineering.Copilot.Mcp.csproj" \
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
 
-# Install minimal dependencies for health checks and curl
+# Install dependencies including Azure CLI for Bicep compilation
 USER root
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        curl && \
+        curl \
+        ca-certificates \
+        apt-transport-https \
+        lsb-release \
+        gnupg && \
+    # Install Azure CLI
+    curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft-archive-keyring.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] https://packages.microsoft.com/repos/azure-cli/ $(lsb_release -cs) main" > /etc/apt/sources.list.d/azure-cli.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends azure-cli && \
+    # Install Bicep system-wide (download binary directly to avoid user home dir issues)
+    curl -Lo /usr/local/bin/bicep https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64 && \
+    chmod +x /usr/local/bin/bicep && \
+    # Also create symlink for 'az bicep' to find it
+    mkdir -p /usr/local/share/az/bicep && \
+    ln -s /usr/local/bin/bicep /usr/local/share/az/bicep/bicep && \
+    # Cleanup
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Create Azure config directory for all users so az bicep can work
+ENV AZURE_CONFIG_DIR=/opt/azure
+RUN mkdir -p /opt/azure/bin && \
+    ln -s /usr/local/bin/bicep /opt/azure/bin/bicep && \
+    chmod -R 777 /opt/azure
 
 # Create non-root user for security
 RUN groupadd -r -g 1000 appuser && \

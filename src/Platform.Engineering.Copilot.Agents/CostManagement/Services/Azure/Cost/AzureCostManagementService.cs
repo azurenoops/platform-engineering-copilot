@@ -84,19 +84,28 @@ public class AzureCostManagementService : IAzureCostManagementService
             };
 
             // Execute all data gathering tasks in parallel for performance
-            var tasks = new List<Task>
-            {
-                Task.Run(async () => dashboard.Summary = await GetCostSummaryAsync(subscriptionId, startDate, endDate, cancellationToken)),
-                Task.Run(async () => dashboard.Trends = await GetCostTrendsAsync(subscriptionId, startDate, endDate, cancellationToken)),
-                Task.Run(async () => dashboard.Budgets = await GetBudgetsAsync(subscriptionId, cancellationToken)),
-                Task.Run(async () => dashboard.Recommendations = await GetOptimizationRecommendationsAsync(subscriptionId, cancellationToken)),
-                Task.Run(async () => dashboard.Anomalies = await DetectCostAnomaliesAsync(subscriptionId, startDate, endDate, cancellationToken)),
-                Task.Run(async () => dashboard.Forecast = await GetCostForecastAsync(subscriptionId, 30, cancellationToken)),
-                Task.Run(async () => dashboard.ResourceBreakdown = await GetResourceCostBreakdownAsync(subscriptionId, startDate, endDate, cancellationToken)),
-                Task.Run(async () => dashboard.ServiceBreakdown = await GetServiceCostBreakdownAsync(subscriptionId, startDate, endDate, cancellationToken))
-            };
+            // Use direct async invocation instead of Task.Run to avoid unnecessary thread pool usage
+            var summaryTask = GetCostSummaryAsync(subscriptionId, startDate, endDate, cancellationToken);
+            var trendsTask = GetCostTrendsAsync(subscriptionId, startDate, endDate, cancellationToken);
+            var budgetsTask = GetBudgetsAsync(subscriptionId, cancellationToken);
+            var recommendationsTask = GetOptimizationRecommendationsAsync(subscriptionId, cancellationToken);
+            var anomaliesTask = DetectCostAnomaliesAsync(subscriptionId, startDate, endDate, cancellationToken);
+            var forecastTask = GetCostForecastAsync(subscriptionId, 30, cancellationToken);
+            var resourceBreakdownTask = GetResourceCostBreakdownAsync(subscriptionId, startDate, endDate, cancellationToken);
+            var serviceBreakdownTask = GetServiceCostBreakdownAsync(subscriptionId, startDate, endDate, cancellationToken);
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(
+                summaryTask, trendsTask, budgetsTask, recommendationsTask,
+                anomaliesTask, forecastTask, resourceBreakdownTask, serviceBreakdownTask);
+
+            dashboard.Summary = await summaryTask;
+            dashboard.Trends = await trendsTask;
+            dashboard.Budgets = await budgetsTask;
+            dashboard.Recommendations = await recommendationsTask;
+            dashboard.Anomalies = await anomaliesTask;
+            dashboard.Forecast = await forecastTask;
+            dashboard.ResourceBreakdown = await resourceBreakdownTask;
+            dashboard.ServiceBreakdown = await serviceBreakdownTask;
 
             // Generate budget alerts based on current status
             dashboard.BudgetAlerts = GenerateBudgetAlerts(dashboard.Budgets);

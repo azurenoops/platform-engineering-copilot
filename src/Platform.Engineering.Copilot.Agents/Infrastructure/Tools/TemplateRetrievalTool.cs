@@ -91,7 +91,7 @@ public class TemplateRetrievalTool : BaseTool
         bool includeContent,
         CancellationToken cancellationToken)
     {
-        EnvironmentTemplate? template = null;
+        InfrastructureTemplate? template = null;
 
         // Try to get by ID first
         if (!string.IsNullOrEmpty(templateId))
@@ -114,7 +114,7 @@ public class TemplateRetrievalTool : BaseTool
         return FormatTemplateResponse(template, fileName, includeContent);
     }
 
-    private string FormatTemplateResponse(EnvironmentTemplate template, string? fileName, bool includeContent)
+    private string FormatTemplateResponse(InfrastructureTemplate template, string? fileName, bool includeContent)
     {
         // If specific file requested
         if (!string.IsNullOrEmpty(fileName) && template.Files != null)

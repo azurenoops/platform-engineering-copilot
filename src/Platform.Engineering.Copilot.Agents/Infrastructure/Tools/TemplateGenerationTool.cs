@@ -157,7 +157,7 @@ public class TemplateGenerationTool : BaseTool
             }
 
             // Store template in database if enabled
-            CoreModels.EnvironmentTemplate? storedTemplate = null;
+            CoreModels.InfrastructureTemplate? storedTemplate = null;
             if (storeTemplate && result.Files?.Any() == true)
             {
                 try

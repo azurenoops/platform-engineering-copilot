@@ -345,22 +345,11 @@ Resources
 
         public async Task<AuthenticationHeaderValue> GetAuthenticationHeaderAsync(CancellationToken cancellationToken)
         {
-            try
-            {
-                var token = await _credential.GetTokenAsync(
-                    new TokenRequestContext(new[] { _scope }),
-                    cancellationToken);
+            var token = await _credential.GetTokenAsync(
+                new TokenRequestContext(new[] { _scope }),
+                cancellationToken);
 
-                // Log token acquisition success (first 20 chars only for security)
-                Console.WriteLine($"🔑 Token acquired for scope {_scope}: {token.Token.Substring(0, Math.Min(20, token.Token.Length))}... (ExpiresOn: {token.ExpiresOn})");
-
-                return new AuthenticationHeaderValue("Bearer", token.Token);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"❌ Token acquisition failed for scope {_scope}: {ex.Message}");
-                throw;
-            }
+            return new AuthenticationHeaderValue("Bearer", token.Token);
         }
     }
 }

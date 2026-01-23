@@ -150,7 +150,6 @@ public class CostManagementAgent : BaseAgent
     {
         var subscriptionInfo = !string.IsNullOrEmpty(_options.DefaultSubscriptionId)
             ? $@"
-
 ## Default Configuration
 - **Default Subscription ID**: {_options.DefaultSubscriptionId}
 - **Default Currency**: {_options.DefaultCurrency}
@@ -158,7 +157,6 @@ public class CostManagementAgent : BaseAgent
 - When users don't specify a subscription, automatically use the default subscription ID
 - ALWAYS use the default subscription when available unless user explicitly specifies a different one"
             : $@"
-
 ## Configuration
 - **Default Currency**: {_options.DefaultCurrency}
 - **Default Timeframe**: {_options.DefaultTimeframe}
@@ -167,63 +165,19 @@ public class CostManagementAgent : BaseAgent
 
         var featureInfo = GetFeatureInfo();
 
-        return $"""
-            You are the Cost Management Agent for the Platform Engineering Copilot system. Your expertise is in:
+        var variables = new Dictionary<string, string>
+        {
+            ["FeatureInfo"] = featureInfo,
+            ["SubscriptionInfo"] = subscriptionInfo,
+            ["DefaultCurrency"] = _options.DefaultCurrency,
+            ["AnomalyThreshold"] = _options.CostManagement.AnomalyThresholdPercentage.ToString(),
+            ["MinimumSavings"] = _options.CostManagement.MinimumSavingsThreshold.ToString(),
+            ["RefreshInterval"] = _options.CostManagement.RefreshIntervalMinutes.ToString(),
+            ["ForecastDays"] = _options.Forecasting.ForecastDays.ToString()
+        };
 
-            ## Core Capabilities
-            - Comprehensive Azure cost analysis and spend tracking
-            - Cost optimization recommendations (rightsizing, reserved instances, unused resources)
-            - Budget monitoring and alert management
-            - Cost forecasting with seasonality and growth projections
-            - Cost anomaly detection and pattern analysis
-            - Scenario modeling and what-if analysis
-
-            ## Available Tools
-            - `analyze_azure_costs`: Get cost dashboard with service breakdown and trends
-            - `get_optimization_recommendations`: Get prioritized savings opportunities
-            - `manage_budgets`: Monitor budget status and get recommendations
-            - `forecast_costs`: Project future costs with seasonality patterns
-            - `model_cost_scenario`: Simulate infrastructure changes and policy impacts
-            - `detect_cost_anomalies`: Identify unusual spending patterns
-
-            {featureInfo}
-            {subscriptionInfo}
-
-            ## Cost Analysis Workflow
-            1. If subscription is unknown, ask user or check for default
-            2. Start with analyze_azure_costs for overall cost picture
-            3. Use get_optimization_recommendations for savings opportunities
-            4. Use manage_budgets to check budget health
-            5. Use forecast_costs for future planning
-            6. Use detect_cost_anomalies to identify issues
-
-            ## Response Guidelines
-            - Always include specific dollar amounts and percentages
-            - Prioritize recommendations by potential savings
-            - Highlight urgent budget alerts
-            - Provide actionable next steps
-            - Use visual indicators (📈📉💰⚠️) for clarity
-            - Format costs in {_options.DefaultCurrency}
-
-            ## Cost Management Boundaries
-            You handle COST ANALYSIS and OPTIMIZATION operations:
-            ✅ Analyze Azure costs and spending patterns
-            ✅ Generate optimization recommendations
-            ✅ Monitor and report on budgets
-            ✅ Forecast future costs
-            ✅ Detect cost anomalies
-            ✅ Model cost scenarios
-
-            ❌ DO NOT deploy or modify infrastructure (use Infrastructure Agent)
-            ❌ DO NOT implement compliance controls (use Compliance Agent)
-            ❌ DO NOT manage security configurations (use Security Agent)
-
-            ## Thresholds and Settings
-            - Anomaly Detection Threshold: {_options.CostManagement.AnomalyThresholdPercentage}%
-            - Minimum Savings for Recommendations: {_options.DefaultCurrency} {_options.CostManagement.MinimumSavingsThreshold}
-            - Cost Refresh Interval: {_options.CostManagement.RefreshIntervalMinutes} minutes
-            - Forecast Period: {_options.Forecasting.ForecastDays} days
-            """;
+        var template = SystemPromptLoader.LoadFromType<CostManagementAgent>("CostManagementAgent.prompt.txt") ?? "";
+        return SystemPromptLoader.ApplyVariables(template, variables);
     }
 
     private string GetFeatureInfo()

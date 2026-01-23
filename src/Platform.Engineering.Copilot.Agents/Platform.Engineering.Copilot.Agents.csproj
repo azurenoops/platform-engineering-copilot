@@ -9,11 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Microsoft.Extensions.AI (AI Abstractions - the core abstraction layer) -->
+    <!-- Microsoft.Extensions.AI (AI Abstractions - aligned with ModelContextProtocol requirements) -->
     <PackageReference Include="ClosedXML" Version="0.104.2" />
-    <PackageReference Include="Microsoft.Extensions.AI" Version="9.5.0" />
-    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="9.10.0" />
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="9.5.0-preview.1.25265.7" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="9.10.1" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="9.10.1" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="9.10.1-preview.1.25521.4" />
     <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
     
     <!-- Azure SDK -->
@@ -32,6 +32,11 @@
     <ProjectReference Include="..\Platform.Engineering.Copilot.Core\Platform.Engineering.Copilot.Core.csproj" />
     <ProjectReference Include="..\Platform.Engineering.Copilot.State\Platform.Engineering.Copilot.State.csproj" />
     <ProjectReference Include="..\Platform.Engineering.Copilot.Channels\Platform.Engineering.Copilot.Channels.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embedded resource prompt files for SystemPromptLoader -->
+    <EmbeddedResource Include="Prompts\*.prompt.txt" />
   </ItemGroup>
 
 </Project>

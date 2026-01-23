@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "projectName": {
+      "value": "pecop"
+    },
+    "environment": {
+      "value": "prod"
+    },
+    "location": {
+      "value": "eastus"
+    },
+    "sqlAdminLogin": {
+      "value": "platformadmin"
+    },
+    "sqlSku": {
+      "value": "S1"
+    },
+    "sqlAdminPassword": {
+      "value": ""
+    },
+    "keyVaultAdminObjectId": {
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    "deploymentTarget": {
+      "value": "aci"
+    },
+    "deployMcp": {
+      "value": true
+    },
+    "deployChat": {
+      "value": true
+    },
+    "deployAdminApi": {
+      "value": true
+    },
+    "deployAdminClient": {
+      "value": true
+    },
+    "imageTag": {
+      "value": "v1.0.0"
+    },
+    "cpuCores": {
+      "value": 2
+    },
+    "memoryGB": {
+      "value": 4
+    }
+  }
+}

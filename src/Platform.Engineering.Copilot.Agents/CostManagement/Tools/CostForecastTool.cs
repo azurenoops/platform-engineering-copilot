@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.CostManagement.State;
+using Platform.Engineering.Copilot.Core.Services;
 
 namespace Platform.Engineering.Copilot.Agents.CostManagement.Tools;
 
@@ -11,23 +12,27 @@ namespace Platform.Engineering.Copilot.Agents.CostManagement.Tools;
 public class CostForecastTool : BaseTool
 {
     private readonly CostManagementStateAccessors _stateAccessors;
+    private readonly ConfigService _configService;
 
     public override string Name => "forecast_costs";
 
     public override string Description =>
         "Forecast future Azure costs based on historical trends, seasonality patterns, and growth projections. " +
+        "If subscriptionId is not provided, uses the configured default subscription. " +
         "Includes confidence intervals and trend analysis.";
 
     public CostForecastTool(
         ILogger<CostForecastTool> logger,
-        CostManagementStateAccessors stateAccessors) : base(logger)
+        CostManagementStateAccessors stateAccessors,
+        ConfigService configService) : base(logger)
     {
         _stateAccessors = stateAccessors ?? throw new ArgumentNullException(nameof(stateAccessors));
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
 
         Parameters.Add(new ToolParameter(
             name: "subscriptionId",
-            description: "Azure subscription ID to forecast costs for. Required.",
-            required: true));
+            description: "Azure subscription ID to forecast costs for. If not provided, uses the configured default subscription.",
+            required: false));
 
         Parameters.Add(new ToolParameter(
             name: "forecastDays",
@@ -57,9 +62,22 @@ public class CostForecastTool : BaseTool
         var growthRate = GetOptionalDecimal(arguments, "growthRate") ?? 0;
         var includeSeasonality = GetOptionalBool(arguments, "includeSeasonality", defaultValue: true);
 
+        // Auto-fill subscription from configuration if not provided
         if (string.IsNullOrWhiteSpace(subscriptionId))
         {
-            return ToJson(new { success = false, error = "Subscription ID is required" });
+            subscriptionId = _configService.GetDefaultSubscription();
+            if (!string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                Logger.LogInformation("Using configured default subscription: {SubscriptionId}", subscriptionId);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return ToJson(new { 
+                success = false, 
+                error = "Subscription ID is required. Either provide subscriptionId parameter or set a default using 'Set my subscription to <id>'" 
+            });
         }
 
         forecastDays = Math.Clamp(forecastDays, 1, 365);

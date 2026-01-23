@@ -346,14 +346,17 @@ public class AzureResourceService : IAzureResourceService
 
             var resourceGroup = await subscription.GetResourceGroups().GetAsync(resourceGroupName, cancellationToken);
 
-            await resourceGroup.Value.DeleteAsync(WaitUntil.Completed, cancellationToken: cancellationToken);
+            // Use WaitUntil.Started to initiate deletion and return immediately
+            // Resource group deletion can take 10+ minutes for large deployments
+            await resourceGroup.Value.DeleteAsync(WaitUntil.Started, cancellationToken: cancellationToken);
 
-            _logger.LogInformation("Successfully deleted resource group {ResourceGroupName}", resourceGroupName);
+            _logger.LogInformation("Initiated deletion of resource group {ResourceGroupName} (deletion will continue in background)", resourceGroupName);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
-            _logger.LogWarning("Resource group {ResourceGroupName} not found - may have already been deleted", resourceGroupName);
-            throw new InvalidOperationException($"Resource group '{resourceGroupName}' not found", ex);
+            // 404 means resource group doesn't exist - this is success for a delete operation
+            _logger.LogInformation("Resource group {ResourceGroupName} not found - already deleted or never existed", resourceGroupName);
+            // Don't throw - the goal was for it to not exist, and it doesn't
         }
     }
 
@@ -1823,6 +1826,58 @@ public class AzureResourceService : IAzureResourceService
     public Task ApplySubscriptionTagsAsync(string subscriptionId, Dictionary<string, string> tags)
     {
         throw new NotImplementedException("Subscription tagging not yet implemented");
+    }
+
+    /// <summary>
+    /// Updates tags on an Azure resource by resource ID.
+    /// Merges the provided tags with existing tags.
+    /// </summary>
+    public async Task<bool> UpdateResourceTagsAsync(string resourceId, Dictionary<string, string> tags, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(resourceId) || tags == null || tags.Count == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            var armClient = EnsureArmClient();
+            var resourceIdentifier = new ResourceIdentifier(resourceId);
+            var genericResource = armClient.GetGenericResource(resourceIdentifier);
+            
+            // Get current resource to merge tags
+            var response = await genericResource.GetAsync(cancellationToken);
+            if (response?.Value == null)
+            {
+                _logger.LogWarning("Resource not found: {ResourceId}", resourceId);
+                return false;
+            }
+
+            var resource = response.Value;
+            var currentTags = resource.Data.Tags ?? new Dictionary<string, string>();
+            
+            // Merge new tags with existing
+            foreach (var tag in tags)
+            {
+                currentTags[tag.Key] = tag.Value;
+            }
+
+            // Use AddTag to add/update tags one by one
+            foreach (var tag in tags)
+            {
+                await resource.AddTagAsync(tag.Key, tag.Value, cancellationToken);
+            }
+
+            _logger.LogInformation("✅ Updated tags on resource {ResourceId}: {Tags}", 
+                resourceId, string.Join(", ", tags.Select(t => $"{t.Key}={t.Value}")));
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update tags on resource {ResourceId}", resourceId);
+            return false;
+        }
     }
 
     public Task DeleteSubscriptionAsync(string subscriptionId)

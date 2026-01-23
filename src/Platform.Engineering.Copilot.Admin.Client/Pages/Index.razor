@@ -1,0 +1,242 @@
+@page "/"
+@inject EnvironmentApiService EnvironmentApi
+@inject TemplateApiService TemplateApi
+@inject IToastService ToastService
+
+<div class="row mb-4">
+    <div class="col-12">
+        <h4 class="mb-3">Platforms Overview</h4>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading Platforms Overview...</span>
+        </div>
+    </div>
+}
+else
+{
+    <!-- Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card primary">
+                <div>
+                    <div class="stat-value">@(_summary?.TotalEnvironments ?? 0)</div>
+                    <div class="stat-label">Total Environments</div>
+                </div>
+                <i class="fa fa-server stat-icon"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card success">
+                <div>
+                    <div class="stat-value">@(_summary?.HealthyCount ?? 0)</div>
+                    <div class="stat-label">Healthy</div>
+                </div>
+                <i class="fa fa-check-circle stat-icon"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card warning">
+                <div>
+                    <div class="stat-value">@(_summary?.EnvironmentsWithDrift ?? 0)</div>
+                    <div class="stat-label">With Drift</div>
+                </div>
+                <i class="fa fa-exclamation-triangle stat-icon"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card danger">
+                <div>
+                    <div class="stat-value">@(_summary?.FailedEnvironments ?? 0)</div>
+                    <div class="stat-label">Failed</div>
+                </div>
+                <i class="fa fa-times-circle stat-icon"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card info">
+                <div>
+                    <div class="stat-value">@_templateCount</div>
+                    <div class="stat-label">Templates</div>
+                </div>
+                <i class="fa fa-cube stat-icon"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card primary">
+                <div>
+                    <div class="stat-value">@(_summary?.ProvisioningEnvironments ?? 0)</div>
+                    <div class="stat-label">Provisioning</div>
+                </div>
+                <i class="fa fa-spinner stat-icon"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card warning">
+                <div>
+                    <div class="stat-value">@(_summary?.ExpiringWithin7Days ?? 0)</div>
+                    <div class="stat-label">Expiring Soon</div>
+                </div>
+                <i class="fa fa-clock stat-icon"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card success">
+                <div>
+                    <div class="stat-value">@((_summary?.TotalEstimatedMonthlyCost ?? 0).ToString("C0"))</div>
+                    <div class="stat-label">Est. Monthly Cost</div>
+                </div>
+                <i class="fa fa-dollar-sign stat-icon"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Recent Environments -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fa fa-server me-2"></i>Recent Environments</span>
+                    <a href="environments" class="btn btn-sm btn-outline-primary">View All</a>
+                </div>
+                <div class="card-body p-0">
+                    @if (_recentEnvironments?.Count > 0)
+                    {
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Template</th>
+                                    <th>Status</th>
+                                    <th>Cost</th>
+                                    <th>Created</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var env in _recentEnvironments.Take(5))
+                                {
+                                    <tr>
+                                        <td>
+                                            <a href="environments/@env.Id">@env.DisplayName</a>
+                                        </td>
+                                        <td>@env.TemplateName</td>
+                                        <td>
+                                            <span class="status-badge @GetStatusClass(env.Status)">
+                                                @env.Status
+                                            </span>
+                                            @if (env.HasDrift)
+                                            {
+                                                <span class="badge bg-warning text-dark ms-1" title="Has drift">
+                                                    <i class="fa fa-exclamation-triangle"></i>
+                                                </span>
+                                            }
+                                        </td>
+                                        <td>@env.EstimatedMonthlyCost.ToString("C0")/mo</td>
+                                        <td>@env.CreatedAt.ToLocalTime().ToString("MMM dd")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <div class="empty-state">
+                            <i class="fa fa-server"></i>
+                            <p>No environments provisioned yet</p>
+                            <a href="environments/create" class="btn btn-primary">
+                                <i class="fa fa-plus me-2"></i>Provision First Environment
+                            </a>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions & Status -->
+        <div class="col-lg-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fa fa-bolt me-2"></i>Quick Actions
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="templates/create" class="btn btn-outline-primary">
+                            <i class="fa fa-plus me-2"></i>Create Service Template
+                        </a>
+                        <a href="environments/create" class="btn btn-outline-success">
+                            <i class="fa fa-rocket me-2"></i>Provision Environment
+                        </a>
+                        <a href="drift" class="btn btn-outline-warning">
+                            <i class="fa fa-exchange-alt me-2"></i>Check Drift
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            @if (_summary?.ByStatus?.Count > 0)
+            {
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fa fa-chart-pie me-2"></i>By Status
+                    </div>
+                    <div class="card-body">
+                        @foreach (var status in _summary.ByStatus)
+                        {
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>@status.Key</span>
+                                <span class="badge bg-secondary">@status.Value</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private EnvironmentStatusSummary? _summary;
+    private List<EnvironmentListItem>? _recentEnvironments;
+    private int _templateCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var summaryTask = EnvironmentApi.GetStatusSummaryAsync();
+            var environmentsTask = EnvironmentApi.GetEnvironmentsAsync(take: 5);
+            var templatesTask = TemplateApi.GetTemplatesAsync(take: 100);
+
+            await Task.WhenAll(summaryTask, environmentsTask, templatesTask);
+
+            _summary = await summaryTask;
+            _recentEnvironments = await environmentsTask;
+            _templateCount = (await templatesTask)?.Count ?? 0;
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load dashboard: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string GetStatusClass(string status) => status.ToLower() switch
+    {
+        "running" => "running",
+        "provisioning" => "provisioning",
+        "failed" => "failed",
+        "deleted" => "deleted",
+        _ => ""
+    };
+}

@@ -1,7 +1,7 @@
 # Getting Started with Platform Engineering Copilot
 
 > **Complete setup guide from zero to running system in 15 minutes**  
-> **Last Updated:** November 2025
+> **Last Updated:** January 2026
 
 ---
 
@@ -40,7 +40,7 @@ cp .env.example .env
 # Required: AZURE_SUBSCRIPTION_ID, AZURE_TENANT_ID, AZURE_OPENAI_API_KEY
 
 # 4. Start services
-docker compose -f docker-compose.essentials.yml up -d
+docker compose -f docker-compose.mcp.yml up -d
 
 # 5. Verify
 curl http://localhost:5100/health
@@ -268,13 +268,13 @@ vi appsettings.json
     "InfrastructureAgent": {
       "Enabled": true,
       "Temperature": 0.4,
-      "MaxTokens": 8000,
+      "MaxTokens": 4000,
       "DefaultRegion": "usgovvirginia"
     },
     "ComplianceAgent": {
       "Enabled": true,
       "Temperature": 0.2,
-      "MaxTokens": 6000,
+      "MaxTokens": 4000,
       "DefaultFramework": "NIST80053"
     },
     "CostManagementAgent": {
@@ -288,19 +288,16 @@ vi appsettings.json
       "EnableHealthMonitoring": true
     },
     "EnvironmentAgent": {
-      "Enabled": true
-    },
-    "SecurityAgent": {
-      "Enabled": true
+      "Enabled": true,
+      "Temperature": 0.3
     },
     "KnowledgeBaseAgent": {
-      "Enabled": true
+      "Enabled": true,
+      "Temperature": 0.2
     },
-    "ServiceCreationAgent": {
-      "Enabled": true
-    },
-    "DocumentAgent": {
-      "Enabled": false
+    "ConfigurationAgent": {
+      "Enabled": true,
+      "Temperature": 0.2
     }
   }
 }
@@ -333,13 +330,13 @@ dotnet run  # Port 5001
 Terminal 3 - Admin API:
 ```bash
 cd src/Platform.Engineering.Copilot.Admin.API
-dotnet run  # Port 5002
+dotnet run  # Port 5050
 ```
 
 Terminal 4 - Admin Client:
 ```bash
 cd src/Platform.Engineering.Copilot.Admin.Client
-dotnet run  # Port 5003
+dotnet run  # Port 5000
 ```
 
 **Or use the convenience scripts:**
@@ -387,7 +384,7 @@ cp .env.example .env
 #   - AZURE_AD_ENABLE_USER_TOKEN_PASSTHROUGH
 
 # 4. Start essentials (MCP + Database)
-docker compose -f docker-compose.essentials.yml up -d
+docker compose -f docker-compose.mcp.yml up -d
 
 # 5. View logs
 docker compose logs -f platform-mcp
@@ -397,7 +394,7 @@ curl http://localhost:5100/health
 ```
 
 > **⚠️ Important:** The container needs access to your Azure credentials!  
-> The `docker-compose.essentials.yml` automatically mounts your `~/.azure` directory so the container can use your Azure CLI login.  
+> The `docker-compose.mcp.yml` automatically mounts your `~/.azure` directory so the container can use your Azure CLI login.  
 > **Without `az login`, Agents cannot query Azure resources.**
 
 ### How Azure Authentication Works in Docker
@@ -439,23 +436,21 @@ docker compose ps
 
 ### Docker Compose Options
 
-**Essentials (MCP + SQL Server)**
-- `docker-compose.essentials.yml` - MCP Server and database only
+**MCP Only**
+- `docker-compose.mcp.yml` - MCP Server and database only
 - Best for: AI client development, MCP protocol testing
 
-**Development (Hot Reload)**
-- `docker-compose.dev.yml` - Hot reload enabled
-- Combine with: `-f docker-compose.yml -f docker-compose.dev.yml`
-- Best for: Active development, rapid iteration
+**MCP + Chat**
+- `docker-compose.mcp-chat.yml` - MCP Server + Chat UI
+- Best for: End user demos, testing chat interface
 
-**Production (Optimized)**
-- `docker-compose.prod.yml` - Production optimizations
-- Combine with: `-f docker-compose.yml -f docker-compose.prod.yml`
-- Best for: Production deployments, performance testing
+**MCP + Admin**
+- `docker-compose.mcp-admin.yml` - MCP Server + Admin API + Admin Client
+- Best for: Template management, platform administration
 
-**All Services**
-- `docker-compose.yml` - Complete platform
-- Best for: Full feature testing, demo environments
+**Full Stack**
+- `docker-compose.mcp-chat-admin.yml` - Complete platform
+- Best for: Full feature testing, production-like environments
 
 ### Docker Management
 
@@ -979,10 +974,10 @@ curl http://localhost:5100/health
 curl http://localhost:5001/health
 
 # Admin API (if running)
-curl http://localhost:5002/health
+curl http://localhost:5050/health
 
-# Admin Client (if running)
-curl http://localhost:5003/health
+# Admin Client (if running - check static page loads)
+curl http://localhost:5000/
 ```
 
 ### MCP Tools Test
@@ -1494,8 +1489,8 @@ az account set --subscription "your-subscription-id"
 ls -la ~/.azure/
 
 # 3. Restart Docker container to pick up credentials
-docker-compose -f docker-compose.essentials.yml down
-docker-compose -f docker-compose.essentials.yml up -d
+docker-compose -f docker-compose.mcp.yml down
+docker-compose -f docker-compose.mcp.yml up -d
 
 # 4. Check container can access Azure
 docker exec plaform-engineering-copilot-mcp ls -la /root/.azure

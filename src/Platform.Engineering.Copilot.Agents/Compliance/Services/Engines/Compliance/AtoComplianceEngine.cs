@@ -1,17 +1,18 @@
-using Platform.Engineering.Copilot.Core.Interfaces.Azure;
 using System.Diagnostics;
+using System.Net.Http;
+using System.Text.Json;
+using Azure.Core;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Platform.Engineering.Copilot.Core.Constants;
+using Platform.Engineering.Copilot.Core.Helpers;
+using Platform.Engineering.Copilot.Core.Interfaces.Azure;
+using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
+using Platform.Engineering.Copilot.Core.Interfaces.KnowledgeBase;
+using Platform.Engineering.Copilot.Core.Models.Azure;
 using Platform.Engineering.Copilot.Core.Models.Compliance;
 using Platform.Engineering.Copilot.Agents.Compliance.Configuration;
-using System.Text.Json;
-using Platform.Engineering.Copilot.Core.Interfaces.Compliance;
-using Platform.Engineering.Copilot.Core.Models.Azure;
-using Platform.Engineering.Copilot.Core.Interfaces.KnowledgeBase;
-using Azure.Core;
-using Platform.Engineering.Copilot.Core.Helpers;
-using Platform.Engineering.Copilot.Core.Constants;
 using CF = Platform.Engineering.Copilot.Core.Constants.ComplianceConstants.ControlFamilies;
 
 namespace Platform.Engineering.Copilot.Agents.Compliance.Services.Compliance;
@@ -34,6 +35,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
     private readonly IAssessmentService _assessmentService;
     private readonly IDefenderForCloudService _defenderForCloudService;
     private readonly IEvidenceStorageService _evidenceStorage;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     // Knowledge Base Services for enhanced compliance assessment
     private readonly IRmfKnowledgeService _rmfKnowledgeService;
@@ -61,7 +63,8 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         IDoDWorkflowService dodWorkflowService,
         IDefenderForCloudService defenderForCloudService,
         IEvidenceStorageService evidenceStorage,
-        IStigValidationService stigValidationService)
+        IStigValidationService stigValidationService,
+        IHttpClientFactory httpClientFactory)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _nistControlsService = nistControlsService ?? throw new ArgumentNullException(nameof(nistControlsService));
@@ -80,9 +83,160 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         _defenderForCloudService = defenderForCloudService ?? throw new ArgumentNullException(nameof(defenderForCloudService));
         _evidenceStorage = evidenceStorage ?? throw new ArgumentNullException(nameof(evidenceStorage));
         _stigValidationService = stigValidationService ?? throw new ArgumentNullException(nameof(stigValidationService));
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
 
         _scanners = InitializeScanners();
         _evidenceCollectors = InitializeEvidenceCollectors();
+    }
+
+    /// <summary>
+    /// Runs a comprehensive ATO compliance assessment for a specific environment
+    /// Environments can span multiple subscriptions and resource groups
+    /// </summary>
+    /// <param name="environmentId">Environment identifier (e.g., 'prod-001', 'dev-002')</param>
+    /// <param name="environmentName">Human-readable environment name (e.g., 'Production', 'Development')</param>
+    /// <param name="subscriptionIds">List of subscription IDs that comprise this environment</param>
+    /// <param name="resourceGroupFilter">Optional list of resource groups to scope assessment within subscriptions</param>
+    /// <param name="progress">Optional progress reporter for real-time status updates</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    public async Task<AtoComplianceAssessment> RunEnvironmentAssessmentAsync(
+        string environmentId,
+        string environmentName,
+        IEnumerable<string> subscriptionIds,
+        IEnumerable<string>? resourceGroupFilter = null,
+        IProgress<AssessmentProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var subList = subscriptionIds.ToList();
+        
+        _logger.LogInformation("Starting environment-scoped ATO compliance assessment for environment '{EnvironmentName}' ({EnvironmentId}) spanning {SubCount} subscriptions",
+            environmentName, environmentId, subList.Count);
+
+        var assessment = new AtoComplianceAssessment
+        {
+            AssessmentId = Guid.NewGuid().ToString(),
+            EnvironmentId = environmentId,
+            EnvironmentName = environmentName,
+            SubscriptionId = subList.First(), // Primary subscription
+            AdditionalSubscriptionIds = subList.Skip(1).ToList(),
+            StartTime = DateTimeOffset.UtcNow,
+            ControlFamilyResults = new Dictionary<string, ControlFamilyAssessment>()
+        };
+
+        try
+        {
+            // Pre-warm cache for all subscriptions in the environment
+            var cacheWarmupStopwatch = Stopwatch.StartNew();
+            foreach (var subscriptionId in subList)
+            {
+                await GetCachedAzureResourcesAsync(subscriptionId, cancellationToken);
+            }
+            cacheWarmupStopwatch.Stop();
+            _logger.LogInformation("Cache warmup completed in {ElapsedMs}ms for environment '{EnvironmentName}' ({SubCount} subscriptions)",
+                cacheWarmupStopwatch.ElapsedMilliseconds, environmentName, subList.Count);
+
+            // Get all NIST control families
+            var controlFamilies = ComplianceConstants.ControlFamilies.All.ToList();
+
+            progress?.Report(new AssessmentProgress
+            {
+                TotalFamilies = controlFamilies.Count,
+                CompletedFamilies = 0,
+                CurrentFamily = "Initialization",
+                Message = $"Starting control family assessments for environment '{environmentName}'"
+            });
+
+            // Run assessments for each control family across all subscriptions in environment
+            var familyAssessments = new List<ControlFamilyAssessment>();
+            var completedCount = 0;
+
+            foreach (var family in controlFamilies)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                progress?.Report(new AssessmentProgress
+                {
+                    TotalFamilies = controlFamilies.Count,
+                    CompletedFamilies = completedCount,
+                    CurrentFamily = family,
+                    Message = $"Assessing {family} across environment '{environmentName}'"
+                });
+
+                // Aggregate results across all subscriptions in the environment
+                var aggregatedFamilyAssessment = new ControlFamilyAssessment
+                {
+                    ControlFamily = family,
+                    FamilyName = GetFamilyName(family),
+                    AssessmentTime = DateTimeOffset.UtcNow,
+                    Findings = new List<AtoFinding>()
+                };
+
+                foreach (var subscriptionId in subList)
+                {
+                    var familyResult = await AssessControlFamilyAsync(
+                        subscriptionId,
+                        null, // Will apply resourceGroupFilter at resource level if needed
+                        family,
+                        cancellationToken);
+
+                    // Merge findings from this subscription into aggregated result
+                    aggregatedFamilyAssessment.Findings.AddRange(familyResult.Findings);
+                    aggregatedFamilyAssessment.TotalControls += familyResult.TotalControls;
+                    aggregatedFamilyAssessment.PassedControls += familyResult.PassedControls;
+                }
+
+                // Calculate aggregated compliance score for this family across environment
+                aggregatedFamilyAssessment.ComplianceScore = aggregatedFamilyAssessment.TotalControls > 0
+                    ? (double)aggregatedFamilyAssessment.PassedControls / aggregatedFamilyAssessment.TotalControls * 100
+                    : 0;
+
+                familyAssessments.Add(aggregatedFamilyAssessment);
+                completedCount++;
+
+                progress?.Report(new AssessmentProgress
+                {
+                    TotalFamilies = controlFamilies.Count,
+                    CompletedFamilies = completedCount,
+                    CurrentFamily = family,
+                    Message = $"Completed {family}: {aggregatedFamilyAssessment.ComplianceScore:F1}% compliant across environment"
+                });
+            }
+
+            // Aggregate all results
+            foreach (var familyAssessment in familyAssessments)
+            {
+                assessment.ControlFamilyResults[familyAssessment.ControlFamily] = familyAssessment;
+            }
+
+            // Calculate overall compliance score for the environment
+            assessment.OverallComplianceScore = CalculateOverallComplianceScore(familyAssessments);
+            assessment.TotalFindings = familyAssessments.Sum(f => f.Findings.Count);
+            assessment.CriticalFindings = familyAssessments.Sum(f => f.Findings.Count(finding => finding.Severity == AtoFindingSeverity.Critical));
+            assessment.HighFindings = familyAssessments.Sum(f => f.Findings.Count(finding => finding.Severity == AtoFindingSeverity.High));
+            assessment.MediumFindings = familyAssessments.Sum(f => f.Findings.Count(finding => finding.Severity == AtoFindingSeverity.Medium));
+            assessment.LowFindings = familyAssessments.Sum(f => f.Findings.Count(finding => finding.Severity == AtoFindingSeverity.Low));
+            assessment.InformationalFindings = familyAssessments.Sum(f => f.Findings.Count(finding => finding.Severity == AtoFindingSeverity.Informational));
+
+            assessment.EndTime = DateTimeOffset.UtcNow;
+            assessment.Duration = stopwatch.Elapsed;
+
+            _logger.LogInformation("Environment-scoped ATO compliance assessment completed for '{EnvironmentName}' in {ElapsedMs}ms. " +
+                "Overall score: {Score}%, Total findings: {Findings} (Critical: {Critical}, High: {High})",
+                environmentName, stopwatch.ElapsedMilliseconds, assessment.OverallComplianceScore,
+                assessment.TotalFindings, assessment.CriticalFindings, assessment.HighFindings);
+
+            return assessment;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during environment-scoped ATO compliance assessment for '{EnvironmentName}' ({EnvironmentId})",
+                environmentName, environmentId);
+            assessment.Error = ex.Message;
+            assessment.EndTime = DateTimeOffset.UtcNow;
+            assessment.Duration = stopwatch.Elapsed;
+            throw;
+        }
     }
 
     /// <summary>
@@ -699,7 +853,7 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         return new Dictionary<string, IComplianceScanner>
         {
             { CF.AccessControl, new AccessControlScanner(_logger, _azureResourceService) },
-            { CF.AuditAccountability, new AuditScanner(_logger, _azureResourceService, gatewayOptions) },
+            { CF.AuditAccountability, new AuditScanner(_logger, _azureResourceService, gatewayOptions, _httpClientFactory) },
             { CF.SystemCommunications, new SystemCommunicationScanner(_logger, _azureResourceService) },
             { CF.SystemInformationIntegrity, new SystemIntegrityScanner(_logger, _azureResourceService) },
             { CF.ContingencyPlanning, new ContingencyPlanningScanner(_logger, _azureResourceService) },
@@ -802,6 +956,25 @@ public class AtoComplianceEngine : IAtoComplianceEngine
         var passedControls = assessments.Sum(a => a.PassedControls);
 
         return totalControls > 0 ? (double)passedControls / totalControls * 100 : 0;
+    }
+
+    private string GetFamilyName(string familyCode)
+    {
+        // Map control family codes to human-readable names
+        return familyCode switch
+        {
+            CF.AccessControl => "Access Control",
+            CF.AuditAccountability => "Audit and Accountability",
+            CF.SecurityAssessment => "Security Assessment and Authorization",
+            CF.ConfigurationManagement => "Configuration Management",
+            CF.ContingencyPlanning => "Contingency Planning",
+            CF.IdentificationAuthentication => "Identification and Authentication",
+            CF.IncidentResponse => "Incident Response",
+            CF.SystemCommunications => "System and Communications Protection",
+            CF.SystemInformationIntegrity => "System and Information Integrity",
+            CF.RiskAssessment => "Risk Assessment",
+            _ => familyCode
+        };
     }
 
     private string GenerateExecutiveSummary(AtoComplianceAssessment assessment)

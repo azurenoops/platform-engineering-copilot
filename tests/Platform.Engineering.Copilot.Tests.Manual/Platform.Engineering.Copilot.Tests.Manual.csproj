@@ -30,6 +30,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Platform.Engineering.Copilot.Core\Platform.Engineering.Copilot.Core.csproj" />
+    <ProjectReference Include="..\..\src\Platform.Engineering.Copilot.Agents\Platform.Engineering.Copilot.Agents.csproj" />
+    <ProjectReference Include="..\..\src\Platform.Engineering.Copilot.State\Platform.Engineering.Copilot.State.csproj" />
     <ProjectReference Include="..\..\src\Platform.Engineering.Copilot.Mcp\Platform.Engineering.Copilot.Mcp.csproj" />
   </ItemGroup>
 

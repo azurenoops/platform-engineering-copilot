@@ -25,6 +25,13 @@ using Platform.Engineering.Copilot.Agents.Discovery.Agents;
 using Platform.Engineering.Copilot.Agents.Discovery.Configuration;
 using Platform.Engineering.Copilot.Agents.Discovery.State;
 using Platform.Engineering.Copilot.Agents.Discovery.Tools;
+using Platform.Engineering.Copilot.Agents.Environments.Agents;
+using Platform.Engineering.Copilot.Agents.Environments.Configuration;
+using Platform.Engineering.Copilot.Agents.Environments.Services;
+using Platform.Engineering.Copilot.Agents.Infrastructure.Deployment;
+using Platform.Engineering.Copilot.Core.Interfaces.Deployment;
+using Platform.Engineering.Copilot.Agents.Environments.State;
+using Platform.Engineering.Copilot.Agents.Environments.Tools;
 using Platform.Engineering.Copilot.Agents.Infrastructure.Agents;
 using Platform.Engineering.Copilot.Agents.Infrastructure.Configuration;
 using Platform.Engineering.Copilot.Agents.Infrastructure.Services;
@@ -44,6 +51,8 @@ using Platform.Engineering.Copilot.Core.Interfaces.Compliance.Remediation;
 using Platform.Engineering.Copilot.Core.Interfaces.Cost;
 using Platform.Engineering.Copilot.Core.Interfaces.Infrastructure;
 using Platform.Engineering.Copilot.Core.Interfaces.KnowledgeBase;
+using Platform.Engineering.Copilot.Core.Interfaces.Templates;
+using Platform.Engineering.Copilot.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Services;
 using Platform.Engineering.Copilot.Agents.Compliance.Services.Compliance.Remediation;
 using Platform.Engineering.Copilot.State.Extensions;
@@ -88,6 +97,9 @@ public static class ServiceCollectionExtensions
         // Add discovery agent
         services.AddDiscoveryAgent(configuration);
 
+        // Add environment agent
+        services.AddEnvironmentAgent(configuration);
+
         // Add cost management agent
         services.AddCostManagementAgent(configuration);
 
@@ -105,10 +117,6 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
-
-    /// <summary>
-    /// Registers Azure OpenAI as IChatClient using configuration from Gateway:AzureOpenAI section.
-    /// </summary>
     public static IServiceCollection AddAzureOpenAIChatClient(
         this IServiceCollection services,
         IConfiguration configuration)
@@ -184,6 +192,9 @@ public static class ServiceCollectionExtensions
         // Add discovery agent
         services.AddDiscoveryAgent(configuration);
 
+        // Add environment agent
+        services.AddEnvironmentAgent(configuration);
+
         // Add cost management agent
         services.AddCostManagementAgent(configuration);
 
@@ -225,10 +236,10 @@ public static class ServiceCollectionExtensions
     {
         // Bind configuration
         services.Configure<ConfigurationAgentOptions>(
-            configuration.GetSection("Agents:Configuration"));
+            configuration.GetSection(ConfigurationAgentOptions.SectionName));
 
         // Check if agent is enabled
-        var options = configuration.GetSection("Agents:Configuration")
+        var options = configuration.GetSection(ConfigurationAgentOptions.SectionName)
             .Get<ConfigurationAgentOptions>() ?? new ConfigurationAgentOptions();
 
         // Add state accessors (always needed for potential runtime enable)
@@ -274,6 +285,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ResourceTagSearchTool>();
         services.AddScoped<ResourceGroupListTool>();
         services.AddScoped<ResourceGroupSummaryTool>();
+        services.AddScoped<SubscriptionInventoryTool>();
 
         // Only register agent if enabled
         services.AddScoped<DiscoveryAgent>();
@@ -295,6 +307,9 @@ public static class ServiceCollectionExtensions
         // Bind configuration
         services.Configure<CostManagementAgentOptions>(
             configuration.GetSection(CostManagementAgentOptions.SectionName));
+        // Governance options needed by AzureCostManagementService (use Core.Configuration to avoid ambiguity with Compliance.Configuration)
+        services.Configure<Core.Configuration.GovernanceOptions>(
+            configuration.GetSection(Core.Configuration.GovernanceOptions.SectionName));
 
         // Check if agent is enabled
         var options = configuration.GetSection(CostManagementAgentOptions.SectionName)
@@ -398,8 +413,10 @@ public static class ServiceCollectionExtensions
         // Bind configuration
         services.Configure<ComplianceAgentOptions>(
             configuration.GetSection(ComplianceAgentOptions.SectionName));
-        services.Configure<NistControlsOptions>(
-            configuration.GetSection("NistControls"));
+        // NistControls is nested under ComplianceAgent in appsettings.json
+        // Use Compliance.Configuration.NistControlsOptions to avoid ambiguity with Core.Configuration
+        services.Configure<Compliance.Configuration.NistControlsOptions>(
+            configuration.GetSection($"{ComplianceAgentOptions.SectionName}:NistControls"));
 
         // Check if agent is enabled
         var options = configuration.GetSection(ComplianceAgentOptions.SectionName)
@@ -519,6 +536,60 @@ public static class ServiceCollectionExtensions
         if (options.Enabled)
         {
             services.AddScoped<BaseAgent>(sp => sp.GetRequiredService<KnowledgeBaseAgent>());
+        }
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds the Environment Agent for environment lifecycle management using Platform Engineering service templates.
+    /// </summary>
+    public static IServiceCollection AddEnvironmentAgent(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Bind configuration
+        services.Configure<EnvironmentAgentOptions>(
+            configuration.GetSection(EnvironmentAgentOptions.SectionName));
+
+        // Check if agent is enabled
+        var options = configuration.GetSection(EnvironmentAgentOptions.SectionName)
+            .Get<EnvironmentAgentOptions>() ?? new EnvironmentAgentOptions();
+
+        // Add state accessors (always needed for potential runtime enable)
+        services.AddScoped<EnvironmentStateAccessors>();
+
+        // Add deployment services (Bicep, Terraform deployers)
+        services.AddScoped<ITemplateDeployer, BicepDeployer>();
+        services.AddScoped<ITemplateDeployer, TerraformDeployer>();
+        services.AddScoped<IDeployerFactory, DeployerFactory>();
+        services.Configure<DeployerOptions>(configuration.GetSection("Deployment"));
+
+        // Add Platform Engineering template services
+        services.AddScoped<IServiceTemplateCatalogService, ServiceTemplateCatalogService>();
+        services.AddScoped<IProvisionedEnvironmentService, ProvisionedEnvironmentService>();
+        services.AddScoped<Core.Interfaces.Environments.IEnvironmentActivityService, EnvironmentActivityService>();
+
+        // Add governance validation service for runtime policy enforcement
+        services.AddScoped<Core.Services.Governance.IGovernanceValidationService, Core.Services.Governance.GovernanceValidationService>();
+
+        // Add template-based tools (Platform Engineering approach)
+        services.AddScoped<ServiceTemplateListTool>();
+        services.AddScoped<ServiceTemplateDetailsTool>();
+        services.AddScoped<ServiceTemplateMatchTool>();
+        services.AddScoped<CreateEnvironmentFromTemplateTool>();
+        services.AddScoped<ProvisionedEnvironmentListTool>();
+        services.AddScoped<EnvironmentScaleFromTemplateTool>();
+        services.AddScoped<EnvironmentCloneFromTemplateTool>();
+        services.AddScoped<EnvironmentDeleteTool>();
+        services.AddScoped<EnvironmentDriftDetectionTool>();
+        services.AddScoped<EnvironmentDriftRemediationTool>();
+
+        // Only register agent if enabled
+        services.AddScoped<EnvironmentAgent>();
+        if (options.Enabled)
+        {
+            services.AddScoped<BaseAgent>(sp => sp.GetRequiredService<EnvironmentAgent>());
         }
 
         return services;

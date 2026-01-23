@@ -2,6 +2,26 @@
 
 This directory contains Kubernetes manifests for deploying the Platform Engineering Copilot to Azure Kubernetes Service (AKS).
 
+## Service Port Mappings
+
+| Service | Container Port | Service Port | Description |
+|---------|---------------|--------------|-------------|
+| MCP Server | 5100 | 5100 | AI Agent MCP Server |
+| Chat UI | 5001 | 80 (LoadBalancer) | Web Chat Interface |
+| Admin API | 5050 | 5050 | Admin REST API |
+| Admin Client | 80 | 80 | Admin Blazor WASM UI |
+
+## Deployment Profiles
+
+Deployment manifests support 4 deployment profiles matching docker-compose configurations:
+
+| Profile | Services | Parameter File |
+|---------|----------|---------------|
+| MCP Only | MCP | `main.parameters.mcp.json` |
+| MCP + Chat | MCP, Chat | `main.parameters.mcp-chat.json` |
+| MCP + Admin | MCP, Admin API, Admin Client | `main.parameters.mcp-admin.json` |
+| Full Stack | MCP, Chat, Admin API, Admin Client | `main.parameters.mcp-chat-admin.json` |
+
 ## Overview
 
 The manifests are organized to support:
@@ -11,6 +31,7 @@ The manifests are organized to support:
 - **Pod Security Standards** for container security
 - **Auto-scaling** with HPA for high availability
 - **Ingress** with Application Gateway or NGINX
+- **Git Sync Configuration** for template synchronization
 
 ## Directory Structure
 

@@ -1,0 +1,595 @@
+@page "/settings"
+@inject AppSettingsService SettingsService
+@inject IToastService ToastService
+
+<style>
+    .nav-tabs {
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        flex-wrap: wrap;
+        padding-left: 0;
+        margin-bottom: 0;
+        list-style: none;
+    }
+    
+    .nav-tabs .nav-item {
+        margin-bottom: -1px;
+    }
+    
+    .nav-tabs .nav-link {
+        display: block;
+        padding: 0.5rem 1rem;
+        color: #495057;
+        text-decoration: none;
+        background-color: transparent;
+        border: 1px solid transparent;
+        border-top-left-radius: 0.375rem;
+        border-top-right-radius: 0.375rem;
+        cursor: pointer;
+    }
+    
+    .nav-tabs .nav-link:hover {
+        border-color: #e9ecef #e9ecef #dee2e6;
+        isolation: isolate;
+    }
+    
+    .nav-tabs .nav-link.active {
+        color: #495057;
+        background-color: #fff;
+        border-color: #dee2e6 #dee2e6 #fff;
+    }
+</style>
+
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">Home</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Settings</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-0">Application Settings</h4>
+        <small class="text-muted">Configure your preferences and default values</small>
+    </div>
+    <div>
+        <button class="btn btn-outline-secondary me-2" @onclick="ResetToDefaults">
+            <i class="fa fa-undo me-1"></i>Reset to Defaults
+        </button>
+        <button class="btn btn-primary" @onclick="SaveSettings" disabled="@_saving">
+            @if (_saving)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            <i class="fa fa-save me-1"></i>Save Settings
+        </button>
+    </div>
+</div>
+
+<!-- Settings Tabs -->
+<ul class="nav nav-tabs mb-4" role="tablist">
+    <li class="nav-item" role="presentation">
+        <a class="nav-link @(_activeTab == "general" ? "active" : "")" 
+           href="#" @onclick="OnGeneralClick" @onclick:preventDefault>
+            <i class="fa fa-cog me-1"></i>General
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link @(_activeTab == "notifications" ? "active" : "")" 
+           href="#" @onclick="OnNotificationsClick" @onclick:preventDefault>
+            <i class="fa fa-bell me-1"></i>Notifications
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link @(_activeTab == "defaults" ? "active" : "")" 
+           href="#" @onclick="OnDefaultsClick" @onclick:preventDefault>
+            <i class="fa fa-sliders-h me-1"></i>Defaults
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link @(_activeTab == "display" ? "active" : "")" 
+           href="#" @onclick="OnDisplayClick" @onclick:preventDefault>
+            <i class="fa fa-paint-brush me-1"></i>Display
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link @(_activeTab == "agents" ? "active" : "")" 
+           href="#" @onclick="OnAgentsClick" @onclick:preventDefault>
+            <i class="fa fa-robot me-1"></i>Agents
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link @(_activeTab == "security" ? "active" : "")" 
+           href="#" @onclick="OnSecurityClick" @onclick:preventDefault>
+            <i class="fa fa-shield-alt me-1"></i>Security
+        </a>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <!-- General Settings Tab -->
+    @if (_activeTab == "general")
+    {
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">General Application Settings</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Application Name</label>
+                        <input type="text" class="form-control" @bind="_settings.ApplicationName" placeholder="Platform Engineering Copilot" />
+                        <small class="text-muted">Displayed in the header and page title</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Organization Name</label>
+                        <input type="text" class="form-control" @bind="_settings.OrganizationName" placeholder="Your Organization" />
+                        <small class="text-muted">Used in reports and documentation</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Default Cloud</label>
+                        <select class="form-select" @bind="_settings.DefaultCloud">
+                            <option value="AzureUSGovernment">Azure Government</option>
+                            <option value="AzureCloud">Azure Commercial</option>
+                            <option value="AzureChinaCloud">Azure China</option>
+                        </select>
+                        <small class="text-muted">Default Azure cloud environment</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Session Timeout (minutes)</label>
+                        <input type="number" class="form-control" @bind="_settings.SessionTimeoutMinutes" min="5" max="480" />
+                        <small class="text-muted">Automatic logout after inactivity</small>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.EnableAnalytics" id="enableAnalytics">
+                            <label class="form-check-label" for="enableAnalytics">
+                                Enable Usage Analytics
+                            </label>
+                            <div class="text-muted small">Collect anonymous usage data to improve the platform</div>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.EnableAutoSave" id="enableAutoSave">
+                            <label class="form-check-label" for="enableAutoSave">
+                                Enable Auto-Save
+                            </label>
+                            <div class="text-muted small">Automatically save form changes</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Notifications Tab -->
+    @if (_activeTab == "notifications")
+    {
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Notification Preferences</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Default Email Address</label>
+                        <input type="email" class="form-control" @bind="_settings.NotificationEmail" placeholder="admin@example.com" />
+                        <small class="text-muted">Primary email for notifications</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Toast Duration (seconds)</label>
+                        <input type="number" class="form-control" @bind="_settings.ToastDurationSeconds" min="1" max="30" />
+                        <small class="text-muted">How long toast notifications stay visible</small>
+                    </div>
+                    <div class="col-md-12">
+                        <h6 class="mb-3">Email Notifications</h6>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.NotifyEnvironmentProvision" id="notifyProvision">
+                            <label class="form-check-label" for="notifyProvision">
+                                Environment Provisioning
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.NotifyEnvironmentFailure" id="notifyFailure">
+                            <label class="form-check-label" for="notifyFailure">
+                                Environment Failures
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.NotifyDriftDetection" id="notifyDrift">
+                            <label class="form-check-label" for="notifyDrift">
+                                Drift Detection
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.NotifyExpiration" id="notifyExpiration">
+                            <label class="form-check-label" for="notifyExpiration">
+                                Environment Expiration (7 days before)
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.NotifyCostAnomalies" id="notifyCost">
+                            <label class="form-check-label" for="notifyCost">
+                                Cost Anomalies
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.NotifyComplianceIssues" id="notifyCompliance">
+                            <label class="form-check-label" for="notifyCompliance">
+                                Compliance Issues
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Defaults Tab -->
+    @if (_activeTab == "defaults")
+    {
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Default Values for New Environments</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Default Subscription ID</label>
+                        <input type="text" class="form-control" @bind="_settings.DefaultSubscriptionId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+                        <small class="text-muted">Pre-selected subscription for new environments</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Default Location</label>
+                        <select class="form-select" @bind="_settings.DefaultLocation">
+                            <option value="usgovvirginia">US Gov Virginia</option>
+                            <option value="usgovarizona">US Gov Arizona</option>
+                            <option value="usgovtexas">US Gov Texas</option>
+                            <option value="eastus">East US</option>
+                            <option value="westus">West US</option>
+                            <option value="centralus">Central US</option>
+                        </select>
+                        <small class="text-muted">Default Azure region for deployments</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Default Environment Expiration (days)</label>
+                        <input type="number" class="form-control" @bind="_settings.DefaultExpirationDays" min="1" max="365" />
+                        <small class="text-muted">Auto-delete environments after this period</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Default Compliance Framework</label>
+                        <select class="form-select" @bind="_settings.DefaultComplianceFramework">
+                            <option value="NIST80053">NIST 800-53</option>
+                            <option value="FedRAMP">FedRAMP</option>
+                            <option value="CMMC">CMMC</option>
+                            <option value="CIS">CIS Benchmarks</option>
+                            <option value="PCI-DSS">PCI-DSS</option>
+                        </select>
+                        <small class="text-muted">Default security compliance framework</small>
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label">Default Resource Tags</label>
+                        <textarea class="form-control" @bind="_settings.DefaultTags" rows="3" placeholder="Environment=Production&#10;CostCenter=IT&#10;Owner=PlatformTeam"></textarea>
+                        <small class="text-muted">One tag per line in format: Key=Value</small>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.DefaultAutoDelete" id="defaultAutoDelete">
+                            <label class="form-check-label" for="defaultAutoDelete">
+                                Enable Auto-Delete by Default
+                            </label>
+                            <div class="text-muted small">Automatically delete expired environments</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Display Preferences Tab -->
+    @if (_activeTab == "display")
+    {
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Display Preferences</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Theme</label>
+                        <select class="form-select" @bind="_settings.Theme">
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                            <option value="auto">Auto (System)</option>
+                        </select>
+                        <small class="text-muted">Application color theme</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Items Per Page</label>
+                        <select class="form-select" @bind="_settings.ItemsPerPage">
+                            <option value="10">10</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                        <small class="text-muted">Number of items shown in lists</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Date Format</label>
+                        <select class="form-select" @bind="_settings.DateFormat">
+                            <option value="MM/dd/yyyy">MM/DD/YYYY (US)</option>
+                            <option value="dd/MM/yyyy">DD/MM/YYYY (EU)</option>
+                            <option value="yyyy-MM-dd">YYYY-MM-DD (ISO)</option>
+                        </select>
+                        <small class="text-muted">Preferred date display format</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Time Format</label>
+                        <select class="form-select" @bind="_settings.TimeFormat">
+                            <option value="12h">12-hour (AM/PM)</option>
+                            <option value="24h">24-hour</option>
+                        </select>
+                        <small class="text-muted">Time display format</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Currency Symbol</label>
+                        <select class="form-select" @bind="_settings.CurrencySymbol">
+                            <option value="USD">USD ($)</option>
+                            <option value="EUR">EUR (€)</option>
+                            <option value="GBP">GBP (£)</option>
+                        </select>
+                        <small class="text-muted">Currency for cost displays</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Dashboard Refresh Interval (seconds)</label>
+                        <input type="number" class="form-control" @bind="_settings.DashboardRefreshSeconds" min="30" max="600" />
+                        <small class="text-muted">Auto-refresh interval for dashboards</small>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.ShowCostInLists" id="showCost">
+                            <label class="form-check-label" for="showCost">
+                                Show Cost Estimates in Environment Lists
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.CompactView" id="compactView">
+                            <label class="form-check-label" for="compactView">
+                                Use Compact View for Tables
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Agent Configuration Tab -->
+    @if (_activeTab == "agents")
+    {
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">AI Agent Configuration</h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fa fa-info-circle me-2"></i>
+                    <strong>Note:</strong> These settings control AI agent behavior. Changes will apply to new requests.
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-12">
+                        <h6 class="mb-3">Infrastructure Agent</h6>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.InfrastructureAgentEnabled" id="infraEnabled">
+                            <label class="form-check-label" for="infraEnabled">
+                                Enable Infrastructure Agent
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Temperature (0.0 - 1.0)</label>
+                        <input type="number" class="form-control" @bind="_settings.InfrastructureTemperature" min="0" max="1" step="0.1" />
+                        <small class="text-muted">Higher = more creative, Lower = more deterministic</small>
+                    </div>
+                    
+                    <div class="col-md-12 mt-4">
+                        <h6 class="mb-3">Compliance Agent</h6>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.ComplianceAgentEnabled" id="compEnabled">
+                            <label class="form-check-label" for="compEnabled">
+                                Enable Compliance Agent
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Temperature (0.0 - 1.0)</label>
+                        <input type="number" class="form-control" @bind="_settings.ComplianceTemperature" min="0" max="1" step="0.1" />
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.EnableAutomatedRemediation" id="autoRemediation">
+                            <label class="form-check-label" for="autoRemediation">
+                                Enable Automated Remediation
+                            </label>
+                            <div class="text-muted small">Auto-fix compliance issues when safe</div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-12 mt-4">
+                        <h6 class="mb-3">Cost Management Agent</h6>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.CostAgentEnabled" id="costEnabled">
+                            <label class="form-check-label" for="costEnabled">
+                                Enable Cost Management Agent
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Temperature (0.0 - 1.0)</label>
+                        <input type="number" class="form-control" @bind="_settings.CostTemperature" min="0" max="1" step="0.1" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Cost Anomaly Threshold (%)</label>
+                        <input type="number" class="form-control" @bind="_settings.CostAnomalyThreshold" min="10" max="100" />
+                        <small class="text-muted">Alert when cost increase exceeds this percentage</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Security & Compliance Tab -->
+    @if (_activeTab == "security")
+    {
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0">Security & Compliance Settings</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Compliance Framework</label>
+                        <select class="form-select" @bind="_settings.SecurityComplianceFramework">
+                            <option value="NIST80053">NIST 800-53 Rev 5</option>
+                            <option value="FedRAMPHigh">FedRAMP High</option>
+                            <option value="FedRAMPModerate">FedRAMP Moderate</option>
+                            <option value="CMMC2">CMMC Level 2</option>
+                            <option value="CISAzure">CIS Azure Foundations</option>
+                        </select>
+                        <small class="text-muted">Primary security compliance framework</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Minimum Password Length</label>
+                        <input type="number" class="form-control" @bind="_settings.MinPasswordLength" min="8" max="32" />
+                        <small class="text-muted">For resources that require passwords</small>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.RequireMFA" id="requireMFA">
+                            <label class="form-check-label" for="requireMFA">
+                                Require Multi-Factor Authentication
+                            </label>
+                            <div class="text-muted small">Enforce MFA for all user accounts</div>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.EnforceEncryption" id="enforceEncryption">
+                            <label class="form-check-label" for="enforceEncryption">
+                                Enforce Encryption at Rest
+                            </label>
+                            <div class="text-muted small">All storage resources must have encryption enabled</div>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.RequirePrivateEndpoints" id="requirePrivate">
+                            <label class="form-check-label" for="requirePrivate">
+                                Require Private Endpoints for PaaS
+                            </label>
+                            <div class="text-muted small">Disable public access for Azure PaaS services</div>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_settings.EnableDefenderForCloud" id="enableDefender">
+                            <label class="form-check-label" for="enableDefender">
+                                Enable Microsoft Defender for Cloud Integration
+                            </label>
+                            <div class="text-muted small">Integrate security recommendations from Defender</div>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label">Allowed IP Ranges (CIDR)</label>
+                        <textarea class="form-control" @bind="_settings.AllowedIpRanges" rows="3" placeholder="10.0.0.0/8&#10;172.16.0.0/12&#10;192.168.0.0/16"></textarea>
+                        <small class="text-muted">One CIDR range per line for network security groups</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private AppSettings _settings = new();
+    private string _activeTab = "general";
+    private bool _saving = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await SettingsService.InitializeAsync();
+        _settings = SettingsService.Settings;
+        StateHasChanged();
+    }
+
+    private async Task LoadSettings()
+    {
+        await SettingsService.LoadSettingsAsync();
+        _settings = SettingsService.Settings;
+        StateHasChanged();
+    }
+
+    private async Task SaveSettings()
+    {
+        try
+        {
+            _saving = true;
+            StateHasChanged();
+            
+            await SettingsService.SaveSettingsAsync(_settings);
+            
+            ToastService.ShowSuccess($"Settings saved! Theme changed to: {_settings.Theme}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Save error: {ex.Message}");
+            ToastService.ShowError($"Failed to save settings: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ResetToDefaults()
+    {
+        _settings = new AppSettings();
+        await SaveSettings();
+        ToastService.ShowInfo("Settings reset to defaults");
+    }
+
+    private void SetActiveTab(string tab)
+    {
+        _activeTab = tab;
+        StateHasChanged();
+    }
+
+    private void OnGeneralClick() => SetActiveTab("general");
+    private void OnNotificationsClick() => SetActiveTab("notifications");
+    private void OnDefaultsClick() => SetActiveTab("defaults");
+    private void OnDisplayClick() => SetActiveTab("display");
+    private void OnAgentsClick() => SetActiveTab("agents");
+    private void OnSecurityClick() => SetActiveTab("security");
+}

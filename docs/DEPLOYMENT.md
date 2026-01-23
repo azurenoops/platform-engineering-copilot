@@ -1,6 +1,6 @@
 # Platform Engineering Copilot - Deployment Guide
 
-**Version:** 3.0  
+**Version:** 3.1  
 **Last Updated:** January 2026
 
 ---
@@ -30,21 +30,44 @@ The Platform Engineering Copilot can be deployed in three modes:
 
 ```bash
 # Start MCP server
-docker-compose -f docker-compose.essentials.yml up -d
+docker-compose -f docker-compose.mcp.yml up -d
 
 # Verify
 curl http://localhost:5100/health
 ```
 
-### Full Platform (Web UI + MCP)
+### MCP + Chat (End User Demo)
 
 ```bash
-# Start all services
-docker-compose up -d
+# Start MCP + Chat
+docker-compose -f docker-compose.mcp-chat.yml up -d
 
 # Access
 open http://localhost:5001   # Chat UI
-open http://localhost:5003   # Admin UI
+curl http://localhost:5100/health  # MCP Server
+```
+
+### MCP + Admin (Platform Administration)
+
+```bash
+# Start MCP + Admin
+docker-compose -f docker-compose.mcp-admin.yml up -d
+
+# Access
+open http://localhost:5000   # Admin Client
+curl http://localhost:5050/health  # Admin API
+curl http://localhost:5100/health  # MCP Server
+```
+
+### Full Platform (All Services)
+
+```bash
+# Start all services
+docker-compose -f docker-compose.mcp-chat-admin.yml up -d
+
+# Access
+open http://localhost:5001   # Chat UI
+open http://localhost:5000   # Admin Client
 curl http://localhost:5100/health  # MCP Server
 ```
 
@@ -87,10 +110,10 @@ dotnet run --project src/Platform.Engineering.Copilot.Mcp -- --http
 
 | File | Services | Use Case |
 |------|----------|----------|
-| `docker-compose.yml` | MCP, Chat, Admin, Redis | Full platform |
-| `docker-compose.essentials.yml` | MCP only | AI client development |
-| `docker-compose.dev.yml` | Dev overrides | Local development |
-| `docker-compose.prod.yml` | Production settings | Production |
+| `docker-compose.mcp.yml` | MCP, SQL | AI client development |
+| `docker-compose.mcp-chat.yml` | MCP, Chat, SQL | End user demo |
+| `docker-compose.mcp-admin.yml` | MCP, Admin API, Admin Client, SQL | Platform administration |
+| `docker-compose.mcp-chat-admin.yml` | MCP, Chat, Admin API, Admin Client, SQL | Full platform |
 
 ### Service Ports
 
@@ -98,8 +121,8 @@ dotnet run --project src/Platform.Engineering.Copilot.Mcp -- --http
 |---------|------|-------------|
 | MCP Server | 5100 | Model Context Protocol server |
 | Chat UI | 5001 | Web chat interface |
-| Admin API | 5003 | Admin console API |
-| Redis | 6379 | Session/cache (internal) |
+| Admin API | 5050 | Admin REST API |
+| Admin Client | 5000 | Admin Blazor WASM UI (Nginx) |
 
 ---
 
@@ -135,14 +158,29 @@ docker push ${ACR_NAME}.azurecr.io/platform-engineering-copilot-mcp:latest
 
 ### Deploy with Bicep
 
+Choose a deployment profile matching your needs:
+
+| Profile | Parameter File | Services |
+|---------|----------------|----------|
+| MCP Only | `main.parameters.mcp.json` | MCP |
+| MCP + Chat | `main.parameters.mcp-chat.json` | MCP, Chat |
+| MCP + Admin | `main.parameters.mcp-admin.json` | MCP, Admin API, Admin Client |
+| Full Stack | `main.parameters.mcp-chat-admin.json` | All services |
+
 ```bash
-# Deploy ACI infrastructure
-az deployment sub create \
-  --name "platform-engineering-$(date +%Y%m%d)" \
-  --location eastus \
+# Deploy MCP-only (recommended for AI development)
+az deployment group create \
+  --resource-group rg-platform-engineering-dev \
   --template-file infra/bicep/main.bicep \
-  --parameters infra/bicep/main.parameters.aci.json \
-  --parameters environment=dev containerDeploymentTarget=aci
+  --parameters infra/bicep/main.parameters.mcp.json \
+  --parameters sqlAdminPassword='YourSecurePassword123!'
+
+# Deploy full stack
+az deployment group create \
+  --resource-group rg-platform-engineering-dev \
+  --template-file infra/bicep/main.bicep \
+  --parameters infra/bicep/main.parameters.mcp-chat-admin.json \
+  --parameters sqlAdminPassword='YourSecurePassword123!'
 ```
 
 ### ACI Environment Variables
@@ -154,6 +192,12 @@ AZURE_OPENAI_ENDPOINT=https://your-openai.openai.azure.us
 AZURE_OPENAI_API_KEY=your-key
 AZURE_TENANT_ID=your-tenant-id
 AZURE_SUBSCRIPTION_ID=your-subscription-id
+
+# Git Sync Configuration (for template syncing)
+GitSync__AutoSyncEnabled=true
+GitSync__DefaultSyncIntervalMinutes=30
+GitSync__GitHubToken=ghp_your_token
+GitSync__AzureDevOpsToken=your_pat
 ```
 
 ---
@@ -260,7 +304,10 @@ curl http://localhost:5100/health
 curl http://localhost:5001/health
 
 # Admin API
-curl http://localhost:5003/health
+curl http://localhost:5050/health
+
+# Admin Client (static - just check it loads)
+curl http://localhost:5000/
 ```
 
 ---

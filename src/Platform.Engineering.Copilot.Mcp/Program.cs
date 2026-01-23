@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -108,6 +109,14 @@ class Program
 
         // Register HttpClient for services that need it (like NistControlsService)
         builder.Services.AddHttpClient();
+        
+        // Add resilient HTTP clients with retry and circuit breaker policies
+        builder.Services.AddResilientHttpClients();
+
+        // Add repository services for Environment Management (Service Templates and Provisioned Environments)
+        builder.Services.AddScoped<Core.Data.Repositories.IServiceTemplateRepository, Core.Data.Repositories.ServiceTemplateRepository>();
+        builder.Services.AddScoped<Core.Data.Repositories.IProvisionedEnvironmentRepository, Core.Data.Repositories.ProvisionedEnvironmentRepository>();
+        builder.Services.AddScoped<Core.Data.Repositories.IEnvironmentActivityRepository, Core.Data.Repositories.EnvironmentActivityRepository>();
 
         // Add Core services (Multi-Agent Orchestrator, Plugins, etc.)
         builder.Services.AddPlatformEngineeringCopilotCore(builder.Configuration);
@@ -175,9 +184,17 @@ class Program
 
         // Register HttpClient for services that need it (like NistControlsService)
         builder.Services.AddHttpClient();
+        
+        // Add resilient HTTP clients with retry and circuit breaker policies
+        builder.Services.AddResilientHttpClients();
 
         // Register HttpContextAccessor for middleware access
         builder.Services.AddHttpContextAccessor();
+
+        // Add repository services for Environment Management (Service Templates and Provisioned Environments)
+        builder.Services.AddScoped<Core.Data.Repositories.IServiceTemplateRepository, Core.Data.Repositories.ServiceTemplateRepository>();
+        builder.Services.AddScoped<Core.Data.Repositories.IProvisionedEnvironmentRepository, Core.Data.Repositories.ProvisionedEnvironmentRepository>();
+        builder.Services.AddScoped<Core.Data.Repositories.IEnvironmentActivityRepository, Core.Data.Repositories.EnvironmentActivityRepository>();
 
         // Configure Azure AD authentication options
         builder.Services.Configure<AzureAdOptions>(
@@ -356,6 +373,10 @@ class Program
         // Add MCP Server and domain-specific tools
         builder.Services.AddMcpServer();
         
+        // Add health checks for Kubernetes probes and load balancer monitoring
+        builder.Services.AddHealthChecks()
+            .AddDbContextCheck<PlatformEngineeringCopilotContext>("database");
+        
         Log.Information("🚀 MCP Server loaded with domain-specific tools (Compliance, Discovery, Infrastructure, CostManagement, KnowledgeBase)");
 
         var app = builder.Build();
@@ -401,6 +422,10 @@ class Program
 
         // Add audit logging middleware for HTTP requests
         app.UseMiddleware<AuditLoggingMiddleware>();
+
+        // Map health check endpoints for Kubernetes probes
+        app.MapHealthChecks("/health");
+        app.MapHealthChecks("/ready");
 
         // Map HTTP endpoints
         var httpBridge = app.Services.GetRequiredService<McpHttpBridge>();

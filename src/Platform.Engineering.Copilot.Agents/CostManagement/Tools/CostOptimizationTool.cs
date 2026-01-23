@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.CostManagement.State;
+using Platform.Engineering.Copilot.Core.Services;
 
 namespace Platform.Engineering.Copilot.Agents.CostManagement.Tools;
 
@@ -11,24 +12,28 @@ namespace Platform.Engineering.Copilot.Agents.CostManagement.Tools;
 public class CostOptimizationTool : BaseTool
 {
     private readonly CostManagementStateAccessors _stateAccessors;
+    private readonly ConfigService _configService;
 
     public override string Name => "get_optimization_recommendations";
 
     public override string Description =>
         "Get cost optimization recommendations including rightsizing, reserved instances, " +
         "unused resources, and architectural improvements. " +
+        "If subscriptionId is not provided, uses the configured default subscription. " +
         "Returns prioritized recommendations with estimated savings.";
 
     public CostOptimizationTool(
         ILogger<CostOptimizationTool> logger,
-        CostManagementStateAccessors stateAccessors) : base(logger)
+        CostManagementStateAccessors stateAccessors,
+        ConfigService configService) : base(logger)
     {
         _stateAccessors = stateAccessors ?? throw new ArgumentNullException(nameof(stateAccessors));
+        _configService = configService ?? throw new ArgumentNullException(nameof(configService));
 
         Parameters.Add(new ToolParameter(
             name: "subscriptionId",
-            description: "Azure subscription ID to analyze for optimization opportunities. Required.",
-            required: true));
+            description: "Azure subscription ID to analyze for optimization opportunities. If not provided, uses the configured default subscription.",
+            required: false));
 
         Parameters.Add(new ToolParameter(
             name: "minimumSavings",
@@ -50,9 +55,22 @@ public class CostOptimizationTool : BaseTool
         var minimumSavings = GetOptionalDecimal(arguments, "minimumSavings") ?? 100m;
         var category = GetOptionalString(arguments, "category") ?? "all";
 
+        // Auto-fill subscription from configuration if not provided
         if (string.IsNullOrWhiteSpace(subscriptionId))
         {
-            return ToJson(new { success = false, error = "Subscription ID is required" });
+            subscriptionId = _configService.GetDefaultSubscription();
+            if (!string.IsNullOrWhiteSpace(subscriptionId))
+            {
+                Logger.LogInformation("Using configured default subscription: {SubscriptionId}", subscriptionId);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            return ToJson(new { 
+                success = false, 
+                error = "Subscription ID is required. Either provide subscriptionId parameter or set a default using 'Set my subscription to <id>'" 
+            });
         }
 
         Logger.LogInformation("Getting optimization recommendations for {SubscriptionId}, min savings: ${MinSavings}",

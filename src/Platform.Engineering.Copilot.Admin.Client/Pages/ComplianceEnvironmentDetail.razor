@@ -1,0 +1,353 @@
+@page "/compliance/environment/{EnvironmentId}"
+@inject ComplianceApiService ComplianceApi
+@inject IToastService ToastService
+@inject NavigationManager Navigation
+
+<PageTitle>Environment Compliance - @_detail?.EnvironmentName</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="/compliance">Compliance Dashboard</a></li>
+                <li class="breadcrumb-item active">@_detail?.EnvironmentName</li>
+            </ol>
+        </nav>
+        <h4 class="mb-0 mt-2"><i class="fa fa-server me-2"></i>@_detail?.EnvironmentName Compliance</h4>
+        <small class="text-muted">@_detail?.SubscriptionName</small>
+    </div>
+    <button class="btn btn-primary" @onclick="RescanEnvironment" disabled="@_scanning">
+        @if (_scanning)
+        {
+            <span class="spinner-border spinner-border-sm me-1"></span>
+            <span>Scanning...</span>
+        }
+        else
+        {
+            <i class="fa fa-sync me-1"></i>
+            <span>Rescan Environment</span>
+        }
+    </button>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (_detail == null)
+{
+    <div class="alert alert-warning">
+        Environment compliance data not found.
+    </div>
+}
+else
+{
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h2 class="text-@GetScoreColorClass(_detail.OverallScore)">@_detail.OverallScore.ToString("F1")%</h2>
+                    <small class="text-muted">Overall Compliance</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h2 class="text-success">@_detail.Controls.Count(c => c.Status == "Compliant")</h2>
+                    <small class="text-muted">Compliant Controls</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h2 class="text-danger">@_detail.Controls.Count(c => c.Status == "NonCompliant")</h2>
+                    <small class="text-muted">Failed Controls</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h2>@_detail.Resources.Count</h2>
+                    <small class="text-muted">Total Resources</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Framework Compliance</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        @foreach (var framework in _detail.FrameworkScores)
+                        {
+                            <div class="col-md-6 mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <strong>@framework.Framework</strong>
+                                    <span>@framework.Score.ToString("F1")%</span>
+                                </div>
+                                <div class="progress" style="height: 30px;">
+                                    <div class="progress-bar bg-@GetScoreColorClass(framework.Score)" 
+                                         role="progressbar" 
+                                         style="width: @framework.Score%">
+                                        @framework.CompliantControls / @framework.TotalControls controls
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Control Compliance Details</h5>
+            <div class="btn-group btn-group-sm">
+                <button class="btn @(_filterStatus == "all" ? "btn-primary" : "btn-outline-secondary")" 
+                        @onclick='() => _filterStatus = "all"'>All</button>
+                <button class="btn @(_filterStatus == "compliant" ? "btn-primary" : "btn-outline-secondary")" 
+                        @onclick='() => _filterStatus = "compliant"'>Compliant</button>
+                <button class="btn @(_filterStatus == "noncompliant" ? "btn-primary" : "btn-outline-secondary")" 
+                        @onclick='() => _filterStatus = "noncompliant"'>Non-Compliant</button>
+            </div>
+        </div>
+        <div class="card-body">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Control ID</th>
+                        <th>Control Name</th>
+                        <th>Framework</th>
+                        <th>Status</th>
+                        <th>Severity</th>
+                        <th>Affected Resources</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var control in FilteredControls)
+                    {
+                        <tr>
+                            <td><strong>@control.ControlId</strong></td>
+                            <td>@control.ControlName</td>
+                            <td><span class="badge bg-secondary">@control.Framework</span></td>
+                            <td>
+                                <span class="badge bg-@GetStatusColorClass(control.Status)">@control.Status</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-@GetSeverityColorClass(control.Severity)">@control.Severity</span>
+                            </td>
+                            <td>
+                                @if (control.AffectedResources.Any())
+                                {
+                                    <span class="badge bg-warning">@control.AffectedResources.Count</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">0</span>
+                                }
+                            </td>
+                            <td>
+                                @if (control.Status == "NonCompliant")
+                                {
+                                    <button class="btn btn-sm btn-outline-info" 
+                                            @onclick="() => ShowRemediationGuidance(control)">
+                                        <i class="fa fa-info-circle"></i> Guidance
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                        @if (_selectedControl?.ControlId == control.ControlId && !string.IsNullOrEmpty(control.RemediationGuidance))
+                        {
+                            <tr>
+                                <td colspan="7" class="bg-light">
+                                    <div class="p-3">
+                                        <h6><i class="fa fa-tools me-2"></i>Remediation Guidance</h6>
+                                        <p class="mb-2">@control.RemediationGuidance</p>
+                                        @if (control.AffectedResources.Any())
+                                        {
+                                            <strong>Affected Resources:</strong>
+                                            <ul class="mb-0">
+                                                @foreach (var resource in control.AffectedResources)
+                                                {
+                                                    <li><code>@resource</code></li>
+                                                }
+                                            </ul>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Resource Compliance</h5>
+        </div>
+        <div class="card-body">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Resource Name</th>
+                        <th>Resource Type</th>
+                        <th>Status</th>
+                        <th>Violations</th>
+                        <th>Failed Controls</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var resource in _detail.Resources)
+                    {
+                        <tr>
+                            <td><code>@resource.ResourceName</code></td>
+                            <td>@resource.ResourceType</td>
+                            <td>
+                                <span class="badge bg-@(resource.IsCompliant ? "success" : "danger")">
+                                    @(resource.IsCompliant ? "Compliant" : "Non-Compliant")
+                                </span>
+                            </td>
+                            <td>
+                                @if (resource.ViolationCount > 0)
+                                {
+                                    <span class="badge bg-warning">@resource.ViolationCount</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">0</span>
+                                }
+                            </td>
+                            <td>
+                                @if (resource.FailedControls.Any())
+                                {
+                                    @string.Join(", ", resource.FailedControls)
+                                }
+                                else
+                                {
+                                    <span class="text-muted">None</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string EnvironmentId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private bool _scanning = false;
+    private EnvironmentComplianceDetail? _detail;
+    private string _filterStatus = "all";
+    private ControlComplianceDetail? _selectedControl;
+
+    private IEnumerable<ControlComplianceDetail> FilteredControls
+    {
+        get
+        {
+            if (_detail?.Controls == null) return Enumerable.Empty<ControlComplianceDetail>();
+            
+            return _filterStatus switch
+            {
+                "compliant" => _detail.Controls.Where(c => c.Status == "Compliant"),
+                "noncompliant" => _detail.Controls.Where(c => c.Status == "NonCompliant"),
+                _ => _detail.Controls
+            };
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            _detail = await ComplianceApi.GetEnvironmentComplianceAsync(EnvironmentId);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load environment compliance: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RescanEnvironment()
+    {
+        _scanning = true;
+        try
+        {
+            await ComplianceApi.ScanEnvironmentAsync(EnvironmentId);
+            ToastService.ShowSuccess("Environment scan started");
+            await Task.Delay(2000);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to scan environment: {ex.Message}");
+        }
+        finally
+        {
+            _scanning = false;
+        }
+    }
+
+    private void ShowRemediationGuidance(ControlComplianceDetail control)
+    {
+        _selectedControl = _selectedControl?.ControlId == control.ControlId ? null : control;
+    }
+
+    private string GetScoreColorClass(decimal score)
+    {
+        if (score >= 90) return "success";
+        if (score >= 70) return "info";
+        if (score >= 50) return "warning";
+        return "danger";
+    }
+
+    private string GetStatusColorClass(string status)
+    {
+        return status switch
+        {
+            "Compliant" => "success",
+            "NonCompliant" => "danger",
+            _ => "secondary"
+        };
+    }
+
+    private string GetSeverityColorClass(string severity)
+    {
+        return severity switch
+        {
+            "Critical" => "danger",
+            "High" => "warning",
+            "Medium" => "info",
+            _ => "secondary"
+        };
+    }
+}
