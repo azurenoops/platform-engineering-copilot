@@ -1,0 +1,59 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+packages/
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+publish/
+
+# Build outputs
+dist/
+build/
+out/
+
+# IDE
+.vs/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+secrets.json
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Docker
+docker-compose.override.yml
+
+# Test results
+TestResults/
+coverage/
+*.coveragexml
+
+# NuGet
+*.nupkg
+*.snupkg
+
+# Logs
+*.log
+logs/

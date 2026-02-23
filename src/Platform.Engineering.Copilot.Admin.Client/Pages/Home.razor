@@ -1,0 +1,46 @@
+﻿@page "/"
+
+<PageTitle>Platform Copilot — Dashboard</PageTitle>
+
+<div class="dashboard" role="main" aria-label="Platform Engineering Dashboard">
+    <h1>Platform Engineering Dashboard</h1>
+
+    <div class="status-cards" role="region" aria-label="Status Overview">
+        <div class="card" role="status" aria-label="Overall Compliance Score">
+            <h3>Compliance</h3>
+            <div class="metric">@complianceScore%</div>
+            <div class="label">NIST 800-53 Rev5</div>
+        </div>
+        <div class="card" role="status" aria-label="Active Environments">
+            <h3>Environments</h3>
+            <div class="metric">@environmentCount</div>
+            <div class="label">Active</div>
+        </div>
+        <div class="card" role="status" aria-label="Recent Deployments">
+            <h3>Deployments</h3>
+            <div class="metric">@deploymentCount</div>
+            <div class="label">Last 7 days</div>
+        </div>
+        <div class="card" role="status" aria-label="Monthly Cost">
+            <h3>Monthly Cost</h3>
+            <div class="metric">$@monthlyCost.ToString("N0")</div>
+            <div class="label">Current month</div>
+        </div>
+    </div>
+
+    <div class="quick-links" role="navigation" aria-label="Quick Navigation">
+        <h2>Quick Actions</h2>
+        <ul>
+            <li><a href="templates" aria-label="Manage service templates">Service Templates</a></li>
+            <li><a href="environments" aria-label="View environment overview">Environments</a></li>
+            <li><a href="deployments" aria-label="Track deployments">Deployments</a></li>
+        </ul>
+    </div>
+</div>
+
+@code {
+    private double complianceScore = 89.7;
+    private int environmentCount = 3;
+    private int deploymentCount = 7;
+    private double monthlyCost = 47832.50;
+}

@@ -1,0 +1,89 @@
+@page "/environments"
+@inject HttpClient Http
+
+<PageTitle>Environments</PageTitle>
+
+<div class="page-content" role="main" aria-label="Environment Overview">
+    <h1>Environments</h1>
+
+    @if (environments is null)
+    {
+        <p role="status" aria-live="polite">Loading environments...</p>
+    }
+    else if (environments.Length == 0)
+    {
+        <p role="status">No environments found.</p>
+    }
+    else
+    {
+        <div class="env-cards" role="list" aria-label="Environment list">
+            @foreach (var env in environments)
+            {
+                <div class="env-card @GetStatusClass(env.Status)" role="listitem" aria-label="@env.Name environment">
+                    <div class="env-header">
+                        <h2>@env.Name</h2>
+                        <span class="badge @GetBadgeClass(env.Status)" aria-label="Status: @env.Status">@env.Status</span>
+                    </div>
+                    <div class="env-details">
+                        <dl>
+                            <dt>Classification</dt>
+                            <dd><span class="badge badge-info">@env.Classification</span></dd>
+                            <dt>Region</dt>
+                            <dd>@env.Region</dd>
+                            <dt>Resources</dt>
+                            <dd>@env.ResourceCount</dd>
+                            <dt>Compliance</dt>
+                            <dd>
+                                <div class="progress-bar" role="progressbar" aria-valuenow="@env.ComplianceScore" aria-valuemin="0" aria-valuemax="100" aria-label="Compliance score @env.ComplianceScore percent">
+                                    <div class="progress-fill" style="width: @env.ComplianceScore%"></div>
+                                    <span class="progress-label">@env.ComplianceScore%</span>
+                                </div>
+                            </dd>
+                            <dt>Last Scan</dt>
+                            <dd>@env.LastScanAt.ToString("yyyy-MM-dd HH:mm") UTC</dd>
+                        </dl>
+                    </div>
+                    <div class="env-actions">
+                        <a href="environments/@env.EnvironmentId" class="btn-sm" aria-label="View details for @env.Name">Details</a>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private EnvironmentDto[]? environments;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var result = await Http.GetFromJsonAsync<EnvironmentListResponse>("api/environments");
+            environments = result?.Environments ?? Array.Empty<EnvironmentDto>();
+        }
+        catch
+        {
+            environments = Array.Empty<EnvironmentDto>();
+        }
+    }
+
+    private string GetStatusClass(string status) => status switch
+    {
+        "Healthy" => "status-healthy",
+        "Warning" => "status-warning",
+        "Critical" => "status-critical",
+        _ => ""
+    };
+
+    private string GetBadgeClass(string status) => status switch
+    {
+        "Healthy" => "badge-success",
+        "Warning" => "badge-warning",
+        "Critical" => "badge-danger",
+        _ => "badge-info"
+    };
+
+    private record EnvironmentListResponse(EnvironmentDto[] Environments, int TotalCount);
+    private record EnvironmentDto(string EnvironmentId, string Name, string SubscriptionId, string Region, string Classification, string Status, int ResourceCount, double ComplianceScore, DateTimeOffset LastScanAt);
+}

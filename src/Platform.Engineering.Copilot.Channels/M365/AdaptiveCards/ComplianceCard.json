@@ -1,0 +1,212 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "Container",
+      "style": "emphasis",
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "Image",
+                  "url": "${icon}",
+                  "size": "Small",
+                  "style": "Person"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "Compliance Assessment",
+                  "weight": "Bolder",
+                  "size": "Medium"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "Framework: ${framework}",
+                  "isSubtle": true,
+                  "spacing": "None"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "${overallScore}%",
+                  "weight": "Bolder",
+                  "size": "ExtraLarge",
+                  "color": "${scoreColor}"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "Assessment Summary",
+          "weight": "Bolder",
+          "spacing": "Medium"
+        },
+        {
+          "type": "FactSet",
+          "facts": [
+            {
+              "title": "Total Controls",
+              "value": "${totalControls}"
+            },
+            {
+              "title": "Compliant",
+              "value": "${compliantControls}"
+            },
+            {
+              "title": "Non-Compliant",
+              "value": "${nonCompliantControls}"
+            },
+            {
+              "title": "Not Assessed",
+              "value": "${notAssessedControls}"
+            },
+            {
+              "title": "Assessment Date",
+              "value": "${assessmentDate}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "Findings by Severity",
+          "weight": "Bolder",
+          "spacing": "Medium"
+        },
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "Critical",
+                  "color": "Attention",
+                  "weight": "Bolder",
+                  "horizontalAlignment": "Center"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "${criticalCount}",
+                  "size": "ExtraLarge",
+                  "horizontalAlignment": "Center"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "High",
+                  "color": "Warning",
+                  "weight": "Bolder",
+                  "horizontalAlignment": "Center"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "${highCount}",
+                  "size": "ExtraLarge",
+                  "horizontalAlignment": "Center"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "Medium",
+                  "color": "Accent",
+                  "weight": "Bolder",
+                  "horizontalAlignment": "Center"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "${mediumCount}",
+                  "size": "ExtraLarge",
+                  "horizontalAlignment": "Center"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "Low",
+                  "weight": "Bolder",
+                  "horizontalAlignment": "Center"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "${lowCount}",
+                  "size": "ExtraLarge",
+                  "horizontalAlignment": "Center"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.OpenUrl",
+      "title": "View Full Report",
+      "url": "${reportUrl}"
+    },
+    {
+      "type": "Action.Submit",
+      "title": "Create Remediation Board",
+      "data": {
+        "action": "createRemediationBoard",
+        "assessmentId": "${assessmentId}"
+      }
+    },
+    {
+      "type": "Action.Submit",
+      "title": "Export CSV",
+      "data": {
+        "action": "exportAssessment",
+        "assessmentId": "${assessmentId}",
+        "format": "csv"
+      }
+    }
+  ]
+}

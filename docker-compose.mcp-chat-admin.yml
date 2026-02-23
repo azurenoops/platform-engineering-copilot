@@ -1,0 +1,76 @@
+# Docker Compose: Full Stack (MCP + Chat + Admin API + Admin Client)
+# Usage: docker compose -f docker-compose.mcp-chat-admin.yml up --build
+
+services:
+  sql:
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    environment:
+      ACCEPT_EULA: "1"
+      MSSQL_SA_PASSWORD: "DevPassword123!"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sql-data:/var/opt/mssql
+    healthcheck:
+      test: ["/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "DevPassword123!", "-Q", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mcp:
+    build:
+      context: .
+      dockerfile: src/Platform.Engineering.Copilot.Mcp/Dockerfile
+    ports:
+      - "5100:5100"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Server=sql;Database=PlatformCopilot;User Id=sa;Password=DevPassword123!;TrustServerCertificate=true
+    env_file:
+      - .env
+    depends_on:
+      sql:
+        condition: service_healthy
+
+  chat:
+    build:
+      context: .
+      dockerfile: src/Platform.Engineering.Copilot.Chat/Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - McpServer__Url=http://mcp:5100
+    env_file:
+      - .env
+    depends_on:
+      - mcp
+
+  admin-api:
+    build:
+      context: .
+      dockerfile: src/Platform.Engineering.Copilot.Admin.API/Dockerfile
+    ports:
+      - "5050:5050"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Server=sql;Database=PlatformCopilot;User Id=sa;Password=DevPassword123!;TrustServerCertificate=true
+      - McpServer__Url=http://mcp:5100
+    env_file:
+      - .env
+    depends_on:
+      - mcp
+
+  admin-client:
+    build:
+      context: .
+      dockerfile: src/Platform.Engineering.Copilot.Admin.Client/Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - AdminApi__Url=http://admin-api:5050
+    depends_on:
+      - admin-api
+
+volumes:
+  sql-data:

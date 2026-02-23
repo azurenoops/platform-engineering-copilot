@@ -1,0 +1,301 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Platform Engineering Copilot";
+}
+
+<!-- T139 — Chat UI with Markdown rendering, CAC/PIM status bar, WCAG 2.1 AA -->
+<div class="chat-container" role="main" aria-label="Platform Engineering Copilot Chat">
+    <!-- CAC/PIM Status Bar (FR-013) -->
+    <div class="auth-status-bar" role="status" aria-live="polite" id="authStatusBar">
+        <span class="status-indicator" id="cacStatus" aria-label="CAC authentication status">&#x1F512; CAC: Inactive</span>
+        <span class="status-separator" aria-hidden="true">|</span>
+        <span class="status-indicator" id="pimStatus" aria-label="PIM elevation status">PIM: Inactive</span>
+    </div>
+
+    <!-- Chat Messages Area -->
+    <div class="chat-messages" id="chatMessages" role="log" aria-live="polite" aria-label="Chat messages" tabindex="0">
+        <div class="welcome-message">
+            <h2>Platform Engineering Copilot</h2>
+            <p>Ask about compliance, infrastructure, costs, security, environments, or resources.</p>
+            <div class="quick-actions" role="navigation" aria-label="Quick actions">
+                <button class="quick-action-btn" onclick="sendQuickAction('Run a compliance assessment against NIST 800-53')" aria-label="Run compliance assessment">
+                    Compliance Assessment
+                </button>
+                <button class="quick-action-btn" onclick="sendQuickAction('Show infrastructure deployment status')" aria-label="Show deployment status">
+                    Deployment Status
+                </button>
+                <button class="quick-action-btn" onclick="sendQuickAction('Get cost analysis for the last 30 days')" aria-label="Get cost analysis">
+                    Cost Analysis
+                </button>
+                <button class="quick-action-btn" onclick="sendQuickAction('Check Azure secure score')" aria-label="Check secure score">
+                    Secure Score
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Indicator -->
+    <div class="progress-bar-container" id="progressContainer" hidden aria-label="Operation progress">
+        <div class="progress-bar" id="progressBar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <span class="progress-text" id="progressText"></span>
+    </div>
+
+    <!-- Input Area -->
+    <div class="chat-input-area">
+        <form id="chatForm" onsubmit="sendMessage(event)" role="search" aria-label="Send message">
+            <label for="messageInput" class="visually-hidden">Type your message</label>
+            <textarea id="messageInput"
+                      placeholder="Ask about compliance, infrastructure, costs..."
+                      rows="1"
+                      aria-label="Message input"
+                      autofocus></textarea>
+            <button type="submit" id="sendButton" aria-label="Send message" title="Send message">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     aria-hidden="true">
+                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                </svg>
+            </button>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"
+            integrity="sha384-DfJYfMFH/l6LjFNtQ7L30XCvJF6UDO6g1DdH6jHdkqN6x7JJp4ROcQdKw7J+bY0"
+            crossorigin="anonymous"></script>
+    <script>
+        // SignalR connection
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl("/chathub")
+            .withAutomaticReconnect()
+            .build();
+
+        let conversationId = null;
+        let currentStreamContent = "";
+
+        // Server→Client: ReceiveMessage
+        connection.on("ReceiveMessage", function (msg) {
+            appendMessage(msg.agentName, msg.content, "assistant", msg.correlationId);
+            currentStreamContent = "";
+        });
+
+        // Server→Client: StreamToken
+        connection.on("StreamToken", function (data) {
+            if (!data.isComplete) {
+                currentStreamContent += data.token;
+                updateStreamingMessage(data.correlationId, currentStreamContent);
+            }
+        });
+
+        // Server→Client: ProgressUpdate
+        connection.on("ProgressUpdate", function (data) {
+            const container = document.getElementById("progressContainer");
+            const fill = document.getElementById("progressFill");
+            const text = document.getElementById("progressText");
+            const bar = document.getElementById("progressBar");
+
+            container.hidden = false;
+            fill.style.width = data.percentComplete + "%";
+            bar.setAttribute("aria-valuenow", data.percentComplete);
+            text.textContent = data.phase || data.status || "";
+
+            if (data.percentComplete >= 100 || data.status === "Completed") {
+                setTimeout(() => { container.hidden = true; }, 2000);
+            }
+        });
+
+        // Server→Client: AuthRequired
+        connection.on("AuthRequired", function (data) {
+            const components = data.requiredComponents.join(" and ");
+            appendSystemMessage(
+                `⚠️ Authentication required: ${components} (${data.pimTier} tier). ${data.message}`,
+                data.correlationId
+            );
+        });
+
+        // Server→Client: SessionStatus (FR-013)
+        connection.on("SessionStatus", function (data) {
+            const cacEl = document.getElementById("cacStatus");
+            const pimEl = document.getElementById("pimStatus");
+            if (data.cacStatus === "Active") {
+                cacEl.textContent = `🔒 CAC: ${formatMinutes(data.cacRemainingMinutes)}`;
+                cacEl.classList.add("active");
+            } else {
+                cacEl.textContent = "🔒 CAC: Inactive";
+                cacEl.classList.remove("active");
+            }
+            if (data.pimStatus === "Active") {
+                pimEl.textContent = `PIM ${data.pimTier}: ${formatMinutes(data.pimRemainingMinutes)}`;
+                pimEl.classList.add("active");
+            } else {
+                pimEl.textContent = "PIM: Inactive";
+                pimEl.classList.remove("active");
+            }
+        });
+
+        // Server→Client: ErrorNotification (FR-067)
+        connection.on("ErrorNotification", function (data) {
+            appendSystemMessage(
+                `❌ ${data.message}\n\n${data.troubleshooting || ""}`,
+                data.correlationId,
+                "error"
+            );
+        });
+
+        // Connect
+        connection.start()
+            .then(() => console.log("SignalR connected"))
+            .catch(err => console.error("SignalR connection error:", err));
+
+        // Send message
+        async function sendMessage(event) {
+            event.preventDefault();
+            const input = document.getElementById("messageInput");
+            const content = input.value.trim();
+            if (!content) return;
+
+            appendMessage("You", content, "user");
+            input.value = "";
+            input.style.height = "auto";
+
+            try {
+                const correlationId = await connection.invoke("SendMessage", {
+                    conversationId: conversationId,
+                    content: content,
+                    targetAgentId: null
+                });
+                if (!conversationId) conversationId = correlationId;
+            } catch (err) {
+                appendSystemMessage("Failed to send message. Please try again.", null, "error");
+            }
+        }
+
+        function sendQuickAction(text) {
+            document.getElementById("messageInput").value = text;
+            sendMessage(new Event("submit"));
+        }
+
+        // DOM helpers
+        function appendMessage(sender, content, role, correlationId) {
+            const container = document.getElementById("chatMessages");
+            const welcome = container.querySelector(".welcome-message");
+            if (welcome) welcome.remove();
+
+            const div = document.createElement("div");
+            div.className = `chat-message ${role}`;
+            div.setAttribute("role", "article");
+            if (correlationId) div.setAttribute("data-correlation-id", correlationId);
+
+            const header = document.createElement("div");
+            header.className = "message-header";
+            header.textContent = sender;
+
+            const body = document.createElement("div");
+            body.className = "message-body";
+            body.innerHTML = renderMarkdown(content);
+
+            div.appendChild(header);
+            div.appendChild(body);
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function updateStreamingMessage(correlationId, content) {
+            const container = document.getElementById("chatMessages");
+            let existing = container.querySelector(`[data-correlation-id="${correlationId}"].streaming`);
+            if (!existing) {
+                existing = document.createElement("div");
+                existing.className = "chat-message assistant streaming";
+                existing.setAttribute("role", "article");
+                existing.setAttribute("data-correlation-id", correlationId);
+
+                const header = document.createElement("div");
+                header.className = "message-header";
+                header.textContent = "Assistant";
+
+                const body = document.createElement("div");
+                body.className = "message-body";
+
+                existing.appendChild(header);
+                existing.appendChild(body);
+                container.appendChild(existing);
+            }
+            existing.querySelector(".message-body").innerHTML = renderMarkdown(content);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function appendSystemMessage(text, correlationId, type) {
+            const container = document.getElementById("chatMessages");
+            const div = document.createElement("div");
+            div.className = `chat-message system ${type || ""}`;
+            div.setAttribute("role", "alert");
+            if (correlationId) div.setAttribute("data-correlation-id", correlationId);
+
+            const body = document.createElement("div");
+            body.className = "message-body";
+            body.innerHTML = renderMarkdown(text);
+
+            div.appendChild(body);
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // Basic Markdown rendering (FR-048: tables, code blocks, severity badges, collapsible)
+        function renderMarkdown(text) {
+            if (!text) return "";
+            let html = text
+                // Code blocks
+                .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
+                // Inline code
+                .replace(/`([^`]+)`/g, '<code>$1</code>')
+                // Bold
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                // Italic
+                .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                // Headers
+                .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+                .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+                .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+                // Severity badges
+                .replace(/\[Critical\]/gi, '<span class="badge critical" role="status">Critical</span>')
+                .replace(/\[High\]/gi, '<span class="badge high" role="status">High</span>')
+                .replace(/\[Medium\]/gi, '<span class="badge medium" role="status">Medium</span>')
+                .replace(/\[Low\]/gi, '<span class="badge low" role="status">Low</span>')
+                // Tables
+                .replace(/^\|(.+)\|$/gm, function (match) {
+                    return '<tr>' + match.slice(1, -1).split('|')
+                        .map(cell => '<td>' + cell.trim() + '</td>').join('') + '</tr>';
+                })
+                // Line breaks
+                .replace(/\n/g, '<br>');
+
+            // Wrap table rows
+            html = html.replace(/(<tr>[\s\S]*?<\/tr>)/g, '<table class="chat-table" role="table">$1</table>');
+
+            return html;
+        }
+
+        function formatMinutes(mins) {
+            const h = Math.floor(mins / 60);
+            const m = mins % 60;
+            return `${h}h ${m}m`;
+        }
+
+        // Auto-resize textarea
+        document.getElementById("messageInput").addEventListener("input", function () {
+            this.style.height = "auto";
+            this.style.height = Math.min(this.scrollHeight, 120) + "px";
+        });
+
+        // Keyboard: Enter to send, Shift+Enter for newline
+        document.getElementById("messageInput").addEventListener("keydown", function (e) {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(e);
+            }
+        });
+    </script>
+}

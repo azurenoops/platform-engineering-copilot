@@ -1,0 +1,7 @@
+{
+  "overlay": {
+    "title": "DoD Impact Level 5",
+    "version": "2024-12-10",
+    "controls": ["AC-1", "AC-2", "AC-3", "AT-1", "AU-1", "AU-2", "SC-1", "SC-7", "SC-8", "SI-1"]
+  }
+}

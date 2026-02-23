@@ -1,0 +1,28 @@
+# Stage 1: Build
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+# Copy solution and project files for layer caching
+COPY Platform.Engineering.Copilot.sln .
+COPY src/Platform.Engineering.Copilot.Core/Platform.Engineering.Copilot.Core.csproj src/Platform.Engineering.Copilot.Core/
+COPY src/Platform.Engineering.Copilot.Agents/Platform.Engineering.Copilot.Agents.csproj src/Platform.Engineering.Copilot.Agents/
+COPY src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj src/Platform.Engineering.Copilot.Mcp/
+COPY src/Platform.Engineering.Copilot.State/Platform.Engineering.Copilot.State.csproj src/Platform.Engineering.Copilot.State/
+COPY src/Platform.Engineering.Copilot.Channels/Platform.Engineering.Copilot.Channels.csproj src/Platform.Engineering.Copilot.Channels/
+
+RUN dotnet restore src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj
+
+# Copy source code and build
+COPY src/ src/
+RUN dotnet publish src/Platform.Engineering.Copilot.Mcp/Platform.Engineering.Copilot.Mcp.csproj \
+    -c Release -o /app/publish --no-restore
+
+# Stage 2: Runtime
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+WORKDIR /app
+EXPOSE 5100
+
+ENV ASPNETCORE_URLS=http://+:5100
+
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "Platform.Engineering.Copilot.Mcp.dll"]

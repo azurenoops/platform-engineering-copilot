@@ -1,0 +1,6 @@
+@Platform.Engineering.Copilot.Admin.API_HostAddress = http://localhost:5258
+
+GET {{Platform.Engineering.Copilot.Admin.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

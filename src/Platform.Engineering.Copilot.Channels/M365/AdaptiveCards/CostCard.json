@@ -1,0 +1,209 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "Container",
+      "style": "emphasis",
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "Image",
+                  "url": "${icon}",
+                  "size": "Small",
+                  "style": "Person"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "Cost Analysis",
+                  "weight": "Bolder",
+                  "size": "Medium"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "Period: ${timeframe}",
+                  "isSubtle": true,
+                  "spacing": "None"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "$${totalCost}",
+                  "weight": "Bolder",
+                  "size": "ExtraLarge",
+                  "color": "${costColor}"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "Cost Breakdown",
+          "weight": "Bolder",
+          "spacing": "Medium"
+        },
+        {
+          "type": "FactSet",
+          "facts": [
+            {
+              "title": "Compute",
+              "value": "$${computeCost}"
+            },
+            {
+              "title": "Storage",
+              "value": "$${storageCost}"
+            },
+            {
+              "title": "Networking",
+              "value": "$${networkingCost}"
+            },
+            {
+              "title": "Security",
+              "value": "$${securityCost}"
+            },
+            {
+              "title": "Other",
+              "value": "$${otherCost}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "Budget Status",
+          "weight": "Bolder",
+          "spacing": "Medium"
+        },
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "Budget: $${budgetAmount}",
+                  "weight": "Bolder"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "Used: ${budgetPercentage}%",
+                  "color": "${budgetColor}",
+                  "weight": "Bolder"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "Forecast: $${forecastAmount}",
+                  "weight": "Bolder"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "Trend: ${trend}",
+                  "color": "${trendColor}"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "Top Spenders",
+          "weight": "Bolder",
+          "spacing": "Medium"
+        },
+        {
+          "type": "FactSet",
+          "facts": [
+            {
+              "title": "${topSpender1Name}",
+              "value": "$${topSpender1Cost}"
+            },
+            {
+              "title": "${topSpender2Name}",
+              "value": "$${topSpender2Cost}"
+            },
+            {
+              "title": "${topSpender3Name}",
+              "value": "$${topSpender3Cost}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Container",
+      "separator": true,
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "Optimization Opportunities: ${optimizationCount} suggestions — Est. savings: $${estimatedSavings}/mo",
+          "isSubtle": true,
+          "wrap": true
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.OpenUrl",
+      "title": "View in Azure Portal",
+      "url": "${portalUrl}"
+    },
+    {
+      "type": "Action.Submit",
+      "title": "Get Optimization Details",
+      "data": {
+        "action": "getOptimizations",
+        "timeframe": "${timeframe}"
+      }
+    },
+    {
+      "type": "Action.Submit",
+      "title": "Get Forecast",
+      "data": {
+        "action": "getCostForecast",
+        "forecastPeriod": "30d"
+      }
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/vDevPreview/MicrosoftTeams.schema.json",
+  "manifestVersion": "devPreview",
+  "id": "00000000-0000-0000-0000-000000000001",
+  "version": "1.0.0",
+  "packageName": "com.platformengineering.copilot",
+  "developer": {
+    "name": "Platform Engineering",
+    "websiteUrl": "https://platform.example.com",
+    "privacyUrl": "https://platform.example.com/privacy",
+    "termsOfUseUrl": "https://platform.example.com/terms"
+  },
+  "name": {
+    "short": "Platform Copilot",
+    "full": "Platform Engineering Copilot for M365"
+  },
+  "description": {
+    "short": "AI-powered infrastructure and compliance for Azure Government",
+    "full": "Platform Engineering Copilot provides compliance assessment, infrastructure template generation, cost analysis, and knowledge base capabilities for Azure Government workloads (IL5/IL6). Integrates with NIST 800-53 Rev 5, FedRAMP, and DoD frameworks."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#0078D4",
+  "bots": [
+    {
+      "botId": "00000000-0000-0000-0000-000000000001",
+      "scopes": ["personal", "team", "groupChat"],
+      "commandLists": [
+        {
+          "scopes": ["personal"],
+          "commands": [
+            { "title": "assess", "description": "Run a compliance assessment" },
+            { "title": "explain", "description": "Explain a NIST control" },
+            { "title": "cost", "description": "Analyze cloud spending" },
+            { "title": "template", "description": "Generate an IaC template" },
+            { "title": "remediate", "description": "View remediation tasks" }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": ["platform.example.com"]
+}

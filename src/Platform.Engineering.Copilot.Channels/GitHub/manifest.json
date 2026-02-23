@@ -1,0 +1,41 @@
+{
+  "name": "platform-engineering-copilot",
+  "displayName": "Platform Engineering Copilot",
+  "description": "AI-powered infrastructure and compliance platform for Azure Government",
+  "version": "1.0.0",
+  "publisher": "platform-engineering",
+  "categories": ["Chat Participants"],
+  "chatParticipants": [
+    {
+      "id": "platform",
+      "name": "platform",
+      "description": "Platform Engineering Copilot — compliance assessment, infrastructure templates, cost analysis, and knowledge base for Azure Government (IL5/IL6)",
+      "isSticky": false,
+      "commands": [
+        {
+          "name": "assess",
+          "description": "Run a compliance assessment against NIST 800-53, FedRAMP, or DoD IL5"
+        },
+        {
+          "name": "explain",
+          "description": "Explain a NIST 800-53 control in plain language"
+        },
+        {
+          "name": "template",
+          "description": "Generate a compliant IaC template (Bicep or Terraform)"
+        },
+        {
+          "name": "cost",
+          "description": "Analyze cloud spending and optimization opportunities"
+        },
+        {
+          "name": "remediate",
+          "description": "Get remediation steps for a compliance finding"
+        }
+      ]
+    }
+  ],
+  "activationEvents": [
+    "onChatParticipant:platform"
+  ]
+}

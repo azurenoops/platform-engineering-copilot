@@ -1,0 +1,24 @@
+{
+  "serviceMappings": [
+    {
+      "controlId": "AC-2",
+      "services": ["Microsoft.Authorization/roleAssignments", "Microsoft.ManagedIdentity/userAssignedIdentities", "Microsoft.AAD/domainServices"]
+    },
+    {
+      "controlId": "AC-3",
+      "services": ["Microsoft.Authorization/roleDefinitions", "Microsoft.Authorization/roleAssignments", "Microsoft.Network/networkSecurityGroups"]
+    },
+    {
+      "controlId": "AU-2",
+      "services": ["Microsoft.Insights/diagnosticSettings", "Microsoft.Insights/activityLogAlerts", "Microsoft.OperationalInsights/workspaces"]
+    },
+    {
+      "controlId": "SC-7",
+      "services": ["Microsoft.Network/networkSecurityGroups", "Microsoft.Network/azureFirewalls", "Microsoft.Network/applicationGateways", "Microsoft.Network/virtualNetworks"]
+    },
+    {
+      "controlId": "SC-8",
+      "services": ["Microsoft.Network/applicationGateways", "Microsoft.Web/sites", "Microsoft.Storage/storageAccounts", "Microsoft.KeyVault/vaults"]
+    }
+  ]
+}
