@@ -1,7 +1,10 @@
 using System.Reflection;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Platform.Engineering.Copilot.Core.Agents;
 using Platform.Engineering.Copilot.Core.Data.Enumerations;
+using Platform.Engineering.Copilot.Core.Services;
 
 namespace Platform.Engineering.Copilot.Agents.Compliance;
 
@@ -16,8 +19,10 @@ public class ComplianceAgent : BaseAgent
 
     public ComplianceAgent(
         ILogger<ComplianceAgent> logger,
-        IEnumerable<BaseTool> complianceTools)
-        : base(logger)
+        IEnumerable<BaseTool> complianceTools,
+        IChatClient? chatClient = null,
+        IOptions<AzureOpenAIOptions>? aiOptions = null)
+        : base(logger, chatClient, aiOptions)
     {
         _systemPrompt = LoadSystemPrompt();
 

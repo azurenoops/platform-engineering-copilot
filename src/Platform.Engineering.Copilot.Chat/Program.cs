@@ -1,5 +1,5 @@
 using Platform.Engineering.Copilot.Chat.Hubs;
-using Platform.Engineering.Copilot.Core.Agents;
+using Platform.Engineering.Copilot.Core.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -7,12 +7,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddSignalR();
 
-// Register orchestrator for ChatHub
-builder.Services.AddSingleton<PlatformOrchestrator>(sp =>
-{
-    return new PlatformOrchestrator(
-        sp.GetRequiredService<ILogger<PlatformOrchestrator>>());
-});
+// Register all platform copilot services (agents, tools, orchestrator, Azure OpenAI)
+builder.Services.AddPlatformCopilotServices(builder.Configuration);
 
 var app = builder.Build();
 

@@ -1,7 +1,10 @@
 using Microsoft.Agents.Builder;
 using Microsoft.Agents.Builder.App;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Platform.Engineering.Copilot.Core.Data.Enumerations;
+using Platform.Engineering.Copilot.Core.Services;
 
 namespace Platform.Engineering.Copilot.Core.Agents;
 
@@ -40,15 +43,29 @@ public abstract class BaseAgent
     /// <summary>Logger for the concrete agent implementation.</summary>
     protected ILogger Logger { get; }
 
+    /// <summary>Optional AI chat client for LLM-powered responses.</summary>
+    protected IChatClient? ChatClient { get; }
+
+    /// <summary>Azure OpenAI configuration options.</summary>
+    protected AzureOpenAIOptions AIOptions { get; }
+
     /// <summary>Registered tools for this agent.</summary>
     private readonly List<BaseTool> _tools = [];
 
     /// <summary>Read-only view of registered tools.</summary>
     public IReadOnlyList<BaseTool> Tools => _tools.AsReadOnly();
 
-    protected BaseAgent(ILogger logger)
+    /// <summary>
+    /// Primary constructor with optional AI integration (backward-compatible).
+    /// </summary>
+    protected BaseAgent(
+        ILogger logger,
+        IChatClient? chatClient = null,
+        IOptions<AzureOpenAIOptions>? aiOptions = null)
     {
         Logger = logger;
+        ChatClient = chatClient;
+        AIOptions = aiOptions?.Value ?? new AzureOpenAIOptions();
     }
 
     /// <summary>
@@ -56,6 +73,224 @@ public abstract class BaseAgent
     /// for tool-calling and response generation.
     /// </summary>
     public abstract string GetSystemPrompt();
+
+    // ─── T014: AI-Powered Message Processing ───────────────────────
+
+    /// <summary>
+    /// Process a user message through the Azure OpenAI LLM pipeline.
+    /// <para>
+    /// AI-enabled mode: builds conversation context, wraps tools as AIFunctions,
+    /// creates FunctionInvokingChatClient for automatic multi-round tool calling,
+    /// streams responses via IProgress, and returns natural-language text.
+    /// </para>
+    /// <para>
+    /// Fallback mode (null client or AgentAIEnabled=false): executes first
+    /// registered tool directly and returns raw JSON (pre-feature behavior).
+    /// </para>
+    /// </summary>
+    public async Task<string> ProcessMessageAsync(
+        string userMessage,
+        IReadOnlyList<SessionMessage>? conversationHistory = null,
+        IProgress<ProgressUpdate>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        // Fallback: no AI client or feature disabled
+        if (ChatClient is null || !AIOptions.AgentAIEnabled)
+        {
+            Logger.LogInformation(
+                "AI disabled or no client — falling back to direct tool execution on agent '{AgentId}'",
+                AgentId);
+            return await FallbackDirectToolExecution(progress, cancellationToken);
+        }
+
+        try
+        {
+            return await ExecuteAIPipeline(userMessage, conversationHistory, progress, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // LLM-failure recovery: catch, log, fall back to direct tool execution
+            Logger.LogWarning(ex,
+                "LLM call failed on agent '{AgentId}' — falling back to direct tool execution", AgentId);
+            return await FallbackDirectToolExecution(progress, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Execute the full AI pipeline: build messages → build tools → invoke LLM with streaming.
+    /// </summary>
+    private async Task<string> ExecuteAIPipeline(
+        string userMessage,
+        IReadOnlyList<SessionMessage>? conversationHistory,
+        IProgress<ProgressUpdate>? progress,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        // T012: Build chat messages (system prompt + history + user message)
+        var messages = BuildChatMessages(userMessage, conversationHistory);
+        Logger.LogInformation(
+            "Agent '{AgentId}' processing message with {MessageCount} context messages",
+            AgentId, messages.Count);
+
+        // T013: Build AI tools from registered BaseTools
+        var aiTools = BuildAITools(progress, cancellationToken);
+
+        // Configure chat options
+        var options = new ChatOptions
+        {
+            Temperature = AIOptions.Temperature,
+            Tools = aiTools
+        };
+
+        // Wrap with FunctionInvokingChatClient for auto tool-call loop
+        var functionClient = new ChatClientBuilder(ChatClient)
+            .UseFunctionInvocation()
+            .Build();
+
+        if (functionClient is FunctionInvokingChatClient fic)
+        {
+            fic.MaximumIterationsPerRequest = AIOptions.MaxToolCallRounds;
+        }
+
+        // Stream response tokens
+        var responseBuilder = new System.Text.StringBuilder();
+        await foreach (var update in functionClient.GetStreamingResponseAsync(
+            messages, options, cancellationToken))
+        {
+            if (!string.IsNullOrEmpty(update.Text))
+            {
+                responseBuilder.Append(update.Text);
+                progress?.Report(new ProgressUpdate
+                {
+                    Message = update.Text,
+                    Data = new { type = "token", content = update.Text }
+                });
+            }
+        }
+
+        stopwatch.Stop();
+        var responseText = responseBuilder.ToString();
+
+        Logger.LogInformation(
+            "Agent '{AgentId}' AI response completed in {ElapsedMs}ms ({ResponseLength} chars)",
+            AgentId, stopwatch.ElapsedMilliseconds, responseText.Length);
+
+        // Handle empty LLM response (T035 edge case)
+        if (string.IsNullOrWhiteSpace(responseText))
+        {
+            Logger.LogWarning("Agent '{AgentId}' received empty response from LLM", AgentId);
+            return "I wasn't able to generate a response. Please try rephrasing your request.";
+        }
+
+        return responseText;
+    }
+
+    /// <summary>
+    /// Fallback: execute the first registered tool directly and return raw JSON.
+    /// Preserves pre-feature behavior when AI is not available.
+    /// </summary>
+    private async Task<string> FallbackDirectToolExecution(
+        IProgress<ProgressUpdate>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (_tools.Count == 0)
+        {
+            return "No tools are available for this agent.";
+        }
+
+        var tool = _tools[0];
+        return await ExecuteToolAsync(tool.Name, new Dictionary<string, object?>(), progress, cancellationToken);
+    }
+
+    // ─── T012: Build Chat Messages ─────────────────────────────────
+
+    /// <summary>
+    /// Build the chat message list for LLM invocation:
+    /// 1. System prompt → ChatRole.System
+    /// 2. Conversation history → ChatRole.User / ChatRole.Assistant (up to 10 messages)
+    /// 3. Current user message → ChatRole.User
+    /// </summary>
+    public List<ChatMessage> BuildChatMessages(
+        string userMessage,
+        IReadOnlyList<SessionMessage>? conversationHistory = null)
+    {
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.System, GetSystemPrompt())
+        };
+
+        // Add conversation history (last 10 messages for context retention, SC-006)
+        if (conversationHistory is { Count: > 0 })
+        {
+            var recentHistory = conversationHistory
+                .TakeLast(10)
+                .ToList();
+
+            foreach (var msg in recentHistory)
+            {
+                var role = msg.Role.Equals("User", StringComparison.OrdinalIgnoreCase)
+                    ? ChatRole.User
+                    : ChatRole.Assistant;
+                messages.Add(new ChatMessage(role, msg.Content));
+            }
+        }
+
+        // Add current user message
+        messages.Add(new ChatMessage(ChatRole.User, userMessage));
+
+        return messages;
+    }
+
+    // ─── T013: Build AI Tools ──────────────────────────────────────
+
+    /// <summary>
+    /// Convert registered BaseTools to AIFunction instances for LLM tool calling.
+    /// Each AIFunction wraps the tool's Name, Description, and a delegate
+    /// that calls ExecuteToolAsync with parameters from the LLM.
+    /// </summary>
+    public IList<AITool> BuildAITools(
+        IProgress<ProgressUpdate>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var aiTools = new List<AITool>();
+
+        foreach (var tool in _tools)
+        {
+            // Capture tool reference for closure
+            var capturedTool = tool;
+
+            var aiFunction = AIFunctionFactory.Create(
+                async (IDictionary<string, object?> args) =>
+                {
+                    // T025: Report tool execution progress
+                    progress?.Report(new ProgressUpdate
+                    {
+                        Message = $"Running {capturedTool.Name}...",
+                        Data = new { type = "tool_start", toolName = capturedTool.Name }
+                    });
+
+                    var parameters = new Dictionary<string, object?>(
+                        args ?? new Dictionary<string, object?>());
+                    var result = await ExecuteToolAsync(
+                        capturedTool.Name, parameters, progress, cancellationToken);
+
+                    progress?.Report(new ProgressUpdate
+                    {
+                        Message = $"Completed {capturedTool.Name}",
+                        Data = new { type = "tool_complete", toolName = capturedTool.Name }
+                    });
+
+                    return result;
+                },
+                capturedTool.Name,
+                capturedTool.Description);
+
+            aiTools.Add(aiFunction);
+        }
+
+        return aiTools;
+    }
 
     /// <summary>
     /// Register a tool with this agent. Tools are exposed through MCP
@@ -161,4 +396,26 @@ public class ProgressUpdate
 
     /// <summary>Optional structured data for the progress update.</summary>
     public object? Data { get; set; }
+}
+
+/// <summary>
+/// Conversation message used for session history.
+/// Shared between Core (BaseAgent.ProcessMessageAsync) and Chat (ChatHub sessions).
+/// </summary>
+public class SessionMessage
+{
+    /// <summary>Message role: "User" or "Assistant".</summary>
+    public string Role { get; set; } = string.Empty;
+
+    /// <summary>Message content text.</summary>
+    public string Content { get; set; } = string.Empty;
+
+    /// <summary>When the message was sent.</summary>
+    public DateTimeOffset Timestamp { get; set; }
+
+    /// <summary>Correlation ID for request tracking.</summary>
+    public string CorrelationId { get; set; } = string.Empty;
+
+    /// <summary>Which agent generated this message (null for user messages).</summary>
+    public string? AgentId { get; set; }
 }

@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Platform.Engineering.Copilot.Core.Agents;
 using Platform.Engineering.Copilot.Agents.Discovery;
 using Platform.Engineering.Copilot.Agents.Discovery.Tools;
 
@@ -116,7 +117,7 @@ public class DiscoveryFlowTests
     {
         var agent = new DiscoveryAgent(
             new Mock<ILogger<DiscoveryAgent>>().Object,
-            _discover, _deps, _crossSub, _health, _network, _tags, _changes, _orphaned, _metrics);
+            new BaseTool[] { _discover, _deps, _crossSub, _health, _network, _tags, _changes, _orphaned, _metrics });
 
         var tools = agent.GetToolMetadata();
         tools.Should().HaveCount(9);

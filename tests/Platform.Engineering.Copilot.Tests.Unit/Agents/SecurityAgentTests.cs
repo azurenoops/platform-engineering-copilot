@@ -15,9 +15,12 @@ public class SecurityAgentTests
 {
     private SecurityAgent CreateAgent() => new(
         new Mock<ILogger<SecurityAgent>>().Object,
-        new GetSecureScoreTool(new Mock<ILogger<GetSecureScoreTool>>().Object),
-        new GetSecurityRecommendationsTool(new Mock<ILogger<GetSecurityRecommendationsTool>>().Object),
-        new ManageSecurityPolicyTool(new Mock<ILogger<ManageSecurityPolicyTool>>().Object));
+        new BaseTool[]
+        {
+            new GetSecureScoreTool(new Mock<ILogger<GetSecureScoreTool>>().Object),
+            new GetSecurityRecommendationsTool(new Mock<ILogger<GetSecurityRecommendationsTool>>().Object),
+            new ManageSecurityPolicyTool(new Mock<ILogger<ManageSecurityPolicyTool>>().Object)
+        });
 
     [Fact] public void AgentId_Returns_Security() => CreateAgent().AgentId.Should().Be("security");
     [Fact] public void AgentName_Returns_SecurityAgent() => CreateAgent().AgentName.Should().Be("Security Agent");

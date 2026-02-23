@@ -398,12 +398,93 @@ All configuration in `appsettings.json`:
 |-------|------------|
 | Runtime | .NET 9.0 |
 | AI Framework | Microsoft Semantic Kernel 1.26+ |
-| AI Abstractions | Microsoft.Extensions.AI 9.1.0 |
+| AI Abstractions | Microsoft.Extensions.AI 10.3.0 |
+| Azure OpenAI | Azure.AI.OpenAI 2.1.0, Microsoft.Extensions.AI.OpenAI 10.3.0 |
 | MCP | ModelContextProtocol 0.4.0-preview |
 | Azure SDK | Azure.ResourceManager.* |
 | Database | SQLite (default) / SQL Server |
 | Cache | IMemoryCache |
 | Container | Docker, ACI, AKS |
+
+---
+
+## Azure OpenAI Integration
+
+### Overview
+
+Agents can optionally process user messages through Azure OpenAI for natural-language understanding, tool selection, and response generation. When Azure OpenAI is not configured or the feature flag is disabled, agents fall back to direct tool execution (pre-feature behavior).
+
+### Architecture
+
+```
+User Message
+      │
+      ▼
+┌─────────────────────────────────────────────────┐
+│ BaseAgent.ProcessMessageAsync()                  │
+│                                                  │
+│  ┌─ AI Enabled? ─────────────────────────────┐  │
+│  │ YES: ExecuteAIPipeline                     │  │
+│  │  1. BuildChatMessages (system + history)   │  │
+│  │  2. BuildAITools (BaseTool → AIFunction)   │  │
+│  │  3. FunctionInvokingChatClient             │  │
+│  │     └─ Auto tool-call loop                 │  │
+│  │     └─ MaximumIterationsPerRequest         │  │
+│  │  4. GetStreamingResponseAsync              │  │
+│  │     └─ Token streaming via IProgress       │  │
+│  │  5. Return natural-language text           │  │
+│  ├────────────────────────────────────────────┤  │
+│  │ NO: FallbackDirectToolExecution            │  │
+│  │  1. Execute first registered tool          │  │
+│  │  2. Return raw JSON (pre-feature behavior) │  │
+│  └────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────┘
+```
+
+### Configuration
+
+```json
+{
+  "AzureOpenAI": {
+    "Endpoint": "https://<resource>.openai.azure.com/",
+    "DeploymentName": "gpt-4o",
+    "AgentAIEnabled": false,
+    "MaxToolCallRounds": 5,
+    "Temperature": 0.3
+  }
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `AgentAIEnabled` | `false` | Feature flag — `false` keeps pre-feature behavior |
+| `MaxToolCallRounds` | `5` | Max LLM↔tool loop iterations (range 1–20) |
+| `Temperature` | `0.3` | LLM response creativity (range 0.0–2.0) |
+
+### Key Classes
+
+| Class | Project | Purpose |
+|-------|---------|---------|
+| `AzureOpenAIOptions` | Core | Strongly-typed configuration with validation |
+| `AzureOpenAIChatClientFactory` | Core | Creates `IChatClient` from config (null if unconfigured) |
+| `ServiceCollectionExtensions` | Agents | Shared DI registration for both hosts |
+| `BaseAgent.ProcessMessageAsync` | Core | AI pipeline with fallback |
+| `BaseAgent.BuildChatMessages` | Core | Conversation context assembly |
+| `BaseAgent.BuildAITools` | Core | Tool-to-AIFunction bridging |
+
+### Authentication
+
+- **API Key**: Set `AzureOpenAI:ApiKey` in configuration
+- **Managed Identity**: Omit API key — uses `DefaultAzureCredential`
+- **Azure Government**: Endpoints containing `.us` automatically use `AzureOpenAIAudience.AzureGovernment`
+
+### Graceful Degradation
+
+The system operates identically to pre-feature behavior when:
+- `AgentAIEnabled` is `false` (default)
+- `AzureOpenAI:Endpoint` is not configured
+- `IChatClient` is null (no Azure OpenAI resource available)
+- LLM throws a runtime exception (falls back to direct tool execution)
 
 ---
 

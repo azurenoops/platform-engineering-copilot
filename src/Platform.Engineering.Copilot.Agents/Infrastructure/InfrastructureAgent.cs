@@ -1,7 +1,10 @@
 using System.Reflection;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Platform.Engineering.Copilot.Core.Agents;
 using Platform.Engineering.Copilot.Core.Data.Enumerations;
+using Platform.Engineering.Copilot.Core.Services;
 
 namespace Platform.Engineering.Copilot.Agents.Infrastructure;
 
@@ -16,8 +19,10 @@ public class InfrastructureAgent : BaseAgent
 
     public InfrastructureAgent(
         ILogger<InfrastructureAgent> logger,
-        params BaseTool[] tools)
-        : base(logger)
+        BaseTool[] tools,
+        IChatClient? chatClient = null,
+        IOptions<AzureOpenAIOptions>? aiOptions = null)
+        : base(logger, chatClient, aiOptions)
     {
         _systemPrompt = LoadSystemPrompt();
         foreach (var tool in tools)

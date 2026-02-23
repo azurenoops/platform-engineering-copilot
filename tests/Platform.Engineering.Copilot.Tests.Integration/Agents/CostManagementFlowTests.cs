@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Platform.Engineering.Copilot.Core.Agents;
 using Platform.Engineering.Copilot.Agents.CostManagement;
 using Platform.Engineering.Copilot.Agents.CostManagement.Tools;
 
@@ -96,12 +97,15 @@ public class CostManagementFlowTests
     {
         var agent = new CostManagementAgent(
             new Mock<ILogger<CostManagementAgent>>().Object,
-            _costAnalysis,
-            new GetCostForecastTool(new Mock<ILogger<GetCostForecastTool>>().Object),
-            _optimizations,
-            _cachedReport,
-            _budget,
-            _anomalies);
+            new BaseTool[]
+            {
+                _costAnalysis,
+                new GetCostForecastTool(new Mock<ILogger<GetCostForecastTool>>().Object),
+                _optimizations,
+                _cachedReport,
+                _budget,
+                _anomalies
+            });
 
         var tools = agent.GetToolMetadata();
         tools.Should().HaveCount(6);

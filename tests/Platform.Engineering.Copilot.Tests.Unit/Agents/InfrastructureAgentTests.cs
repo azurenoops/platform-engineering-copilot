@@ -15,12 +15,15 @@ public class InfrastructureAgentTests
 {
     private InfrastructureAgent CreateAgent() => new(
         new Mock<ILogger<InfrastructureAgent>>().Object,
-        new GenerateInfrastructureTemplateTool(new Mock<ILogger<GenerateInfrastructureTemplateTool>>().Object),
-        new ProvisionInfrastructureTool(new Mock<ILogger<ProvisionInfrastructureTool>>().Object),
-        new ValidateTemplateTool(new Mock<ILogger<ValidateTemplateTool>>().Object),
-        new ListDeploymentsTool(new Mock<ILogger<ListDeploymentsTool>>().Object),
-        new GetDeploymentStatusTool(new Mock<ILogger<GetDeploymentStatusTool>>().Object),
-        new RollbackDeploymentTool(new Mock<ILogger<RollbackDeploymentTool>>().Object));
+        new BaseTool[]
+        {
+            new GenerateInfrastructureTemplateTool(new Mock<ILogger<GenerateInfrastructureTemplateTool>>().Object),
+            new ProvisionInfrastructureTool(new Mock<ILogger<ProvisionInfrastructureTool>>().Object),
+            new ValidateTemplateTool(new Mock<ILogger<ValidateTemplateTool>>().Object),
+            new ListDeploymentsTool(new Mock<ILogger<ListDeploymentsTool>>().Object),
+            new GetDeploymentStatusTool(new Mock<ILogger<GetDeploymentStatusTool>>().Object),
+            new RollbackDeploymentTool(new Mock<ILogger<RollbackDeploymentTool>>().Object)
+        });
 
     [Fact] public void AgentId_Returns_Infrastructure() => CreateAgent().AgentId.Should().Be("infrastructure");
     [Fact] public void AgentName_Returns_InfrastructureAgent() => CreateAgent().AgentName.Should().Be("Infrastructure Agent");
