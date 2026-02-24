@@ -14,7 +14,7 @@ public class PlatformEngineeringCopilotContext : DbContext
         : base(options) { }
 
     public DbSet<User> Users => Set<User>();
-    public DbSet<Configuration> Configurations => Set<Configuration>();
+    public DbSet<Entities.Configuration> Configurations => Set<Entities.Configuration>();
     public DbSet<ComplianceAssessment> ComplianceAssessments => Set<ComplianceAssessment>();
     public DbSet<ComplianceFinding> ComplianceFindings => Set<ComplianceFinding>();
     public DbSet<RemediationBoard> RemediationBoards => Set<RemediationBoard>();
@@ -58,7 +58,7 @@ public class PlatformEngineeringCopilotContext : DbContext
         });
 
         // ── Configuration ── (1:1 with User)
-        modelBuilder.Entity<Configuration>(entity =>
+        modelBuilder.Entity<Entities.Configuration>(entity =>
         {
             entity.HasKey(e => e.ConfigurationId);
 
@@ -68,7 +68,7 @@ public class PlatformEngineeringCopilotContext : DbContext
 
             entity.HasOne(e => e.User)
                 .WithOne(u => u.Configuration)
-                .HasForeignKey<Configuration>(e => e.UserId)
+                .HasForeignKey<Entities.Configuration>(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.Property(e => e.CloudEnvironment).HasConversion<string>();

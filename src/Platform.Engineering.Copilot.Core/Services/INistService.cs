@@ -37,6 +37,41 @@ public interface INistService
 
     /// <summary>Information about the active data source.</summary>
     NistDataSourceInfo ActiveSource { get; }
+
+    /// <summary>
+    /// Get enriched control data including statement, guidance, and assessment objectives.
+    /// Returns null if the control does not exist in the loaded catalog.
+    /// </summary>
+    /// <param name="controlId">NIST control ID (e.g. "AC-2").</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A <see cref="ControlEnhancement"/> or null if not found.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="controlId"/> is null or empty.</exception>
+    Task<ControlEnhancement?> GetControlEnhancementAsync(string controlId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Validate whether a control ID exists in the loaded catalog.
+    /// Returns false if the catalog has not been loaded.
+    /// </summary>
+    /// <param name="controlId">NIST control ID to validate.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>True if the control exists; false otherwise.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="controlId"/> is null or empty.</exception>
+    Task<bool> ValidateControlIdAsync(string controlId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get the catalog version string, or "Unknown" if the catalog is not loaded.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The catalog version string.</returns>
+    Task<string> GetVersionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get a snapshot of the loaded catalog including version, control count, and source.
+    /// Returns null if the catalog has not been loaded.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A <see cref="NistCatalogSnapshot"/> or null if not loaded.</returns>
+    Task<NistCatalogSnapshot?> GetCatalogAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -125,6 +160,40 @@ public record NistDataSourceInfo(
     string CatalogVersion,
     DateTimeOffset LoadedAt
 );
+
+/// <summary>
+/// Enriched view of a NIST control with extracted statement, guidance, and assessment objectives.
+/// Read-only record derived from <see cref="ControlDefinition"/>.
+/// </summary>
+/// <param name="Id">Control ID (e.g. "AC-2").</param>
+/// <param name="Title">Control title.</param>
+/// <param name="Statement">Text from the control's Description/statement part.</param>
+/// <param name="Guidance">Text from implementation guidance (empty string if none).</param>
+/// <param name="Objectives">Assessment objective texts (empty list if none).</param>
+/// <param name="LastUpdated">Timestamp when the enhancement was extracted.</param>
+public record ControlEnhancement(
+    string Id,
+    string Title,
+    string Statement,
+    string Guidance,
+    IReadOnlyList<string> Objectives,
+    DateTime LastUpdated);
+
+/// <summary>
+/// Lightweight snapshot of the loaded NIST catalog state.
+/// Returned by <see cref="INistService.GetCatalogAsync"/> to avoid exposing internal data structures.
+/// </summary>
+/// <param name="Version">Catalog version from metadata (e.g. "NIST SP 800-53 Rev 5").</param>
+/// <param name="TotalControls">Total control count across all families.</param>
+/// <param name="FamilyCount">Number of control families loaded.</param>
+/// <param name="LoadedAt">When the catalog was loaded.</param>
+/// <param name="Source">"GitHub" or "EmbeddedFallback".</param>
+public record NistCatalogSnapshot(
+    string Version,
+    int TotalControls,
+    int FamilyCount,
+    DateTimeOffset LoadedAt,
+    string Source);
 
 /// <summary>
 /// Result of comparing two compliance frameworks.
