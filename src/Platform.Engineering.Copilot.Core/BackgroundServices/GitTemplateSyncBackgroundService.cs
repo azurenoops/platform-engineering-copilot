@@ -38,19 +38,32 @@ public class GitTemplateSyncBackgroundService : BackgroundService
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
+                _logger.LogDebug("Running scheduled Git template sync");
+
+                IServiceScope scope;
                 try
                 {
-                    _logger.LogDebug("Running scheduled Git template sync");
-
-                    using var scope = _scopeFactory.CreateScope();
-                    var gitSyncService = scope.ServiceProvider.GetRequiredService<IGitTemplateSyncService>();
-                    var result = await gitSyncService.SyncAllAsync(stoppingToken);
-
-                    _logger.LogInformation("Git template sync completed: {@Result}", result);
+                    scope = _scopeFactory.CreateScope();
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogError(ex, "Error during Git template sync");
+                    _logger.LogError(ex, "Failed to create service scope for Git template sync");
+                    continue;
+                }
+
+                using (scope)
+                {
+                    try
+                    {
+                        var gitSyncService = scope.ServiceProvider.GetRequiredService<IGitTemplateSyncService>();
+                        var result = await gitSyncService.SyncAllAsync(stoppingToken);
+
+                        _logger.LogInformation("Git template sync completed: {@Result}", result);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        _logger.LogError(ex, "Error during Git template sync");
+                    }
                 }
             }
         }

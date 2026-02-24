@@ -32,7 +32,11 @@ try
     var devBypass = builder.Configuration.GetValue<bool>("Authentication:DevBypass");
     if (devBypass)
     {
-        // Development bypass — no real token validation
+        // Development bypass — no real token validation.
+        // SECURITY WARNING: DevBypass disables all token validation including signature verification.
+        // This MUST NOT be enabled in production environments.
+        Log.Warning("SECURITY WARNING: Authentication:DevBypass is enabled — all token validation is disabled. This mode must NOT be used in production.");
+
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
