@@ -1,5 +1,6 @@
-# Stage 1: Build
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+# Stage 1: Build (multi-arch)
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+ARG TARGETARCH
 WORKDIR /src
 
 # Copy solution and project files for layer caching
@@ -15,7 +16,7 @@ RUN dotnet restore src/Platform.Engineering.Copilot.Admin.API/Platform.Engineeri
 # Copy source code and build
 COPY src/ src/
 RUN dotnet publish src/Platform.Engineering.Copilot.Admin.API/Platform.Engineering.Copilot.Admin.API.csproj \
-    -c Release -o /app/publish --no-restore
+    -c Release -o /app/publish --no-restore -a $TARGETARCH
 
 # Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime

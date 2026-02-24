@@ -24,6 +24,10 @@ public class PlatformEngineeringCopilotContext : DbContext
     public DbSet<ComplianceDocument> ComplianceDocuments => Set<ComplianceDocument>();
     public DbSet<IaCTemplate> IaCTemplates => Set<IaCTemplate>();
     public DbSet<ServiceTemplate> ServiceTemplates => Set<ServiceTemplate>();
+    public DbSet<ProvisionedEnvironment> ProvisionedEnvironments => Set<ProvisionedEnvironment>();
+    public DbSet<DeployedResource> DeployedResources => Set<DeployedResource>();
+    public DbSet<DriftItem> DriftItems => Set<DriftItem>();
+    public DbSet<EnvironmentActivity> EnvironmentActivities => Set<EnvironmentActivity>();
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<AuditLogEntry> AuditLogEntries => Set<AuditLogEntry>();
     public DbSet<AgentDefinition> AgentDefinitions => Set<AgentDefinition>();
@@ -252,10 +256,90 @@ public class PlatformEngineeringCopilotContext : DbContext
         {
             entity.HasKey(e => e.TemplateId);
 
-            entity.HasIndex(e => e.Name)
-                .IsUnique();
+            entity.HasIndex(e => new { e.Name, e.Version })
+                .IsUnique()
+                .HasDatabaseName("IX_ServiceTemplate_Name_Version");
+
+            entity.HasIndex(e => new { e.Category, e.Status })
+                .HasDatabaseName("IX_ServiceTemplate_Category_Status");
+
+            entity.HasIndex(e => e.IsDeleted)
+                .HasDatabaseName("IX_ServiceTemplate_IsDeleted");
 
             entity.Property(e => e.GitSyncStatus).HasConversion<string>();
+            entity.Property(e => e.Status).HasConversion<string>();
+            entity.Property(e => e.Format).HasConversion<string>();
+
+            entity.Property(e => e.RowVersion).IsRowVersion();
+
+            entity.HasQueryFilter(e => !e.IsDeleted);
+        });
+
+        // ── ProvisionedEnvironment ──
+        modelBuilder.Entity<ProvisionedEnvironment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => new { e.SubscriptionId, e.ResourceGroup })
+                .HasDatabaseName("IX_ProvisionedEnvironment_Sub_RG");
+
+            entity.HasIndex(e => new { e.Status, e.HasDrift })
+                .HasDatabaseName("IX_ProvisionedEnvironment_Status_Drift");
+
+            entity.HasIndex(e => e.TemplateId)
+                .HasDatabaseName("IX_ProvisionedEnvironment_TemplateId");
+
+            entity.HasIndex(e => e.IsDeleted)
+                .HasDatabaseName("IX_ProvisionedEnvironment_IsDeleted");
+
+            entity.Property(e => e.Status).HasConversion<string>();
+            entity.Property(e => e.RowVersion).IsRowVersion();
+
+            entity.HasOne(e => e.Template)
+                .WithMany()
+                .HasForeignKey(e => e.TemplateId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasQueryFilter(e => !e.IsDeleted);
+        });
+
+        // ── DeployedResource ──
+        modelBuilder.Entity<DeployedResource>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasOne(e => e.Environment)
+                .WithMany(env => env.DeployedResources)
+                .HasForeignKey(e => e.EnvironmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── DriftItem ──
+        modelBuilder.Entity<DriftItem>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Severity).HasConversion<string>();
+
+            entity.HasOne(e => e.Environment)
+                .WithMany(env => env.DriftItems)
+                .HasForeignKey(e => e.EnvironmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── EnvironmentActivity ──
+        modelBuilder.Entity<EnvironmentActivity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => new { e.EnvironmentId, e.Timestamp })
+                .IsDescending(false, true)
+                .HasDatabaseName("IX_EnvironmentActivity_EnvId_Timestamp");
+
+            entity.HasOne(e => e.Environment)
+                .WithMany(env => env.Activities)
+                .HasForeignKey(e => e.EnvironmentId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── Alert ──

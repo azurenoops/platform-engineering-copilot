@@ -3,39 +3,30 @@ using Microsoft.AspNetCore.Mvc;
 namespace Platform.Engineering.Copilot.Admin.API.Controllers;
 
 /// <summary>
-/// T144 — Health check per admin-api.md. Reports on all 8 agents, database, version.
+/// Health check endpoint — unauthenticated, returns simple status and timestamp.
+/// Note: The main health endpoint is also mapped via MapHealthChecks("/health") in Program.cs.
+/// This controller provides a richer JSON response at /api/health.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class HealthController : ControllerBase
 {
+    private readonly ILogger<HealthController> _logger;
+
+    public HealthController(ILogger<HealthController> logger)
+    {
+        _logger = logger;
+    }
+
     [HttpGet]
     public IActionResult GetHealth()
     {
-        var health = new
+        _logger.LogInformation("Health check requested");
+
+        return Ok(new
         {
             status = "Healthy",
-            version = "1.0.0",
-            timestamp = DateTimeOffset.UtcNow,
-            agents = new[]
-            {
-                new { name = "ComplianceAgent", status = "Healthy" },
-                new { name = "ConfigurationAgent", status = "Healthy" },
-                new { name = "InfrastructureAgent", status = "Healthy" },
-                new { name = "KnowledgeBaseAgent", status = "Healthy" },
-                new { name = "CostManagementAgent", status = "Healthy" },
-                new { name = "DiscoveryAgent", status = "Healthy" },
-                new { name = "EnvironmentAgent", status = "Healthy" },
-                new { name = "SecurityAgent", status = "Healthy" }
-            },
-            services = new
-            {
-                database = new { status = "Healthy", latencyMs = 12 },
-                mcpServer = new { status = "Healthy", transport = "dual" },
-                signalR = new { status = "Healthy", connections = 0 }
-            }
-        };
-
-        return Ok(health);
+            timestamp = DateTimeOffset.UtcNow
+        });
     }
 }
