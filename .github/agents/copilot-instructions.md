@@ -15,6 +15,8 @@ Auto-generated from all feature plans. Last updated: 2026-02-22
 - xUnit 2.9+, FluentAssertions, Moq — testing
 - C# 12 / .NET 9.0 (net9.0 TFM across all projects) + `Microsoft.Extensions.AI` 9.1.0-preview.1.25064.3 (already in Core), `Azure.AI.OpenAI` (to be added to Core), `Microsoft.SemanticKernel` 1.26.0 (existing), `Microsoft.AspNetCore.SignalR` 1.1.0 (Chat project) (002-azure-openai-agents)
 - N/A for this feature — conversation sessions remain in-memory (`ConversationSession` with `List<SessionMessage>`) (002-azure-openai-agents)
+- C# 12 / .NET 9.0 + ASP.NET Core 9.0, EF Core 9.0 (SQL Server + InMemory), Serilog.AspNetCore, Swashbuckle.AspNetCore, Microsoft.AspNetCore.Authentication.JwtBearer, Azure.Identity (003-admin-api)
+- SQL Server (production) / EF Core InMemory (dev/test), existing `PlatformEngineeringCopilotContext` (003-admin-api)
 
 ## Project Structure
 
@@ -60,9 +62,9 @@ docker compose -f docker-compose.mcp.yml up
 - **Testing**: Test-first (Constitution Principle III — NON-NEGOTIABLE). 80%+ unit coverage.
 
 ## Recent Changes
+- 003-admin-api: Added C# 12 / .NET 9.0 + ASP.NET Core 9.0, EF Core 9.0 (SQL Server + InMemory), Serilog.AspNetCore, Swashbuckle.AspNetCore, Microsoft.AspNetCore.Authentication.JwtBearer, Azure.Identity
 - 002-azure-openai-agents: Added C# 12 / .NET 9.0 (net9.0 TFM across all projects) + `Microsoft.Extensions.AI` 9.1.0-preview.1.25064.3 (already in Core), `Azure.AI.OpenAI` (to be added to Core), `Microsoft.SemanticKernel` 1.26.0 (existing), `Microsoft.AspNetCore.SignalR` 1.1.0 (Chat project)
 - 001-platform-copilot-core: Microsoft Agents SDK replaces SK AgentGroupChat for orchestration
-- 001-platform-copilot-core: NistService with dual-source OSCAL (GitHub + embedded fallback)
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
