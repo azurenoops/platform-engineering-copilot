@@ -10,7 +10,7 @@ using Platform.Engineering.Copilot.Core.Services;
 
 namespace Platform.Engineering.Copilot.Tests.Unit.Services;
 
-public class ProvisionedEnvironmentServiceTests : IDisposable
+public class ProvisionedEnvironmentServiceTests : IAsyncDisposable
 {
     private readonly PlatformEngineeringCopilotContext _context;
     private readonly ProvisionedEnvironmentService _service;
@@ -28,7 +28,7 @@ public class ProvisionedEnvironmentServiceTests : IDisposable
             Mock.Of<ILogger<ProvisionedEnvironmentService>>());
     }
 
-    public void Dispose() => _context.Dispose();
+    public async ValueTask DisposeAsync() => await _context.DisposeAsync();
 
     private ServiceTemplate SeedPublishedTemplate(string name = "test-template")
     {

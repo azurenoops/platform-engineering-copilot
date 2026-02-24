@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Platform.Engineering.Copilot.Core.Data;
@@ -100,13 +101,45 @@ public class ProvisionedEnvironmentService : IProvisionedEnvironmentService
         if (env.Status != EnvironmentStatus.Running)
             throw new InvalidOperationException($"Cannot scale environment in '{env.Status}' state. Must be Running.");
 
+        // Parse existing parameter values to capture actual current values for audit trail
+        var currentParams = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(env.ParameterValuesJson))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(env.ParameterValuesJson);
+                foreach (var prop in doc.RootElement.EnumerateObject())
+                    currentParams[prop.Name] = prop.Value.Clone();
+            }
+            catch (JsonException)
+            {
+                _logger.LogWarning("Could not parse ParameterValuesJson for environment {EnvironmentId} while capturing scale previous values", id);
+            }
+        }
+
         var previousValues = new Dictionary<string, object>();
         var newValues = new Dictionary<string, object>();
 
-        if (nodeCount.HasValue) { previousValues["nodeCount"] = 0; newValues["nodeCount"] = nodeCount.Value; }
-        if (replicaCount.HasValue) { previousValues["replicaCount"] = 0; newValues["replicaCount"] = replicaCount.Value; }
-        if (sku is not null) { previousValues["sku"] = ""; newValues["sku"] = sku; }
-        if (tier is not null) { previousValues["tier"] = ""; newValues["tier"] = tier; }
+        if (nodeCount.HasValue)
+        {
+            previousValues["nodeCount"] = currentParams.TryGetValue("nodeCount", out var pnc) && pnc.TryGetInt32(out var pncInt) ? (object)pncInt : 0;
+            newValues["nodeCount"] = nodeCount.Value;
+        }
+        if (replicaCount.HasValue)
+        {
+            previousValues["replicaCount"] = currentParams.TryGetValue("replicaCount", out var prc) && prc.TryGetInt32(out var prcInt) ? (object)prcInt : 0;
+            newValues["replicaCount"] = replicaCount.Value;
+        }
+        if (sku is not null)
+        {
+            previousValues["sku"] = currentParams.TryGetValue("sku", out var psku) ? psku.GetString() ?? string.Empty : string.Empty;
+            newValues["sku"] = sku;
+        }
+        if (tier is not null)
+        {
+            previousValues["tier"] = currentParams.TryGetValue("tier", out var ptier) ? ptier.GetString() ?? string.Empty : string.Empty;
+            newValues["tier"] = tier;
+        }
 
         env.Status = EnvironmentStatus.Scaling;
         env.UpdatedAt = DateTimeOffset.UtcNow;
@@ -179,6 +212,8 @@ public class ProvisionedEnvironmentService : IProvisionedEnvironmentService
 
     public async Task DeleteAsync(Guid id, string deletedBy, bool force = false, CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(deletedBy, nameof(deletedBy));
+
         var env = await _context.ProvisionedEnvironments.FindAsync(new object[] { id }, cancellationToken)
             ?? throw new KeyNotFoundException($"Environment {id} not found.");
 
@@ -299,6 +334,9 @@ public class ProvisionedEnvironmentService : IProvisionedEnvironmentService
     }
 
     public async Task<object> RefreshStatusAsync(Guid id, CancellationToken cancellationToken = default)
+        => await RefreshStatusInternalAsync(id, cancellationToken);
+
+    private async Task<StatusRefreshResult> RefreshStatusInternalAsync(Guid id, CancellationToken cancellationToken)
     {
         var env = await _context.ProvisionedEnvironments.FindAsync(new object[] { id }, cancellationToken)
             ?? throw new KeyNotFoundException($"Environment {id} not found.");
@@ -325,13 +363,7 @@ public class ProvisionedEnvironmentService : IProvisionedEnvironmentService
             await _context.SaveChangesAsync(cancellationToken);
         }
 
-        return new
-        {
-            environmentId = id,
-            previousStatus,
-            currentStatus = env.Status.ToString(),
-            statusChanged = previousStatus != env.Status.ToString()
-        };
+        return new StatusRefreshResult(id, previousStatus, env.Status.ToString());
     }
 
     public async Task<object> RefreshAllProvisioningAsync(CancellationToken cancellationToken = default)
@@ -343,9 +375,8 @@ public class ProvisionedEnvironmentService : IProvisionedEnvironmentService
         var statusChanges = new List<object>();
         foreach (var env in provisioning)
         {
-            var result = await RefreshStatusAsync(env.Id, cancellationToken);
-            var resultObj = (dynamic)result;
-            if (resultObj.statusChanged)
+            var result = await RefreshStatusInternalAsync(env.Id, cancellationToken);
+            if (result.StatusChanged)
                 statusChanges.Add(result);
         }
 
@@ -373,4 +404,12 @@ public class ProvisionedEnvironmentService : IProvisionedEnvironmentService
 
         return env;
     }
+}
+
+/// <summary>
+/// Typed result for a single environment status refresh operation.
+/// </summary>
+internal sealed record StatusRefreshResult(Guid EnvironmentId, string PreviousStatus, string CurrentStatus)
+{
+    public bool StatusChanged => PreviousStatus != CurrentStatus;
 }

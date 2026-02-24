@@ -25,9 +25,16 @@ public class DeployerFactory : IDeployerFactory
 
 /// <summary>
 /// Stub template deployer for development/testing. Returns simulated deployment results.
+/// The simulated deployment status can be configured for testing failure scenarios.
 /// </summary>
 internal class StubTemplateDeployer : ITemplateDeployer
 {
+    /// <summary>
+    /// Simulated deployment status returned by <see cref="GetStatusAsync"/>.
+    /// Defaults to "Succeeded". Set to "Failed" or "InProgress" to simulate other states.
+    /// </summary>
+    public string SimulatedStatus { get; set; } = "Succeeded";
+
     public Task<string> DeployAsync(Guid templateId, string subscriptionId, string resourceGroup, string location,
         string? parameterValuesJson = null, CancellationToken cancellationToken = default)
     {
@@ -36,10 +43,7 @@ internal class StubTemplateDeployer : ITemplateDeployer
     }
 
     public Task<string> GetStatusAsync(string deploymentId, CancellationToken cancellationToken = default)
-    {
-        // Stub always returns Succeeded
-        return Task.FromResult("Succeeded");
-    }
+        => Task.FromResult(SimulatedStatus);
 
     public Task<object> ScaleAsync(string deploymentId, Dictionary<string, string>? parameters = null,
         CancellationToken cancellationToken = default)
