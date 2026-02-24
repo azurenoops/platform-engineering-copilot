@@ -1,0 +1,273 @@
+@page "/health"
+@inject EnvironmentApiService EnvironmentApi
+@inject IToastService ToastService
+
+<h2 class="mb-4"><i class="fa-solid fa-heart-pulse me-2"></i>Health Status</h2>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (!_environments.Any())
+{
+    <EmptyState Icon="fa-heart-pulse" Title="No Environments"
+                Message="No environments found. Provision an environment first."
+                ActionText="Create Environment" ActionUrl="/environments/create" />
+}
+else
+{
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card text-center border-success">
+                <div class="card-body">
+                    <div class="fs-2 fw-bold text-success">@_healthyCount</div>
+                    <small class="text-muted">Healthy</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center border-warning">
+                <div class="card-body">
+                    <div class="fs-2 fw-bold text-warning">@_degradedCount</div>
+                    <small class="text-muted">Degraded</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center border-danger">
+                <div class="card-body">
+                    <div class="fs-2 fw-bold text-danger">@_unhealthyCount</div>
+                    <small class="text-muted">Unhealthy</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end mb-3">
+        <button class="btn btn-outline-primary" @onclick="RefreshAll" disabled="@_refreshingAll">
+            @if (_refreshingAll)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            <i class="fa-solid fa-arrows-rotate me-1"></i>Refresh All
+        </button>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <table class="table table-sm table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Environment</th>
+                        <th>Status</th>
+                        <th>Cost</th>
+                        <th>Issues</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var env in _environments)
+                    {
+                        <tr>
+                            <td>
+                                <a href="/environments/@env.Id">@(env.DisplayName ?? env.Name)</a>
+                            </td>
+                            <td>
+                                @if (_checkingSet.Contains(env.Id))
+                                {
+                                    <span class="spinner-border spinner-border-sm text-primary"></span>
+                                }
+                                else if (_healthResults.TryGetValue(env.Id, out var health) && health is not null)
+                                {
+                                    <StatusBadge Status="@health.OverallStatus" />
+                                }
+                                else
+                                {
+                                    <StatusBadge Status="@env.Status" />
+                                }
+                            </td>
+                            <td>
+                                @if (env.EstimatedMonthlyCost.HasValue)
+                                {
+                                    <span>$@env.EstimatedMonthlyCost.Value.ToString("N2")/mo</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">N/A</span>
+                                }
+                            </td>
+                            <td>
+                                @if (_healthResults.TryGetValue(env.Id, out var h) && h is not null && h.Issues.Any())
+                                {
+                                    <span class="badge bg-warning text-dark">@h.Issues.Count issue(s)</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <button class="btn btn-outline-primary btn-sm" @onclick="() => CheckHealth(env.Id)"
+                                        disabled="@(_checkingSet.Contains(env.Id))">
+                                    @if (_checkingSet.Contains(env.Id))
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="fa-solid fa-stethoscope"></i>
+                                    }
+                                    Check
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Expanded Health Details -->
+    @foreach (var kvp in _healthResults.Where(h => h.Value is not null && h.Value.ResourceHealth.Any()))
+    {
+        var envName = _environments.FirstOrDefault(e => e.Id == kvp.Key)?.Name ?? "Environment";
+        <div class="card mt-3">
+            <div class="card-header">
+                <i class="fa-solid fa-cubes me-1"></i>@envName — Resource Health
+            </div>
+            <div class="card-body">
+                <table class="table table-sm table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Resource</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Issues</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var rh in kvp.Value!.ResourceHealth)
+                        {
+                            <tr>
+                                <td>@rh.ResourceName</td>
+                                <td><code>@rh.ResourceType</code></td>
+                                <td><StatusBadge Status="@rh.Status" /></td>
+                                <td>
+                                    @if (rh.Issues.Any())
+                                    {
+                                        <ul class="mb-0 ps-3">
+                                            @foreach (var issue in rh.Issues)
+                                            {
+                                                <li class="text-danger"><small>@issue</small></li>
+                                            }
+                                        </ul>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">None</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<EnvironmentDetailDto> _environments = new();
+    private Dictionary<Guid, EnvironmentHealthDto?> _healthResults = new();
+    private HashSet<Guid> _checkingSet = new();
+    private bool _loading = true;
+    private bool _refreshingAll;
+
+    private int _healthyCount;
+    private int _degradedCount;
+    private int _unhealthyCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await EnvironmentApi.GetEnvironmentsAsync();
+        _environments = result.Items ?? new();
+        UpdateCounts();
+        _loading = false;
+    }
+
+    private void UpdateCounts()
+    {
+        _healthyCount = 0;
+        _degradedCount = 0;
+        _unhealthyCount = 0;
+
+        foreach (var env in _environments)
+        {
+            if (_healthResults.TryGetValue(env.Id, out var health) && health is not null)
+            {
+                switch (health.OverallStatus.ToLower())
+                {
+                    case "healthy": _healthyCount++; break;
+                    case "degraded": _degradedCount++; break;
+                    default: _unhealthyCount++; break;
+                }
+            }
+            else
+            {
+                switch (env.Status.ToLower())
+                {
+                    case "running" or "healthy" or "succeeded": _healthyCount++; break;
+                    case "degraded": _degradedCount++; break;
+                    case "failed" or "unhealthy": _unhealthyCount++; break;
+                    default: _healthyCount++; break;
+                }
+            }
+        }
+    }
+
+    private async Task CheckHealth(Guid envId)
+    {
+        _checkingSet.Add(envId);
+        StateHasChanged();
+
+        var result = await EnvironmentApi.GetHealthAsync(envId);
+        _healthResults[envId] = result;
+
+        if (result is not null)
+        {
+            ToastService.ShowSuccess($"Health check complete: {result.OverallStatus}");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to check health.");
+        }
+
+        UpdateCounts();
+        _checkingSet.Remove(envId);
+        StateHasChanged();
+    }
+
+    private async Task RefreshAll()
+    {
+        _refreshingAll = true;
+        foreach (var env in _environments) _checkingSet.Add(env.Id);
+        StateHasChanged();
+
+        var tasks = _environments.Select(env => CheckHealthInternal(env.Id));
+        await Task.WhenAll(tasks);
+
+        _refreshingAll = false;
+        _checkingSet.Clear();
+        UpdateCounts();
+        StateHasChanged();
+
+        ToastService.ShowSuccess("All health checks complete.");
+    }
+
+    private async Task CheckHealthInternal(Guid envId)
+    {
+        var result = await EnvironmentApi.GetHealthAsync(envId);
+        _healthResults[envId] = result;
+    }
+}

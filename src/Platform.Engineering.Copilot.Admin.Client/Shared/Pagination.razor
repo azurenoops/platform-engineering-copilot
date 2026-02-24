@@ -1,0 +1,85 @@
+@* Pagination.razor — Client-side pagination controls *@
+
+@if (TotalPages > 1)
+{
+    <nav aria-label="Page navigation">
+        <ul class="pagination justify-content-center">
+            <li class="page-item @(CurrentPage <= 1 ? "disabled" : "")">
+                <button class="page-link" @onclick="() => GoToPage(CurrentPage - 1)" disabled="@(CurrentPage <= 1)">
+                    <i class="fas fa-chevron-left"></i> Previous
+                </button>
+            </li>
+
+            @foreach (var page in GetPageNumbers())
+            {
+                @if (page == -1)
+                {
+                    <li class="page-item disabled">
+                        <span class="page-link">&hellip;</span>
+                    </li>
+                }
+                else
+                {
+                    <li class="page-item @(page == CurrentPage ? "active" : "")">
+                        <button class="page-link" @onclick="() => GoToPage(page)">@(page)</button>
+                    </li>
+                }
+            }
+
+            <li class="page-item @(CurrentPage >= TotalPages ? "disabled" : "")">
+                <button class="page-link" @onclick="() => GoToPage(CurrentPage + 1)" disabled="@(CurrentPage >= TotalPages)">
+                    Next <i class="fas fa-chevron-right"></i>
+                </button>
+            </li>
+        </ul>
+    </nav>
+}
+
+@code {
+    [Parameter] public int CurrentPage { get; set; } = 1;
+    [Parameter] public int PageSize { get; set; } = 10;
+    [Parameter] public int TotalItems { get; set; }
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+
+    private int TotalPages => TotalItems > 0 ? (int)Math.Ceiling((double)TotalItems / PageSize) : 0;
+
+    private async Task GoToPage(int page)
+    {
+        if (page < 1 || page > TotalPages || page == CurrentPage)
+            return;
+
+        await PageChanged.InvokeAsync(page);
+    }
+
+    private List<int> GetPageNumbers()
+    {
+        var pages = new List<int>();
+        const int maxVisible = 5;
+
+        if (TotalPages <= maxVisible + 2)
+        {
+            for (var i = 1; i <= TotalPages; i++)
+                pages.Add(i);
+        }
+        else
+        {
+            pages.Add(1);
+
+            var start = Math.Max(2, CurrentPage - 1);
+            var end = Math.Min(TotalPages - 1, CurrentPage + 1);
+
+            if (start > 2)
+                pages.Add(-1); // ellipsis
+
+            for (var i = start; i <= end; i++)
+                pages.Add(i);
+
+            if (end < TotalPages - 1)
+                pages.Add(-1); // ellipsis
+
+            pages.Add(TotalPages);
+        }
+
+        return pages;
+    }
+}

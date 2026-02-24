@@ -25,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Platform.Engineering.Copilot.Core\Platform.Engineering.Copilot.Core.csproj" />
     <ProjectReference Include="..\..\src\Platform.Engineering.Copilot.Agents\Platform.Engineering.Copilot.Agents.csproj" />
+    <ProjectReference Include="..\..\src\Platform.Engineering.Copilot.Admin.Client\Platform.Engineering.Copilot.Admin.Client.csproj" />
   </ItemGroup>
 
 </Project>

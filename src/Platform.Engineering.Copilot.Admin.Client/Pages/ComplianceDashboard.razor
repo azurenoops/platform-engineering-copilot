@@ -1,0 +1,242 @@
+@page "/compliance"
+@inject ComplianceApiService ComplianceApi
+@inject EnvironmentApiService EnvironmentApi
+@inject IToastService ToastService
+
+<h2 class="mb-4"><i class="fa-solid fa-shield-halved me-2"></i>Compliance Dashboard</h2>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (_summary is null)
+{
+    <EmptyState Icon="fa-shield-halved" Title="No Compliance Data"
+                Message="No compliance data available. Run a scan to generate compliance reports."
+                ActionText="Scan All" OnRetry="ScanAll" />
+}
+else
+{
+    <!-- Overall Score Card -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Overall Compliance Score</h6>
+                    @{
+                        var scoreColor = _summary.OverallScore >= 80 ? "text-success" : _summary.OverallScore >= 60 ? "text-warning" : "text-danger";
+                    }
+                    <div class="display-3 fw-bold @scoreColor">@_summary.OverallScore.ToString("F0")%</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Framework Scores</span>
+                    <button class="btn btn-outline-primary btn-sm" @onclick="ScanAll" disabled="@_scanning">
+                        @if (_scanning)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="fa-solid fa-rotate me-1"></i>Scan All
+                    </button>
+                </div>
+                <div class="card-body">
+                    @if (_summary.FrameworkScores.Any())
+                    {
+                        @foreach (var fw in _summary.FrameworkScores)
+                        {
+                            <div class="mb-2">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>@fw.Framework</span>
+                                    <span class="fw-bold">@fw.Score.ToString("F0")%</span>
+                                </div>
+                                @{
+                                    var barColor = fw.Score >= 80 ? "bg-success" : fw.Score >= 60 ? "bg-warning" : "bg-danger";
+                                }
+                                <div class="progress" style="height: 8px;">
+                                    <div class="progress-bar @barColor" style="width: @fw.Score.ToString("F0")%"></div>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">No framework data available.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Violations -->
+    @if (_summary.TopViolations.Any())
+    {
+        <div class="card mb-4">
+            <div class="card-header"><i class="fa-solid fa-triangle-exclamation me-1"></i>Top Violations</div>
+            <div class="card-body">
+                <table class="table table-sm table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Control ID</th>
+                            <th>Control Name</th>
+                            <th>Severity</th>
+                            <th>Affected Environments</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var v in _summary.TopViolations)
+                        {
+                            <tr>
+                                <td><code>@v.ControlId</code></td>
+                                <td>@v.ControlName</td>
+                                <td>
+                                    <span class="badge @(v.Severity == "High" ? "bg-danger" : v.Severity == "Medium" ? "bg-warning text-dark" : "bg-info")">
+                                        @v.Severity
+                                    </span>
+                                </td>
+                                <td>@v.AffectedEnvironments</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    <!-- Per-Environment Compliance -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="fa-solid fa-list me-1"></i>Environment Compliance</span>
+            @if (_environments.Any())
+            {
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        Scan Environment
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        @foreach (var env in _environments)
+                        {
+                            <li>
+                                <button class="dropdown-item" @onclick="() => ScanEnvironment(env.Id)">
+                                    @env.Name
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+        <div class="card-body">
+            @if (_summary.EnvironmentStatuses.Any())
+            {
+                <table class="table table-sm table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Environment</th>
+                            <th>Score</th>
+                            <th>Violations</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var es in _summary.EnvironmentStatuses)
+                        {
+                            <tr>
+                                <td>@es.EnvironmentName</td>
+                                <td>
+                                    @{
+                                        var envScoreColor = es.ComplianceScore >= 80 ? "text-success" : es.ComplianceScore >= 60 ? "text-warning" : "text-danger";
+                                    }
+                                    <span class="fw-bold @envScoreColor">@es.ComplianceScore.ToString("F0")%</span>
+                                </td>
+                                <td>
+                                    @if (es.ViolationCount > 0)
+                                    {
+                                        <span class="badge bg-danger">@es.ViolationCount</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">0</span>
+                                    }
+                                </td>
+                                <td>
+                                    <a href="/compliance/environment/@es.EnvironmentId" class="btn btn-outline-primary btn-sm">
+                                        View Details
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p class="text-muted mb-0">No environment compliance data available.</p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private ComplianceSummaryDto? _summary;
+    private List<EnvironmentDetailDto> _environments = new();
+    private bool _loading = true;
+    private bool _scanning;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var summaryTask = ComplianceApi.GetSummaryAsync();
+        var envsTask = EnvironmentApi.GetEnvironmentsAsync();
+
+        await Task.WhenAll(summaryTask, envsTask);
+
+        _summary = summaryTask.Result;
+        _environments = envsTask.Result.Items ?? new();
+
+        _loading = false;
+    }
+
+    private async Task ScanAll()
+    {
+        _scanning = true;
+        StateHasChanged();
+
+        var success = await ComplianceApi.TriggerScanAsync();
+        if (success)
+        {
+            ToastService.ShowSuccess("Compliance scan initiated. Refreshing...");
+            await Task.Delay(2000);
+            _summary = await ComplianceApi.GetSummaryAsync();
+        }
+        else
+        {
+            ToastService.ShowError("Failed to trigger compliance scan.");
+        }
+
+        _scanning = false;
+        StateHasChanged();
+    }
+
+    private async Task ScanEnvironment(Guid environmentId)
+    {
+        _scanning = true;
+        StateHasChanged();
+
+        var success = await ComplianceApi.TriggerScanAsync(environmentId);
+        if (success)
+        {
+            ToastService.ShowSuccess("Environment scan initiated. Refreshing...");
+            await Task.Delay(2000);
+            _summary = await ComplianceApi.GetSummaryAsync();
+        }
+        else
+        {
+            ToastService.ShowError("Failed to scan environment.");
+        }
+
+        _scanning = false;
+        StateHasChanged();
+    }
+}

@@ -1,0 +1,31 @@
+@* StatusBadge.razor — Maps a status string to a Bootstrap badge class *@
+
+<span class="badge @BadgeClass">@Status</span>
+
+@code {
+    [Parameter] public string Status { get; set; } = string.Empty;
+
+    private string BadgeClass => Status?.ToLowerInvariant() switch
+    {
+        "draft" => "bg-secondary",
+        "pendingapproval" or "pending approval" or "pending" => "bg-warning text-dark",
+        "published" => "bg-success",
+        "deprecated" => "bg-dark",
+        "archived" => "bg-light text-dark",
+        "provisioning" => "bg-info",
+        "running" => "bg-success",
+        "scaling" => "bg-info",
+        "failed" => "bg-danger",
+        "deleting" => "bg-warning text-dark",
+        "deleted" => "bg-secondary",
+        "purged" => "bg-dark",
+        "healthy" => "bg-success",
+        "degraded" => "bg-warning text-dark",
+        "unhealthy" => "bg-danger",
+        "compliant" => "bg-success",
+        "non-compliant" or "noncompliant" => "bg-danger",
+        "in sync" or "insync" or "no drift" => "bg-success",
+        "drifted" or "has drift" => "bg-danger",
+        _ => "bg-secondary"
+    };
+}

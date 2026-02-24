@@ -1,0 +1,224 @@
+@page "/compliance/environment/{Id:guid}"
+@inject ComplianceApiService ComplianceApi
+@inject IToastService ToastService
+@inject NavigationManager NavigationManager
+
+<Breadcrumb Crumbs="_breadcrumbs" />
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (_compliance is null)
+{
+    <EmptyState Icon="fa-shield-halved" Title="Compliance Data Not Found"
+                Message="No compliance data available for this environment."
+                ActionText="Back to Compliance" ActionUrl="/compliance" />
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">@_compliance.EnvironmentName</h2>
+            <small class="text-muted">Environment Compliance Details</small>
+        </div>
+        <div>
+            @{
+                var overallColor = _compliance.OverallScore >= 80 ? "text-success" : _compliance.OverallScore >= 60 ? "text-warning" : "text-danger";
+            }
+            <span class="display-6 fw-bold @overallColor">@_compliance.OverallScore.ToString("F0")%</span>
+        </div>
+    </div>
+
+    <!-- Framework Results -->
+    @if (_compliance.FrameworkResults.Any())
+    {
+        @foreach (var fw in _compliance.FrameworkResults)
+        {
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fa-solid fa-gavel me-1"></i>@fw.Framework</span>
+                    @{
+                        var fwColor = fw.Score >= 80 ? "text-success" : fw.Score >= 60 ? "text-warning" : "text-danger";
+                    }
+                    <span class="fw-bold @fwColor">@fw.Score.ToString("F0")%</span>
+                </div>
+                <div class="card-body">
+                    @if (fw.Controls.Any())
+                    {
+                        <!-- Filter -->
+                        <div class="mb-3">
+                            <select class="form-select form-select-sm w-auto" @onchange="e => SetFilter(fw.Framework, e.Value?.ToString())">
+                                <option value="">All Controls</option>
+                                <option value="Compliant">Compliant</option>
+                                <option value="Non-Compliant">Non-Compliant</option>
+                            </select>
+                        </div>
+
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Control ID</th>
+                                    <th>Control Name</th>
+                                    <th>Status</th>
+                                    <th>Severity</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var ctrl in GetFilteredControls(fw.Framework, fw.Controls))
+                                {
+                                    <tr>
+                                        <td><code>@ctrl.ControlId</code></td>
+                                        <td>@ctrl.ControlName</td>
+                                        <td>
+                                            @if (ctrl.Status == "Compliant")
+                                            {
+                                                <span class="badge bg-success">Compliant</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-danger">Non-Compliant</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <span class="badge @(ctrl.Severity == "High" ? "bg-danger" : ctrl.Severity == "Medium" ? "bg-warning text-dark" : "bg-info")">
+                                                @ctrl.Severity
+                                            </span>
+                                        </td>
+                                        <td>
+                                            @if (!string.IsNullOrEmpty(ctrl.RemediationGuidance))
+                                            {
+                                                <button class="btn btn-outline-secondary btn-sm"
+                                                        @onclick="() => ToggleGuidance(ctrl.ControlId)">
+                                                    <i class="fa-solid @(IsGuidanceExpanded(ctrl.ControlId) ? "fa-chevron-up" : "fa-chevron-down")"></i>
+                                                </button>
+                                            }
+                                        </td>
+                                    </tr>
+                                    @if (IsGuidanceExpanded(ctrl.ControlId))
+                                    {
+                                        <tr>
+                                            <td colspan="5">
+                                                <div class="alert alert-info mb-0">
+                                                    <i class="fa-solid fa-lightbulb me-1"></i>
+                                                    <strong>Remediation:</strong> @ctrl.RemediationGuidance
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">No controls evaluated.</p>
+                    }
+                </div>
+            </div>
+        }
+    }
+
+    <!-- Resource Compliance -->
+    @if (_compliance.ResourceCompliance.Any())
+    {
+        <div class="card mb-3">
+            <div class="card-header"><i class="fa-solid fa-cubes me-1"></i>Resource Compliance</div>
+            <div class="card-body">
+                <table class="table table-sm table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Resource</th>
+                            <th>Type</th>
+                            <th>Score</th>
+                            <th>Violations</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var rc in _compliance.ResourceCompliance)
+                        {
+                            <tr>
+                                <td>@rc.ResourceName</td>
+                                <td><code>@rc.ResourceType</code></td>
+                                <td>
+                                    @{
+                                        var rcColor = rc.ComplianceScore >= 80 ? "text-success" : rc.ComplianceScore >= 60 ? "text-warning" : "text-danger";
+                                    }
+                                    <span class="fw-bold @rcColor">@rc.ComplianceScore.ToString("F0")%</span>
+                                </td>
+                                <td>
+                                    @if (rc.Violations > 0)
+                                    {
+                                        <span class="badge bg-danger">@rc.Violations</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">0</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private EnvironmentComplianceDto? _compliance;
+    private bool _loading = true;
+    private List<Breadcrumb.BreadcrumbItem> _breadcrumbs = new();
+
+    // Filters per framework
+    private Dictionary<string, string> _frameworkFilters = new();
+
+    // Expanded guidance rows
+    private HashSet<string> _expandedGuidance = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _breadcrumbs = new()
+        {
+            new("Dashboard", "/"),
+            new("Compliance", "/compliance"),
+            new("Environment Detail")
+        };
+
+        _compliance = await ComplianceApi.GetEnvironmentComplianceAsync(Id);
+
+        if (_compliance is not null)
+        {
+            _breadcrumbs[2] = new Breadcrumb.BreadcrumbItem(_compliance.EnvironmentName);
+        }
+
+        _loading = false;
+    }
+
+    private void SetFilter(string framework, string? filter)
+    {
+        if (string.IsNullOrEmpty(filter))
+            _frameworkFilters.Remove(framework);
+        else
+            _frameworkFilters[framework] = filter;
+    }
+
+    private List<ControlResultDto> GetFilteredControls(string framework, List<ControlResultDto> controls)
+    {
+        if (!_frameworkFilters.TryGetValue(framework, out var filter) || string.IsNullOrEmpty(filter))
+            return controls;
+
+        return controls.Where(c => c.Status == filter).ToList();
+    }
+
+    private void ToggleGuidance(string controlId)
+    {
+        if (!_expandedGuidance.Remove(controlId))
+            _expandedGuidance.Add(controlId);
+    }
+
+    private bool IsGuidanceExpanded(string controlId) => _expandedGuidance.Contains(controlId);
+}

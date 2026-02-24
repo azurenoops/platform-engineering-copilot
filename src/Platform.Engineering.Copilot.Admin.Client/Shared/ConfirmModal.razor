@@ -1,0 +1,54 @@
+@* ConfirmModal.razor — Standard delete/destructive confirmation with backdrop *@
+
+@if (IsVisible)
+{
+    <div class="confirm-modal-backdrop" @onclick="Cancel">
+        <div class="confirm-modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h5 class="modal-title">@Title</h5>
+                <button type="button" class="btn-close" @onclick="Cancel" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>@Message</p>
+                @if (ChildContent is not null)
+                {
+                    @ChildContent
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+                <button class="btn @ConfirmButtonClass" @onclick="Confirm" disabled="@IsProcessing">
+                    @if (IsProcessing)
+                    {
+                        <LoadingSpinner Inline="true" />
+                    }
+                    @ConfirmText
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public string Title { get; set; } = "Confirm Action";
+    [Parameter] public string Message { get; set; } = "Are you sure you want to proceed?";
+    [Parameter] public string ConfirmText { get; set; } = "Confirm";
+    [Parameter] public string ConfirmButtonClass { get; set; } = "btn-danger";
+    [Parameter] public bool IsProcessing { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private async Task Confirm()
+    {
+        if (OnConfirm.HasDelegate)
+            await OnConfirm.InvokeAsync();
+    }
+
+    private async Task Cancel()
+    {
+        if (OnCancel.HasDelegate)
+            await OnCancel.InvokeAsync();
+    }
+}

@@ -1,0 +1,849 @@
+@page "/environments/{Id:guid}"
+@inject EnvironmentApiService EnvironmentApi
+@inject NavigationManager NavigationManager
+@inject IToastService ToastService
+
+<Breadcrumb Crumbs="_breadcrumbs" />
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (_env is null)
+{
+    <EmptyState Icon="fa-triangle-exclamation" Title="Environment Not Found"
+                Message="This environment may have been deleted."
+                ActionText="Back to Environments" ActionUrl="/environments" />
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">@(_env.DisplayName ?? _env.Name)</h2>
+            <small class="text-muted">@_env.Name &mdash; @_env.Id</small>
+        </div>
+        <div class="d-flex gap-2">
+            @if (_env.ExpiresAt.HasValue)
+            {
+                <button class="btn btn-outline-warning btn-sm" @onclick="ShowExtendModal">
+                    <i class="fa-solid fa-clock-rotate-left me-1"></i>Extend Expiration
+                </button>
+            }
+            <button class="btn btn-outline-primary btn-sm" @onclick="RefreshStatus" disabled="@_refreshing">
+                @if (_refreshing)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                <i class="fa-solid fa-arrows-rotate me-1"></i>Refresh Status
+            </button>
+        </div>
+    </div>
+
+    @if (_env.ExpiresAt.HasValue && _env.ExpiresAt.Value < DateTimeOffset.UtcNow.AddDays(7))
+    {
+        <div class="alert @(_env.ExpiresAt.Value < DateTimeOffset.UtcNow ? "alert-danger" : "alert-warning") d-flex align-items-center mb-3">
+            <i class="fa-solid fa-triangle-exclamation me-2"></i>
+            @if (_env.ExpiresAt.Value < DateTimeOffset.UtcNow)
+            {
+                <span><strong>Expired</strong> &mdash; This environment expired @_env.ExpiresAt.Value.ToString("g"). It may be auto-deleted soon.</span>
+            }
+            else
+            {
+                <span><strong>Expiring Soon</strong> &mdash; This environment expires @_env.ExpiresAt.Value.ToString("g").</span>
+            }
+            <button class="btn btn-sm btn-outline-dark ms-auto" @onclick="ShowExtendModal">Extend</button>
+        </div>
+    }
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == "overview" ? "active" : "")" @onclick="SetTabOverview">
+                <i class="fa-solid fa-circle-info me-1"></i>Overview
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == "parameters" ? "active" : "")" @onclick="SetTabParameters">
+                <i class="fa-solid fa-sliders me-1"></i>Parameters
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == "tags" ? "active" : "")" @onclick="SetTabTags">
+                <i class="fa-solid fa-tags me-1"></i>Tags
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == "resources" ? "active" : "")" @onclick="SetTabResources">
+                <i class="fa-solid fa-cubes me-1"></i>Resources
+                @if (_resources is not null)
+                {
+                    <span class="badge bg-secondary ms-1">@_resources.Count</span>
+                }
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == "logs" ? "active" : "")" @onclick="SetTabLogs">
+                <i class="fa-solid fa-file-lines me-1"></i>Logs
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == "activity" ? "active" : "")" @onclick="SetTabActivity">
+                <i class="fa-solid fa-clock-rotate-left me-1"></i>Activity
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == "drift" ? "active" : "")" @onclick="SetTabDrift">
+                <i class="fa-solid fa-code-compare me-1"></i>Drift
+                @if (_env.HasDrift)
+                {
+                    <span class="badge bg-warning text-dark ms-1">@_env.DriftCount</span>
+                }
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab Content -->
+    @if (_activeTab == "overview")
+    {
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header"><i class="fa-solid fa-circle-info me-1"></i>Environment Info</div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5">Status</dt>
+                            <dd class="col-sm-7"><StatusBadge Status="@_env.Status" /></dd>
+                            <dt class="col-sm-5">Template</dt>
+                            <dd class="col-sm-7">
+                                <a href="/templates/@_env.TemplateId">@(_env.TemplateName ?? "Unknown")</a>
+                            </dd>
+                            <dt class="col-sm-5">Subscription</dt>
+                            <dd class="col-sm-7"><code>@_env.SubscriptionId</code></dd>
+                            <dt class="col-sm-5">Resource Group</dt>
+                            <dd class="col-sm-7"><code>@_env.ResourceGroup</code></dd>
+                            <dt class="col-sm-5">Location</dt>
+                            <dd class="col-sm-7">@_env.Location</dd>
+                            <dt class="col-sm-5">Deployment Scope</dt>
+                            <dd class="col-sm-7">@(_env.DeploymentScope ?? "N/A")</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header"><i class="fa-solid fa-chart-line me-1"></i>Metrics</div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5">Estimated Cost</dt>
+                            <dd class="col-sm-7">
+                                @if (_env.EstimatedMonthlyCost.HasValue)
+                                {
+                                    <span>$@_env.EstimatedMonthlyCost.Value.ToString("N2")/mo</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">N/A</span>
+                                }
+                            </dd>
+                            <dt class="col-sm-5">Drift Status</dt>
+                            <dd class="col-sm-7">
+                                @if (_env.HasDrift)
+                                {
+                                    <span class="badge bg-warning text-dark">@_env.DriftCount items drifted</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-success">In Sync</span>
+                                }
+                            </dd>
+                            <dt class="col-sm-5">Deployment ID</dt>
+                            <dd class="col-sm-7"><code>@(_env.DeploymentId ?? "N/A")</code></dd>
+                            <dt class="col-sm-5">Owner</dt>
+                            <dd class="col-sm-7">@(_env.OwnerEmail ?? "N/A")</dd>
+                            <dt class="col-sm-5">Auto-Delete</dt>
+                            <dd class="col-sm-7">@(_env.AutoDelete ? "Yes" : "No")</dd>
+                            <dt class="col-sm-5">Expires</dt>
+                            <dd class="col-sm-7">
+                                @if (_env.ExpiresAt.HasValue)
+                                {
+                                    <span class="@(_env.ExpiresAt.Value < DateTimeOffset.UtcNow.AddDays(7) ? "text-danger fw-bold" : "")">
+                                        @_env.ExpiresAt.Value.ToString("g")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">No expiration</span>
+                                }
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <div class="card mb-3">
+                    <div class="card-header"><i class="fa-solid fa-circle-info me-1"></i>Metadata</div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            <dt class="col-sm-3">Created</dt>
+                            <dd class="col-sm-3">@_env.CreatedAt.ToString("g")</dd>
+                            <dt class="col-sm-3">Updated</dt>
+                            <dd class="col-sm-3">@_env.UpdatedAt.ToString("g")</dd>
+                            <dt class="col-sm-3">Requested By</dt>
+                            <dd class="col-sm-3">@(_env.RequestedBy ?? "N/A")</dd>
+                            @if (!string.IsNullOrEmpty(_env.StatusMessage))
+                            {
+                                <dt class="col-sm-3">Status Message</dt>
+                                <dd class="col-sm-9">@_env.StatusMessage</dd>
+                            }
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else if (_activeTab == "parameters")
+    {
+        <div class="card">
+            <div class="card-header"><i class="fa-solid fa-sliders me-1"></i>Deployment Parameters</div>
+            <div class="card-body">
+                @if (_parameters.Any())
+                {
+                    <table class="table table-sm table-striped mb-0">
+                        <thead>
+                            <tr><th>Parameter</th><th>Value</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var kvp in _parameters)
+                            {
+                                <tr>
+                                    <td><code>@kvp.Key</code></td>
+                                    <td>@kvp.Value</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <p class="text-muted mb-0">No parameters configured.</p>
+                }
+            </div>
+        </div>
+    }
+    else if (_activeTab == "tags")
+    {
+        <div class="card">
+            <div class="card-header"><i class="fa-solid fa-tags me-1"></i>Tags</div>
+            <div class="card-body">
+                @if (_tags.Any())
+                {
+                    <table class="table table-sm table-striped mb-0">
+                        <thead>
+                            <tr><th>Key</th><th>Value</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var kvp in _tags)
+                            {
+                                <tr>
+                                    <td><code>@kvp.Key</code></td>
+                                    <td>@kvp.Value</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <p class="text-muted mb-0">No tags configured.</p>
+                }
+            </div>
+        </div>
+    }
+    else if (_activeTab == "resources")
+    {
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fa-solid fa-cubes me-1"></i>Resources</span>
+                <button class="btn btn-outline-primary btn-sm" @onclick="SyncResources" disabled="@_syncingResources">
+                    @if (_syncingResources)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    <i class="fa-solid fa-rotate me-1"></i>Sync from Azure
+                </button>
+            </div>
+            <div class="card-body">
+                @if (_resourcesLoading)
+                {
+                    <LoadingSpinner Message="Loading resources..." />
+                }
+                else if (_resources is null || !_resources.Any())
+                {
+                    <p class="text-muted mb-0">No resources deployed yet.</p>
+                }
+                else
+                {
+                    <table class="table table-sm table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Location</th>
+                                <th>SKU</th>
+                                <th>State</th>
+                                <th>Deployed</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in _resources)
+                            {
+                                <tr>
+                                    <td>
+                                        <i class="fa-solid @GetResourceIcon(r.Type) me-1 text-muted"></i>
+                                        @r.Name
+                                    </td>
+                                    <td><code>@r.Type</code></td>
+                                    <td>@(r.Location ?? "N/A")</td>
+                                    <td>@(r.Sku ?? "N/A")</td>
+                                    <td><StatusBadge Status="@(r.ProvisioningState ?? "Unknown")" /></td>
+                                    <td>@(r.DeployedAt?.ToString("g") ?? "N/A")</td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(r.PortalUrl))
+                                        {
+                                            <a href="@r.PortalUrl" target="_blank" class="btn btn-outline-primary btn-sm">
+                                                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                                            </a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    }
+    else if (_activeTab == "logs")
+    {
+        <div class="card">
+            <div class="card-header"><i class="fa-solid fa-file-lines me-1"></i>Deployment Logs</div>
+            <div class="card-body">
+                @if (!string.IsNullOrEmpty(_env.StatusMessage))
+                {
+                    <pre class="bg-dark text-light p-3 rounded" style="max-height: 500px; overflow-y: auto;">@_env.StatusMessage</pre>
+                }
+                else
+                {
+                    <p class="text-muted mb-0">No deployment logs available.</p>
+                }
+            </div>
+        </div>
+    }
+    else if (_activeTab == "activity")
+    {
+        <div class="card">
+            <div class="card-header"><i class="fa-solid fa-clock-rotate-left me-1"></i>Activity Log</div>
+            <div class="card-body">
+                @if (_activitiesLoading)
+                {
+                    <LoadingSpinner Message="Loading activity..." />
+                }
+                else if (_activities is null || !_activities.Any())
+                {
+                    <p class="text-muted mb-0">No activity recorded.</p>
+                }
+                else
+                {
+                    <div class="list-group list-group-flush">
+                        @foreach (var a in _activities)
+                        {
+                            <div class="list-group-item d-flex align-items-start">
+                                <i class="fa-solid @GetActivityIcon(a.ActivityType) me-3 mt-1 text-muted"></i>
+                                <div class="flex-grow-1">
+                                    <div class="d-flex justify-content-between">
+                                        <strong>@a.ActivityType</strong>
+                                        <small class="text-muted">@a.Timestamp.ToString("g")</small>
+                                    </div>
+                                    <p class="mb-1">@a.Description</p>
+                                    @if (!string.IsNullOrEmpty(a.UserName))
+                                    {
+                                        <small class="text-muted">by @a.UserName</small>
+                                    }
+                                    @if (!string.IsNullOrEmpty(a.ErrorMessage))
+                                    {
+                                        <div class="text-danger mt-1"><small>@a.ErrorMessage</small></div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    @if (_hasMoreActivities)
+                    {
+                        <div class="text-center mt-3">
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="LoadMoreActivities" disabled="@_activitiesLoading">
+                                <i class="fa-solid fa-chevron-down me-1"></i>Load More
+                            </button>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+    else if (_activeTab == "drift")
+    {
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fa-solid fa-code-compare me-1"></i>Drift Detection</span>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-primary btn-sm" @onclick="DetectDrift" disabled="@_detectingDrift">
+                        @if (_detectingDrift)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="fa-solid fa-magnifying-glass me-1"></i>Detect Drift
+                    </button>
+                    @if (_driftResult is not null && _driftResult.DriftItems.Any(d => d.CanAutoRemediate))
+                    {
+                        <button class="btn btn-outline-warning btn-sm" @onclick="RemediateAll" disabled="@_remediating">
+                            @if (_remediating)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="fa-solid fa-wrench me-1"></i>Remediate All
+                        </button>
+                    }
+                </div>
+            </div>
+            <div class="card-body">
+                @if (_driftLoading)
+                {
+                    <LoadingSpinner Message="Loading drift data..." />
+                }
+                else if (_driftResult is null || !_driftResult.DriftItems.Any())
+                {
+                    <div class="text-center py-4">
+                        <i class="fa-solid fa-check-circle fa-3x text-success mb-3"></i>
+                        <h5>No Drift Detected</h5>
+                        <p class="text-muted">This environment is in sync with its template.</p>
+                    </div>
+                }
+                else
+                {
+                    <!-- Drift Summary Cards -->
+                    <div class="row mb-3">
+                        @{
+                            var missing = _driftResult.DriftItems.Count(d => d.DriftType == "Missing");
+                            var extra = _driftResult.DriftItems.Count(d => d.DriftType == "Extra");
+                            var configChanges = _driftResult.DriftItems.Count(d => d.DriftType == "ConfigChange" || d.DriftType == "Modified");
+                            var autoRemediable = _driftResult.DriftItems.Count(d => d.CanAutoRemediate);
+                        }
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="fs-4 text-danger">@missing</div>
+                                    <small class="text-muted">Missing</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="fs-4 text-warning">@extra</div>
+                                    <small class="text-muted">Extra</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="fs-4 text-info">@configChanges</div>
+                                    <small class="text-muted">Config Changes</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="fs-4 text-success">@autoRemediable</div>
+                                    <small class="text-muted">Auto-Remediable</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Drift Items Table -->
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>Resource</th>
+                                <th>Property</th>
+                                <th>Type</th>
+                                <th>Expected</th>
+                                <th>Actual</th>
+                                <th>Severity</th>
+                                <th>Auto-Fix</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in _driftResult.DriftItems)
+                            {
+                                <tr>
+                                    <td>
+                                        <div>@(item.ResourceName ?? "Unknown")</div>
+                                        <small class="text-muted">@item.ResourceType</small>
+                                    </td>
+                                    <td><code>@item.PropertyPath</code></td>
+                                    <td><span class="badge bg-secondary">@item.DriftType</span></td>
+                                    <td><code>@(item.ExpectedValue ?? "N/A")</code></td>
+                                    <td><code>@(item.ActualValue ?? "N/A")</code></td>
+                                    <td>
+                                        <span class="badge @(item.Severity == "High" ? "bg-danger" : item.Severity == "Medium" ? "bg-warning text-dark" : "bg-info")">
+                                            @item.Severity
+                                        </span>
+                                    </td>
+                                    <td>
+                                        @if (item.CanAutoRemediate)
+                                        {
+                                            <i class="fa-solid fa-check text-success"></i>
+                                        }
+                                        else
+                                        {
+                                            <i class="fa-solid fa-xmark text-muted"></i>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    }
+}
+
+<!-- Extend Expiration Modal -->
+@if (_showExtendModal)
+{
+    <ConfirmModal Title="Extend Expiration"
+                  ConfirmText="Extend"
+                  ConfirmClass="btn-primary"
+                  OnConfirm="ExtendExpiration"
+                  OnCancel="() => _showExtendModal = false">
+        <p>Set new expiration date for <strong>@_env?.Name</strong>:</p>
+        <input type="date" class="form-control" @bind="_extendDate" />
+    </ConfirmModal>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private EnvironmentDetailDto? _env;
+    private bool _loading = true;
+    private string _activeTab = "overview";
+    private List<Breadcrumb.BreadcrumbItem> _breadcrumbs = new();
+
+    // Parsed JSON fields
+    private Dictionary<string, string> _parameters = new();
+    private Dictionary<string, string> _tags = new();
+
+    // Resources (lazy)
+    private List<ResourceDto>? _resources;
+    private bool _resourcesLoading;
+    private bool _syncingResources;
+
+    // Activities (lazy)
+    private List<ActivityDto>? _activities;
+    private bool _activitiesLoading;
+    private bool _hasMoreActivities;
+    private int _activitySkip;
+
+    // Drift (lazy)
+    private DriftDetectionResultDto? _driftResult;
+    private bool _driftLoading;
+    private bool _detectingDrift;
+    private bool _remediating;
+
+    // Refresh status
+    private bool _refreshing;
+
+    // Extend expiration
+    private bool _showExtendModal;
+    private DateTime? _extendDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _breadcrumbs = new()
+        {
+            new("Dashboard", "/"),
+            new("Environments", "/environments"),
+            new("Detail")
+        };
+
+        _env = await EnvironmentApi.GetEnvironmentAsync(Id);
+        if (_env is not null)
+        {
+            _breadcrumbs[2] = new Breadcrumb.BreadcrumbItem(_env.DisplayName ?? _env.Name);
+            ParseJsonFields();
+        }
+        _loading = false;
+    }
+
+    private void ParseJsonFields()
+    {
+        if (!string.IsNullOrEmpty(_env!.ParameterValuesJson))
+        {
+            try
+            {
+                _parameters = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(_env.ParameterValuesJson) ?? new();
+            }
+            catch { _parameters = new(); }
+        }
+
+        if (!string.IsNullOrEmpty(_env.TagsJson))
+        {
+            try
+            {
+                _tags = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(_env.TagsJson) ?? new();
+            }
+            catch { _tags = new(); }
+        }
+    }
+
+    // Tab wrapper methods (avoids escaped quotes in Razor attributes)
+    private void SetTabOverview() => SetTab("overview");
+    private void SetTabParameters() => SetTab("parameters");
+    private void SetTabTags() => SetTab("tags");
+    private void SetTabResources() => SetTab("resources");
+    private void SetTabLogs() => SetTab("logs");
+    private void SetTabActivity() => SetTab("activity");
+    private void SetTabDrift() => SetTab("drift");
+
+    private void SetTab(string tab)
+    {
+        if (_activeTab == tab) return;
+        _activeTab = tab;
+
+        // Lazy load tab data
+        if (tab == "resources" && _resources is null)
+            _ = LoadResources();
+        else if (tab == "activity" && _activities is null)
+            _ = LoadActivities();
+        else if (tab == "drift" && _driftResult is null)
+            _ = LoadDrift();
+    }
+
+    // Resources
+    private async Task LoadResources()
+    {
+        _resourcesLoading = true;
+        StateHasChanged();
+
+        var result = await EnvironmentApi.GetResourcesAsync(Id);
+        _resources = result.Resources ?? new();
+
+        _resourcesLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task SyncResources()
+    {
+        _syncingResources = true;
+        StateHasChanged();
+
+        var result = await EnvironmentApi.SyncResourcesAsync(Id);
+        if (result is not null)
+        {
+            ToastService.ShowSuccess("Resources synced from Azure.");
+            await LoadResources();
+        }
+        else
+        {
+            ToastService.ShowError("Failed to sync resources.");
+        }
+
+        _syncingResources = false;
+        StateHasChanged();
+    }
+
+    // Activities
+    private async Task LoadActivities()
+    {
+        _activitiesLoading = true;
+        StateHasChanged();
+
+        var result = await EnvironmentApi.GetActivitiesAsync(Id, _activitySkip);
+        if (result is not null)
+        {
+            _activities ??= new();
+            _activities.AddRange(result.Activities);
+            _hasMoreActivities = result.HasMore;
+            _activitySkip += result.Activities.Count;
+        }
+
+        _activitiesLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadMoreActivities()
+    {
+        _activitiesLoading = true;
+        StateHasChanged();
+
+        var result = await EnvironmentApi.GetActivitiesAsync(Id, _activitySkip);
+        if (result is not null)
+        {
+            _activities!.AddRange(result.Activities);
+            _hasMoreActivities = result.HasMore;
+            _activitySkip += result.Activities.Count;
+        }
+
+        _activitiesLoading = false;
+        StateHasChanged();
+    }
+
+    // Drift
+    private async Task LoadDrift()
+    {
+        _driftLoading = true;
+        StateHasChanged();
+
+        _driftResult = await EnvironmentApi.DetectDriftAsync(Id);
+
+        _driftLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task DetectDrift()
+    {
+        _detectingDrift = true;
+        StateHasChanged();
+
+        _driftResult = await EnvironmentApi.DetectDriftAsync(Id);
+        if (_driftResult is not null)
+        {
+            // Update env drift count
+            _env!.HasDrift = _driftResult.DriftItems.Any();
+            _env.DriftCount = _driftResult.TotalDriftCount;
+            ToastService.ShowSuccess($"Drift scan complete: {_driftResult.TotalDriftCount} item(s) found.");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to detect drift.");
+        }
+
+        _detectingDrift = false;
+        StateHasChanged();
+    }
+
+    private async Task RemediateAll()
+    {
+        _remediating = true;
+        StateHasChanged();
+
+        var result = await EnvironmentApi.RemediateDriftAsync(Id);
+        if (result is not null)
+        {
+            ToastService.ShowSuccess($"Remediated {result.RemediatedCount} item(s). {result.RemainingCount} remaining.");
+            // Refresh drift
+            _driftResult = await EnvironmentApi.DetectDriftAsync(Id);
+            if (_driftResult is not null)
+            {
+                _env!.HasDrift = _driftResult.DriftItems.Any();
+                _env.DriftCount = _driftResult.TotalDriftCount;
+            }
+        }
+        else
+        {
+            ToastService.ShowError("Failed to remediate drift.");
+        }
+
+        _remediating = false;
+        StateHasChanged();
+    }
+
+    // Refresh Status
+    private async Task RefreshStatus()
+    {
+        _refreshing = true;
+        StateHasChanged();
+
+        _env = await EnvironmentApi.GetEnvironmentAsync(Id);
+        if (_env is not null)
+        {
+            ParseJsonFields();
+            ToastService.ShowSuccess("Environment status refreshed.");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to refresh status.");
+        }
+
+        _refreshing = false;
+        StateHasChanged();
+    }
+
+    // Extend Expiration
+    private void ShowExtendModal()
+    {
+        _extendDate = _env?.ExpiresAt?.AddDays(30).DateTime ?? DateTime.UtcNow.AddDays(30);
+        _showExtendModal = true;
+    }
+
+    private async Task ExtendExpiration()
+    {
+        if (_extendDate is null) return;
+
+        var request = new ExtendExpirationRequest
+        {
+            NewExpiresAt = new DateTimeOffset(_extendDate.Value, TimeSpan.Zero)
+        };
+
+        var result = await EnvironmentApi.ExtendExpirationAsync(Id, request);
+        if (result is not null)
+        {
+            _env = result;
+            ParseJsonFields();
+            ToastService.ShowSuccess("Expiration extended successfully.");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to extend expiration.");
+        }
+
+        _showExtendModal = false;
+        StateHasChanged();
+    }
+
+    // Helper methods
+    private static string GetResourceIcon(string resourceType) => resourceType.ToLower() switch
+    {
+        var t when t.Contains("virtualmachine") => "fa-server",
+        var t when t.Contains("storage") => "fa-database",
+        var t when t.Contains("network") || t.Contains("vnet") => "fa-network-wired",
+        var t when t.Contains("keyvault") => "fa-key",
+        var t when t.Contains("webapp") || t.Contains("appservice") => "fa-globe",
+        var t when t.Contains("sql") || t.Contains("database") => "fa-database",
+        var t when t.Contains("container") || t.Contains("aks") || t.Contains("kubernetes") => "fa-cubes",
+        var t when t.Contains("function") => "fa-bolt",
+        var t when t.Contains("identity") => "fa-id-card",
+        _ => "fa-cube"
+    };
+
+    private static string GetActivityIcon(string activityType) => activityType.ToLower() switch
+    {
+        "created" or "provisioned" => "fa-plus-circle",
+        "updated" or "modified" => "fa-pen",
+        "deleted" or "removed" => "fa-trash",
+        "scaled" => "fa-arrows-up-down",
+        "cloned" => "fa-clone",
+        "driftscan" or "drift" => "fa-code-compare",
+        "remediated" => "fa-wrench",
+        "healthcheck" or "health" => "fa-heart-pulse",
+        "compliance" => "fa-shield-halved",
+        "extended" => "fa-clock-rotate-left",
+        _ => "fa-circle-dot"
+    };
+}

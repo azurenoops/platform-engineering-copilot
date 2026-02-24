@@ -1,0 +1,392 @@
+@page "/environments"
+@inject EnvironmentApiService EnvironmentApi
+@inject NavigationManager NavigationManager
+@inject IToastService ToastService
+
+<PageTitle>Environments — Platform Engineering Admin</PageTitle>
+
+@if (_loading)
+{
+    <LoadingSpinner Text="Loading environments..." />
+}
+else if (_loadError)
+{
+    <EmptyState Icon="fas fa-exclamation-triangle fa-3x text-danger"
+                Title="Failed to Load Environments"
+                Message="Unable to retrieve environments from the Admin API."
+                OnRetry="LoadDataAsync" />
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex gap-2 align-items-center">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="showDeleted" @bind="_showDeleted" @bind:after="LoadDataAsync" />
+                <label class="form-check-label" for="showDeleted">View Deleted</label>
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            @if (_showDeleted && _environments.Any())
+            {
+                <button class="btn btn-outline-danger btn-sm" @onclick="() => _showPurgeAllModal = true">
+                    <i class="fas fa-skull-crossbones me-1"></i> Purge All
+                </button>
+            }
+            <button class="btn btn-success" @onclick='() => NavigationManager.NavigateTo("/environments/create")'>
+                <i class="fas fa-plus me-1"></i> Provision Environment
+            </button>
+        </div>
+    </div>
+
+    @if (_environments.Any())
+    {
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Template</th>
+                        <th>Status</th>
+                        <th>Drift</th>
+                        <th>Cost</th>
+                        <th>Expires</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var env in _pagedEnvironments)
+                    {
+                        <tr>
+                            <td><a href="/environments/@env.Id">@env.Name</a></td>
+                            <td>@(env.TemplateName ?? "—")</td>
+                            <td><StatusBadge Status="@env.Status" /></td>
+                            <td>
+                                @if (env.HasDrift)
+                                {
+                                    <span class="text-warning" title="@env.DriftCount drift items">
+                                        <i class="fas fa-exclamation-triangle"></i> @env.DriftCount
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-success"><i class="fas fa-check-circle"></i></span>
+                                }
+                            </td>
+                            <td>@(env.EstimatedMonthlyCost?.ToString("C0") ?? "—")</td>
+                            <td>
+                                @if (env.ExpiresAt.HasValue)
+                                {
+                                    var daysLeft = (env.ExpiresAt.Value - DateTimeOffset.UtcNow).Days;
+                                    <span class="@(daysLeft < 7 ? "text-danger fw-bold" : "")">
+                                        @env.ExpiresAt.Value.ToString("MMM dd, yyyy")
+                                        @if (daysLeft < 7) { <text> (@daysLeft days)</text> }
+                                    </span>
+                                }
+                                else
+                                {
+                                    <text>—</text>
+                                }
+                            </td>
+                            <td>
+                                @if (_showDeleted)
+                                {
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => ShowPurgeModal(env)"
+                                            disabled="@_processing">
+                                        <i class="fas fa-trash me-1"></i> Purge
+                                    </button>
+                                }
+                                else
+                                {
+                                    <div class="dropdown">
+                                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle"
+                                                type="button" data-bs-toggle="dropdown">
+                                            Actions
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            <li>
+                                                <a class="dropdown-item" href="/environments/@env.Id">
+                                                    <i class="fas fa-eye me-2"></i> View
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <button class="dropdown-item" @onclick="() => ScaleEnvironment(env.Id)">
+                                                    <i class="fas fa-expand-arrows-alt me-2"></i> Scale
+                                                </button>
+                                            </li>
+                                            <li>
+                                                <button class="dropdown-item" @onclick="() => CloneEnvironment(env.Id)">
+                                                    <i class="fas fa-clone me-2"></i> Clone
+                                                </button>
+                                            </li>
+                                            <li>
+                                                <button class="dropdown-item" @onclick="() => DetectDrift(env.Id)">
+                                                    <i class="fas fa-exchange-alt me-2"></i> Detect Drift
+                                                </button>
+                                            </li>
+                                            <li>
+                                                <button class="dropdown-item" @onclick="() => ReprovisionEnvironment(env.Id)">
+                                                    <i class="fas fa-redo me-2"></i> Reprovision
+                                                </button>
+                                            </li>
+                                            <li><hr class="dropdown-divider" /></li>
+                                            <li>
+                                                <button class="dropdown-item text-danger" @onclick="() => ShowDeleteModal(env)">
+                                                    <i class="fas fa-trash me-2"></i> Delete
+                                                </button>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <Pagination CurrentPage="_currentPage" PageSize="_pageSize"
+                    TotalItems="_environments.Count" PageChanged="OnPageChanged" />
+    }
+    else
+    {
+        <EmptyState Icon="fas fa-cloud fa-3x text-muted"
+                    Title="@(_showDeleted ? "No Deleted Environments" : "No Environments Found")"
+                    Message="@(_showDeleted ? "No environments are in deleted state." : "Provision your first environment to get started.")"
+                    ActionText="Provision Environment"
+                    OnAction='() => NavigationManager.NavigateTo("/environments/create")' />
+    }
+}
+
+@* Delete Modal *@
+<ConfirmModal IsVisible="_showDeleteModal"
+              Title="Delete Environment"
+              Message="@($"Are you sure you want to delete '{_selectedEnv?.Name}'?")"
+              ConfirmText="Delete"
+              IsProcessing="_processing"
+              OnConfirm="DeleteEnvironment"
+              OnCancel="() => { _showDeleteModal = false; _selectedEnv = null; }">
+    <div class="form-check mt-2">
+        <input type="checkbox" class="form-check-input" id="deleteAzure" @bind="_deleteAzureResources" />
+        <label class="form-check-label" for="deleteAzure">Also delete Azure resources</label>
+    </div>
+</ConfirmModal>
+
+@* Purge Modal *@
+<ConfirmModal IsVisible="_showPurgeModal"
+              Title="Purge Environment"
+              Message="@($"Permanently remove '{_selectedEnv?.Name}'? This cannot be undone.")"
+              ConfirmText="Purge"
+              IsProcessing="_processing"
+              OnConfirm="PurgeEnvironment"
+              OnCancel="() => { _showPurgeModal = false; _selectedEnv = null; }" />
+
+@* Purge All Modal *@
+<TypeToConfirmModal IsVisible="_showPurgeAllModal"
+                    Title="Purge All Deleted Environments"
+                    Message="This will permanently remove ALL deleted environments."
+                    ConfirmPhrase="PURGE ALL"
+                    ConfirmText="Purge All"
+                    IsProcessing="_processing"
+                    OnConfirm="PurgeAllDeleted"
+                    OnCancel="() => _showPurgeAllModal = false" />
+
+@code {
+    private bool _loading = true;
+    private bool _loadError;
+    private bool _processing;
+    private bool _showDeleted;
+    private bool _showDeleteModal;
+    private bool _showPurgeModal;
+    private bool _showPurgeAllModal;
+    private bool _deleteAzureResources;
+    private List<EnvironmentDetailDto> _environments = new();
+    private EnvironmentDetailDto? _selectedEnv;
+    private int _currentPage = 1;
+    private int _pageSize = 10;
+
+    private IEnumerable<EnvironmentDetailDto> _pagedEnvironments =>
+        _environments.Skip((_currentPage - 1) * _pageSize).Take(_pageSize);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        _loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            if (_showDeleted)
+            {
+                var deleted = await EnvironmentApi.GetDeletedEnvironmentsAsync();
+                _environments = deleted.Items ?? new();
+            }
+            else
+            {
+                var result = await EnvironmentApi.GetEnvironmentsAsync();
+                _environments = result.Items ?? new();
+            }
+            _currentPage = 1;
+        }
+        catch
+        {
+            _loadError = true;
+            ToastService.ShowError("Failed to load environments.");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnPageChanged(int page)
+    {
+        _currentPage = page;
+        StateHasChanged();
+    }
+
+    private void ShowDeleteModal(EnvironmentDetailDto env)
+    {
+        _selectedEnv = env;
+        _deleteAzureResources = false;
+        _showDeleteModal = true;
+    }
+
+    private void ShowPurgeModal(EnvironmentDetailDto env)
+    {
+        _selectedEnv = env;
+        _showPurgeModal = true;
+    }
+
+    private async Task DeleteEnvironment()
+    {
+        if (_selectedEnv is null) return;
+        _processing = true;
+        StateHasChanged();
+
+        if (_deleteAzureResources)
+        {
+            await EnvironmentApi.DeleteAzureResourcesAsync(_selectedEnv.Id);
+        }
+
+        var success = await EnvironmentApi.DeleteEnvironmentAsync(_selectedEnv.Id, "Admin");
+        _showDeleteModal = false;
+
+        if (success)
+        {
+            ToastService.ShowSuccess($"Environment '{_selectedEnv.Name}' deleted.");
+            _environments.Remove(_selectedEnv);
+        }
+        else
+        {
+            ToastService.ShowError("Failed to delete environment.");
+        }
+
+        _selectedEnv = null;
+        _processing = false;
+        StateHasChanged();
+    }
+
+    private async Task PurgeEnvironment()
+    {
+        if (_selectedEnv is null) return;
+        _processing = true;
+        StateHasChanged();
+
+        var success = await EnvironmentApi.PurgeEnvironmentAsync(_selectedEnv.Id);
+        _showPurgeModal = false;
+
+        if (success)
+        {
+            ToastService.ShowSuccess($"Environment '{_selectedEnv.Name}' purged.");
+            _environments.Remove(_selectedEnv);
+        }
+        else
+        {
+            ToastService.ShowError("Failed to purge environment.");
+        }
+
+        _selectedEnv = null;
+        _processing = false;
+        StateHasChanged();
+    }
+
+    private async Task PurgeAllDeleted()
+    {
+        _processing = true;
+        StateHasChanged();
+
+        var purgedCount = await EnvironmentApi.PurgeAllDeletedAsync();
+        _showPurgeAllModal = false;
+
+        if (purgedCount >= 0)
+        {
+            ToastService.ShowSuccess($"Purged {purgedCount} deleted environments.");
+            _environments.Clear();
+        }
+        else
+        {
+            ToastService.ShowError("Failed to purge all deleted environments.");
+        }
+
+        _processing = false;
+        StateHasChanged();
+    }
+
+    private async Task ScaleEnvironment(Guid id)
+    {
+        ToastService.ShowInfo("Scaling environment...");
+        var result = await EnvironmentApi.ScaleEnvironmentAsync(id, new ScaleEnvironmentRequest());
+        if (result is not null)
+            ToastService.ShowSuccess("Scale operation initiated.");
+        else
+            ToastService.ShowError("Failed to scale environment.");
+    }
+
+    private async Task CloneEnvironment(Guid id)
+    {
+        var result = await EnvironmentApi.CloneEnvironmentAsync(id,
+            new CloneEnvironmentRequest { NewName = $"clone-{DateTime.UtcNow:yyyyMMddHHmmss}" });
+        if (result is not null)
+        {
+            ToastService.ShowSuccess("Environment cloned.");
+            NavigationManager.NavigateTo($"/environments/{result.Id}");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to clone environment.");
+        }
+    }
+
+    private async Task DetectDrift(Guid id)
+    {
+        ToastService.ShowInfo("Detecting drift...");
+        var result = await EnvironmentApi.DetectDriftAsync(id);
+        if (result is not null)
+        {
+            if (result.DriftItems.Any())
+                ToastService.ShowWarning($"Found {result.DriftItems.Count} drift items.");
+            else
+                ToastService.ShowSuccess("No drift detected.");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to detect drift.");
+        }
+    }
+
+    private async Task ReprovisionEnvironment(Guid id)
+    {
+        ToastService.ShowInfo("Reprovisioning environment...");
+        var result = await EnvironmentApi.ReprovisionEnvironmentAsync(id);
+        if (result is not null)
+            ToastService.ShowSuccess("Reprovision initiated.");
+        else
+            ToastService.ShowError("Failed to reprovision.");
+    }
+}

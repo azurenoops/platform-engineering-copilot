@@ -1,0 +1,285 @@
+@page "/environments/create"
+@inject EnvironmentApiService EnvironmentApi
+@inject TemplateApiService TemplateApi
+@inject AppSettingsService SettingsService
+@inject NavigationManager NavigationManager
+@inject IToastService ToastService
+
+<PageTitle>Provision Environment — Platform Engineering Admin</PageTitle>
+
+<Breadcrumb Crumbs="@(new List<Breadcrumb.BreadcrumbItem>
+{
+    new("Environments", "/environments"),
+    new("Provision Environment")
+})" />
+
+@if (_loadingTemplates)
+{
+    <LoadingSpinner Text="Loading templates..." />
+}
+else
+{
+    <div class="card">
+        <div class="card-body">
+            @* Template Selection *@
+            <div class="mb-3">
+                <label class="form-label fw-bold">Template <span class="text-danger">*</span></label>
+                <select class="form-select @(_errors.ContainsKey("TemplateId") ? "is-invalid" : "")"
+                        @bind="_selectedTemplateId" @bind:after="OnTemplateSelected">
+                    <option value="">Select a template...</option>
+                    @foreach (var t in _publishedTemplates)
+                    {
+                        <option value="@t.TemplateId">@(t.DisplayName ?? t.Name) (v@(t.Version))</option>
+                    }
+                </select>
+                @if (_errors.ContainsKey("TemplateId"))
+                {
+                    <div class="invalid-feedback d-block">@_errors["TemplateId"]</div>
+                }
+            </div>
+
+            @* Basic Info *@
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label">Environment Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control @(_errors.ContainsKey("EnvironmentName") ? "is-invalid" : "")"
+                           @bind="_request.EnvironmentName"
+                           @onfocusout="() => ValidateRequired(nameof(_request.EnvironmentName), _request.EnvironmentName)" />
+                    @if (_errors.ContainsKey("EnvironmentName"))
+                    {
+                        <div class="invalid-feedback d-block">@_errors["EnvironmentName"]</div>
+                    }
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Owner Email</label>
+                    <input type="email" class="form-control" @bind="_request.OwnerEmail" />
+                </div>
+            </div>
+
+            @* Azure Resources *@
+            <h6 class="mt-4 mb-3">Azure Resources</h6>
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Subscription ID <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control @(_errors.ContainsKey("SubscriptionId") ? "is-invalid" : "")"
+                           @bind="_request.SubscriptionId"
+                           @onfocusout="() => ValidateRequired(nameof(_request.SubscriptionId), _request.SubscriptionId)" />
+                    @if (_errors.ContainsKey("SubscriptionId"))
+                    {
+                        <div class="invalid-feedback d-block">@_errors["SubscriptionId"]</div>
+                    }
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Resource Group <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control @(_errors.ContainsKey("ResourceGroup") ? "is-invalid" : "")"
+                           @bind="_request.ResourceGroup"
+                           @onfocusout="() => ValidateRequired(nameof(_request.ResourceGroup), _request.ResourceGroup)" />
+                    @if (_errors.ContainsKey("ResourceGroup"))
+                    {
+                        <div class="invalid-feedback d-block">@_errors["ResourceGroup"]</div>
+                    }
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Location</label>
+                    <input type="text" class="form-control" @bind="_request.Location" />
+                </div>
+            </div>
+
+            @* Lifecycle *@
+            <h6 class="mt-4 mb-3">Lifecycle</h6>
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Expires At</label>
+                    <input type="date" class="form-control" @bind="_expiresDate" />
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="autoDelete" @bind="_request.AutoDelete" />
+                        <label class="form-check-label" for="autoDelete">Auto-delete on expiration</label>
+                    </div>
+                </div>
+            </div>
+
+            @* Dynamic Parameters *@
+            @if (_templateParameters.Any())
+            {
+                <h6 class="mt-4 mb-3">Template Parameters</h6>
+                @foreach (var param in _templateParameters)
+                {
+                    <div class="mb-3">
+                        <label class="form-label">
+                            @(param.DisplayName ?? param.Name)
+                            @if (param.Required) { <span class="text-danger">*</span> }
+                        </label>
+                        @if (!string.IsNullOrEmpty(param.Description))
+                        {
+                            <div class="form-text">@param.Description</div>
+                        }
+
+                        @if (param.Type.Equals("bool", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input"
+                                       checked="@GetParamBool(param.Name)"
+                                       @onchange="e => SetParamBoolValue(param.Name, e.Value)" />
+                            </div>
+                        }
+                        else if (param.AllowedValues.Any())
+                        {
+                            <select class="form-select"
+                                    value="@GetParamValue(param.Name)"
+                                    @onchange="e => SetParamValue(param.Name, e.Value?.ToString() ?? string.Empty)">
+                                <option value="">Select...</option>
+                                @foreach (var val in param.AllowedValues)
+                                {
+                                    <option value="@val">@val</option>
+                                }
+                            </select>
+                        }
+                        else if (param.Type.Equals("int", StringComparison.OrdinalIgnoreCase) ||
+                                 param.Type.Equals("number", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <input type="number" class="form-control"
+                                   value="@GetParamValue(param.Name)"
+                                   @onchange="e => SetParamValue(param.Name, e.Value?.ToString() ?? string.Empty)" />
+                        }
+                        else
+                        {
+                            <input type="text" class="form-control"
+                                   value="@GetParamValue(param.Name)"
+                                   @onchange="e => SetParamValue(param.Name, e.Value?.ToString() ?? string.Empty)" />
+                        }
+                    </div>
+                }
+            }
+
+            <div class="d-flex gap-2 mt-4">
+                <button class="btn btn-success" @onclick="SubmitEnvironment" disabled="@_submitting">
+                    @if (_submitting) { <LoadingSpinner Inline="true" /> }
+                    <i class="fas fa-cloud me-1"></i> Provision Environment
+                </button>
+                <button class="btn btn-secondary" @onclick='() => NavigationManager.NavigateTo("/environments")'>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loadingTemplates = true;
+    private bool _submitting;
+    private string _selectedTemplateId = string.Empty;
+    private DateTime? _expiresDate;
+    private CreateEnvironmentRequest _request = new();
+    private List<TemplateSummaryDto> _publishedTemplates = new();
+    private List<TemplateParameterDto> _templateParameters = new();
+    private Dictionary<string, string> _parameterValues = new();
+    private Dictionary<string, string> _errors = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = SettingsService.CurrentSettings;
+        _request.SubscriptionId = settings.DefaultSubscriptionId;
+        _request.Location = settings.DefaultLocation;
+        _expiresDate = DateTime.UtcNow.AddDays(settings.DefaultExpirationDays).Date;
+        _request.AutoDelete = settings.DefaultAutoDelete;
+
+        var templates = await TemplateApi.GetTemplatesAsync(status: "Published");
+        _publishedTemplates = templates ?? new();
+        _loadingTemplates = false;
+    }
+
+    private async Task OnTemplateSelected()
+    {
+        _templateParameters.Clear();
+        _parameterValues.Clear();
+
+        if (Guid.TryParse(_selectedTemplateId, out var templateId))
+        {
+            _request.TemplateId = templateId;
+            var detail = await TemplateApi.GetTemplateByIdAsync(templateId);
+            if (detail is not null && !string.IsNullOrEmpty(detail.ParametersJson))
+            {
+                try
+                {
+                    _templateParameters = JsonSerializer.Deserialize<List<TemplateParameterDto>>(
+                        detail.ParametersJson,
+                        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }) ?? new();
+
+                    foreach (var p in _templateParameters.Where(p => p.DefaultValue is not null))
+                    {
+                        _parameterValues[p.Name] = p.DefaultValue!;
+                    }
+                }
+                catch { /* ignore parse errors */ }
+            }
+        }
+        StateHasChanged();
+    }
+
+    private string GetParamValue(string name) =>
+        _parameterValues.TryGetValue(name, out var val) ? val : string.Empty;
+
+    private bool GetParamBool(string name) =>
+        _parameterValues.TryGetValue(name, out var val) && bool.TryParse(val, out var b) && b;
+
+    private void SetParamValue(string name, string value)
+    {
+        _parameterValues[name] = value;
+    }
+
+    private void ValidateRequired(string field, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            _errors[field] = $"{field} is required.";
+        else
+            _errors.Remove(field);
+    }
+
+    private bool Validate()
+    {
+        _errors.Clear();
+        if (_request.TemplateId == Guid.Empty)
+            _errors["TemplateId"] = "Please select a template.";
+        if (string.IsNullOrWhiteSpace(_request.EnvironmentName))
+            _errors["EnvironmentName"] = "Environment name is required.";
+        if (string.IsNullOrWhiteSpace(_request.SubscriptionId))
+            _errors["SubscriptionId"] = "Subscription ID is required.";
+        if (string.IsNullOrWhiteSpace(_request.ResourceGroup))
+            _errors["ResourceGroup"] = "Resource group is required.";
+        return !_errors.Any();
+    }
+
+    private void SetParamBoolValue(string name, object? value) =>
+        SetParamValue(name, value?.ToString() ?? "false");
+
+    private async Task SubmitEnvironment()
+    {
+        if (!Validate()) return;
+
+        _submitting = true;
+        StateHasChanged();
+
+        if (_expiresDate.HasValue)
+            _request.ExpiresAt = new DateTimeOffset(_expiresDate.Value, TimeSpan.Zero);
+
+        if (_parameterValues.Any())
+            _request.ParameterValuesJson = JsonSerializer.Serialize(_parameterValues);
+
+        var result = await EnvironmentApi.CreateEnvironmentAsync(_request);
+
+        if (result is not null)
+        {
+            ToastService.ShowSuccess("Environment provisioning initiated.");
+            NavigationManager.NavigateTo($"/environments/{result.Id}");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to provision environment.");
+        }
+
+        _submitting = false;
+        StateHasChanged();
+    }
+}

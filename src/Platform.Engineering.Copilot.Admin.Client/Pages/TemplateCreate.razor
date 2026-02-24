@@ -1,0 +1,395 @@
+@page "/templates/create"
+@inject TemplateApiService TemplateApi
+@inject NavigationManager NavigationManager
+@inject IToastService ToastService
+
+<PageTitle>Create Template — Platform Engineering Admin</PageTitle>
+
+<Breadcrumb Crumbs="@(new List<Breadcrumb.BreadcrumbItem>
+{
+    new("Templates", "/templates"),
+    new("Create Template")
+})" />
+
+<div class="card">
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label fw-bold">Source</label>
+            <div class="btn-group" role="group">
+                <input type="radio" class="btn-check" id="sourcePaste" autocomplete="off"
+                       checked="@(_sourceMode == "paste")" @onchange='() => _sourceMode = "paste"' />
+                <label class="btn btn-outline-primary" for="sourcePaste">Paste Content</label>
+                <input type="radio" class="btn-check" id="sourceGit" autocomplete="off"
+                       checked="@(_sourceMode == "git")" @onchange='() => _sourceMode = "git"' />
+                <label class="btn btn-outline-primary" for="sourceGit">Import from Git</label>
+            </div>
+        </div>
+
+        @* Basic Info *@
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control @ValidationClass(nameof(_request.Name))" @bind="_request.Name"
+                       @onfocusout="() => ValidateField(nameof(_request.Name))" />
+                @if (_errors.ContainsKey(nameof(_request.Name)))
+                {
+                    <div class="invalid-feedback d-block">@_errors[nameof(_request.Name)]</div>
+                }
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Display Name</label>
+                <input type="text" class="form-control" @bind="_request.DisplayName" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Version</label>
+                <input type="text" class="form-control" @bind="_request.Version" placeholder="1.0.0" />
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-12">
+                <label class="form-label">Description</label>
+                <textarea class="form-control" @bind="_request.Description" rows="2"></textarea>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Category</label>
+                <input type="text" class="form-control" @bind="_request.Category" placeholder="e.g., Compute, Storage" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Format</label>
+                <select class="form-select" @bind="_request.Format">
+                    <option value="Bicep">Bicep</option>
+                    <option value="ARM">ARM</option>
+                    <option value="Terraform">Terraform</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Deployment Scope</label>
+                <select class="form-select" @bind="_request.DeploymentScope">
+                    <option value="ResourceGroup">Resource Group</option>
+                    <option value="Subscription">Subscription</option>
+                    <option value="ManagementGroup">Management Group</option>
+                    <option value="Tenant">Tenant</option>
+                </select>
+            </div>
+        </div>
+
+        @if (_sourceMode == "paste")
+        {
+            <div class="mb-3">
+                <label class="form-label">Content <span class="text-danger">*</span></label>
+                <textarea class="form-control font-monospace" @bind="_request.Content" rows="12"
+                          @onfocusout="() => ValidateField(nameof(_request.Content))"
+                          placeholder="Paste your Bicep/ARM/Terraform template here..."></textarea>
+                @if (_errors.ContainsKey(nameof(_request.Content)))
+                {
+                    <div class="invalid-feedback d-block">@_errors[nameof(_request.Content)]</div>
+                }
+                <button class="btn btn-outline-secondary btn-sm mt-2" @onclick="ParseFromContent" disabled="@_parsing">
+                    @if (_parsing) { <LoadingSpinner Inline="true" /> }
+                    <i class="fas fa-cogs me-1"></i> Parse Parameters from Content
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label">Git Repository URL <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control @ValidationClass("GitRepoUrl")" @bind="_request.GitRepoUrl"
+                           @onfocusout="() => ValidateGitRepoUrl()"
+                           placeholder="https://github.com/org/repo.git" />
+                    @if (_errors.ContainsKey("GitRepoUrl"))
+                    {
+                        <div class="invalid-feedback d-block">@_errors["GitRepoUrl"]</div>
+                    }
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Branch</label>
+                    <input type="text" class="form-control" @bind="_request.GitBranch" placeholder="main" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">File Path</label>
+                    <input type="text" class="form-control" @bind="_request.GitPath" placeholder="main.bicep" />
+                </div>
+            </div>
+            <div class="mb-3">
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="gitAutoSync" @bind="_request.GitAutoSync" />
+                    <label class="form-check-label" for="gitAutoSync">Enable auto-sync from Git</label>
+                </div>
+            </div>
+        }
+
+        @* Parameters *@
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Parameters (@_parameters.Count)</h6>
+                <button class="btn btn-outline-primary btn-sm" @onclick="AddParameter">
+                    <i class="fas fa-plus me-1"></i> Add
+                </button>
+            </div>
+            @if (_parameters.Any())
+            {
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Required</th>
+                                    <th>Default</th>
+                                    <th>Description</th>
+                                    <th style="width:50px"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (var i = 0; i < _parameters.Count; i++)
+                                {
+                                    var idx = i;
+                                    <tr>
+                                        <td><input type="text" class="form-control form-control-sm" @bind="_parameters[idx].Name" /></td>
+                                        <td>
+                                            <select class="form-select form-select-sm" @bind="_parameters[idx].Type">
+                                                <option value="string">string</option>
+                                                <option value="int">int</option>
+                                                <option value="bool">bool</option>
+                                                <option value="object">object</option>
+                                                <option value="array">array</option>
+                                            </select>
+                                        </td>
+                                        <td><input type="checkbox" class="form-check-input" @bind="_parameters[idx].Required" /></td>
+                                        <td><input type="text" class="form-control form-control-sm" @bind="_parameters[idx].DefaultValue" /></td>
+                                        <td><input type="text" class="form-control form-control-sm" @bind="_parameters[idx].Description" /></td>
+                                        <td>
+                                            <button class="btn btn-outline-danger btn-sm" @onclick="() => _parameters.RemoveAt(idx)">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @* Guardrails *@
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Guardrails (@_guardrails.Count)</h6>
+                <button class="btn btn-outline-primary btn-sm" @onclick="AddGuardrail">
+                    <i class="fas fa-plus me-1"></i> Add
+                </button>
+            </div>
+            @if (_guardrails.Any())
+            {
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Property</th>
+                                    <th>Operator</th>
+                                    <th>Value</th>
+                                    <th>Action</th>
+                                    <th style="width:50px"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (var i = 0; i < _guardrails.Count; i++)
+                                {
+                                    var idx = i;
+                                    <tr>
+                                        <td><input type="text" class="form-control form-control-sm" @bind="_guardrails[idx].Type" /></td>
+                                        <td><input type="text" class="form-control form-control-sm" @bind="_guardrails[idx].Property" /></td>
+                                        <td>
+                                            <select class="form-select form-select-sm" @bind="_guardrails[idx].Operator">
+                                                <option value="Equals">Equals</option>
+                                                <option value="NotEquals">NotEquals</option>
+                                                <option value="Contains">Contains</option>
+                                                <option value="GreaterThan">GreaterThan</option>
+                                                <option value="LessThan">LessThan</option>
+                                            </select>
+                                        </td>
+                                        <td><input type="text" class="form-control form-control-sm" @bind="_guardrails[idx].Value" /></td>
+                                        <td>
+                                            <select class="form-select form-select-sm" @bind="_guardrails[idx].Action">
+                                                <option value="Deny">Deny</option>
+                                                <option value="Warn">Warn</option>
+                                                <option value="Audit">Audit</option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-outline-danger btn-sm" @onclick="() => _guardrails.RemoveAt(idx)">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" @onclick="SubmitTemplate" disabled="@_submitting">
+                @if (_submitting) { <LoadingSpinner Inline="true" /> }
+                <i class="fas fa-save me-1"></i> Create Template
+            </button>
+            <button class="btn btn-secondary" @onclick='() => NavigationManager.NavigateTo("/templates")'>
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private CreateTemplateRequest _request = new() { Format = "Bicep", DeploymentScope = "ResourceGroup" };
+    private List<TemplateParameterDto> _parameters = new();
+    private List<TemplateGuardrailDto> _guardrails = new();
+    private Dictionary<string, string> _errors = new();
+    private string _sourceMode = "paste";
+    private bool _submitting;
+    private bool _parsing;
+
+    private string ValidationClass(string field) => _errors.ContainsKey(field) ? "is-invalid" : "";
+
+    private void ValidateGitRepoUrl() => ValidateField("GitRepoUrl");
+
+    private void ValidateField(string field)
+    {
+        _errors.Remove(field);
+        switch (field)
+        {
+            case nameof(_request.Name) when string.IsNullOrWhiteSpace(_request.Name):
+                _errors[field] = "Name is required.";
+                break;
+            case nameof(_request.Content) when _sourceMode == "paste" && string.IsNullOrWhiteSpace(_request.Content):
+                _errors[field] = "Content is required.";
+                break;
+            case "GitRepoUrl" when _sourceMode == "git" && string.IsNullOrWhiteSpace(_request.GitRepoUrl):
+                _errors[field] = "Git repository URL is required.";
+                break;
+        }
+    }
+
+    private bool Validate()
+    {
+        _errors.Clear();
+        if (string.IsNullOrWhiteSpace(_request.Name))
+            _errors[nameof(_request.Name)] = "Name is required.";
+        if (_sourceMode == "paste" && string.IsNullOrWhiteSpace(_request.Content))
+            _errors[nameof(_request.Content)] = "Content is required.";
+        if (_sourceMode == "git" && string.IsNullOrWhiteSpace(_request.GitRepoUrl))
+            _errors["GitRepoUrl"] = "Git repository URL is required.";
+        return !_errors.Any();
+    }
+
+    private async Task ParseFromContent()
+    {
+        if (string.IsNullOrWhiteSpace(_request.Content))
+        {
+            ToastService.ShowWarning("Enter template content first.");
+            return;
+        }
+
+        _parsing = true;
+        StateHasChanged();
+
+        var parsed = await TemplateApi.ParseBicepParametersAsync(
+            new ParseBicepParametersRequest { BicepContent = _request.Content });
+
+        if (parsed.Any())
+        {
+            var existingNames = _parameters.Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var duplicateCount = 0;
+            foreach (var p in parsed)
+            {
+                if (existingNames.Contains(p.Name))
+                {
+                    duplicateCount++;
+                    continue;
+                }
+                _parameters.Add(p);
+                existingNames.Add(p.Name);
+            }
+
+            var msg = $"Parsed {parsed.Count} parameters.";
+            if (duplicateCount > 0) msg += $" Skipped {duplicateCount} duplicates.";
+            ToastService.ShowSuccess(msg);
+        }
+        else
+        {
+            ToastService.ShowInfo("No parameters found in content.");
+        }
+
+        _parsing = false;
+        StateHasChanged();
+    }
+
+    private void AddParameter()
+    {
+        _parameters.Add(new TemplateParameterDto { Type = "string" });
+    }
+
+    private void AddGuardrail()
+    {
+        _guardrails.Add(new TemplateGuardrailDto { Operator = "Equals", Action = "Deny" });
+    }
+
+    private async Task SubmitTemplate()
+    {
+        if (!Validate()) return;
+
+        _submitting = true;
+        StateHasChanged();
+
+        if (_parameters.Any())
+            _request.ParametersJson = JsonSerializer.Serialize(_parameters,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        if (_guardrails.Any())
+            _request.GuardrailsJson = JsonSerializer.Serialize(_guardrails,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+
+        TemplateDetailDto? result;
+
+        if (_sourceMode == "git" && !string.IsNullOrWhiteSpace(_request.GitRepoUrl))
+        {
+            result = await TemplateApi.ImportFromGitAsync(new ImportFromGitRequest
+            {
+                GitRepoUrl = _request.GitRepoUrl!,
+                Branch = _request.GitBranch,
+                FilePath = _request.GitPath,
+                Name = _request.Name,
+                Category = _request.Category,
+                GitAutoSync = _request.GitAutoSync
+            });
+        }
+        else
+        {
+            result = await TemplateApi.CreateTemplateAsync(_request);
+        }
+
+        if (result is not null)
+        {
+            ToastService.ShowSuccess("Template created successfully.");
+            NavigationManager.NavigateTo($"/templates/{result.TemplateId}");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to create template.");
+        }
+
+        _submitting = false;
+        StateHasChanged();
+    }
+}
