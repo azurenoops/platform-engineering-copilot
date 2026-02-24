@@ -235,7 +235,7 @@ public class NaturalLanguageTemplateMatchingService : INaturalLanguageTemplateMa
         if (queryTokens.Count == 0 || targetTokens.Count == 0) return 0;
 
         var matchCount = queryTokens.Count(qt =>
-            targetTokens.Any(tt => tt.Contains(qt) || qt.Contains(tt)));
+            targetTokens.Any(tt => tt.Contains(qt, StringComparison.OrdinalIgnoreCase) || qt.Contains(tt, StringComparison.OrdinalIgnoreCase)));
 
         return (double)matchCount / queryTokens.Count;
     }
