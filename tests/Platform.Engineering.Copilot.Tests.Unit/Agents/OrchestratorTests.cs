@@ -251,11 +251,11 @@ public class OrchestratorTests
     {
         var mockChatClient = new Mock<IChatClient>();
         mockChatClient
-            .Setup(c => c.CompleteAsync(
+            .Setup(c => c.GetResponseAsync(
                 It.IsAny<IList<ChatMessage>>(),
                 It.IsAny<ChatOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChatCompletion(new ChatMessage(ChatRole.Assistant, "compliance")));
+            .ReturnsAsync(new ChatResponse(new ChatMessage(ChatRole.Assistant, "compliance")));
 
         var orchestrator = new PlatformOrchestrator(_loggerMock.Object, mockChatClient.Object);
         orchestrator.RegisterAgent(new TestComplianceAgent());
@@ -275,11 +275,11 @@ public class OrchestratorTests
     {
         var mockChatClient = new Mock<IChatClient>();
         mockChatClient
-            .Setup(c => c.CompleteAsync(
+            .Setup(c => c.GetResponseAsync(
                 It.IsAny<IList<ChatMessage>>(),
                 It.IsAny<ChatOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChatCompletion(new ChatMessage(ChatRole.Assistant, "none")));
+            .ReturnsAsync(new ChatResponse(new ChatMessage(ChatRole.Assistant, "none")));
 
         var orchestrator = new PlatformOrchestrator(_loggerMock.Object, mockChatClient.Object);
         orchestrator.RegisterAgent(new TestComplianceAgent());
@@ -294,7 +294,7 @@ public class OrchestratorTests
     {
         var mockChatClient = new Mock<IChatClient>();
         mockChatClient
-            .Setup(c => c.CompleteAsync(
+            .Setup(c => c.GetResponseAsync(
                 It.IsAny<IList<ChatMessage>>(),
                 It.IsAny<ChatOptions?>(),
                 It.IsAny<CancellationToken>()))
@@ -324,7 +324,7 @@ public class OrchestratorTests
 
         // LLM should not have been called
         mockChatClient.Verify(
-            c => c.CompleteAsync(
+            c => c.GetResponseAsync(
                 It.IsAny<IList<ChatMessage>>(),
                 It.IsAny<ChatOptions?>(),
                 It.IsAny<CancellationToken>()),

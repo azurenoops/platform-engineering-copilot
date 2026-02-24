@@ -15,16 +15,19 @@ public class EnvironmentAgentTests
 {
     private EnvironmentAgent CreateAgent() => new(
         new Mock<ILogger<EnvironmentAgent>>().Object,
-        new CloneEnvironmentTool(new Mock<ILogger<CloneEnvironmentTool>>().Object),
-        new DetectDriftTool(new Mock<ILogger<DetectDriftTool>>().Object),
-        new CompareEnvironmentsTool(new Mock<ILogger<CompareEnvironmentsTool>>().Object),
-        new PromoteEnvironmentTool(new Mock<ILogger<PromoteEnvironmentTool>>().Object),
-        new ListEnvironmentsTool(new Mock<ILogger<ListEnvironmentsTool>>().Object),
-        new GetEnvironmentStatusTool(new Mock<ILogger<GetEnvironmentStatusTool>>().Object),
-        new CreateEnvironmentTool(new Mock<ILogger<CreateEnvironmentTool>>().Object),
-        new DeleteEnvironmentTool(new Mock<ILogger<DeleteEnvironmentTool>>().Object),
-        new GetEnvironmentHistoryTool(new Mock<ILogger<GetEnvironmentHistoryTool>>().Object),
-        new ValidateEnvironmentTool(new Mock<ILogger<ValidateEnvironmentTool>>().Object));
+        new BaseTool[]
+        {
+            new CloneEnvironmentTool(new Mock<ILogger<CloneEnvironmentTool>>().Object),
+            new DetectDriftTool(new Mock<ILogger<DetectDriftTool>>().Object),
+            new CompareEnvironmentsTool(new Mock<ILogger<CompareEnvironmentsTool>>().Object),
+            new PromoteEnvironmentTool(new Mock<ILogger<PromoteEnvironmentTool>>().Object),
+            new ListEnvironmentsTool(new Mock<ILogger<ListEnvironmentsTool>>().Object),
+            new GetEnvironmentStatusTool(new Mock<ILogger<GetEnvironmentStatusTool>>().Object),
+            new CreateEnvironmentTool(new Mock<ILogger<CreateEnvironmentTool>>().Object),
+            new DeleteEnvironmentTool(new Mock<ILogger<DeleteEnvironmentTool>>().Object),
+            new GetEnvironmentHistoryTool(new Mock<ILogger<GetEnvironmentHistoryTool>>().Object),
+            new ValidateEnvironmentTool(new Mock<ILogger<ValidateEnvironmentTool>>().Object)
+        });
 
     [Fact] public void AgentId_Returns_Environment() => CreateAgent().AgentId.Should().Be("environment");
     [Fact] public void AgentName_Returns_EnvironmentAgent() => CreateAgent().AgentName.Should().Be("Environment Agent");

@@ -15,15 +15,18 @@ public class DiscoveryAgentTests
 {
     private DiscoveryAgent CreateAgent() => new(
         new Mock<ILogger<DiscoveryAgent>>().Object,
-        new DiscoverResourcesTool(new Mock<ILogger<DiscoverResourcesTool>>().Object),
-        new GetResourceDependenciesTool(new Mock<ILogger<GetResourceDependenciesTool>>().Object),
-        new CrossSubscriptionQueryTool(new Mock<ILogger<CrossSubscriptionQueryTool>>().Object),
-        new GetResourceHealthTool(new Mock<ILogger<GetResourceHealthTool>>().Object),
-        new GetNetworkTopologyTool(new Mock<ILogger<GetNetworkTopologyTool>>().Object),
-        new AnalyzeTagsTool(new Mock<ILogger<AnalyzeTagsTool>>().Object),
-        new GetResourceChangesTool(new Mock<ILogger<GetResourceChangesTool>>().Object),
-        new GetOrphanedResourcesTool(new Mock<ILogger<GetOrphanedResourcesTool>>().Object),
-        new GetResourceMetricsTool(new Mock<ILogger<GetResourceMetricsTool>>().Object));
+        new BaseTool[]
+        {
+            new DiscoverResourcesTool(new Mock<ILogger<DiscoverResourcesTool>>().Object),
+            new GetResourceDependenciesTool(new Mock<ILogger<GetResourceDependenciesTool>>().Object),
+            new CrossSubscriptionQueryTool(new Mock<ILogger<CrossSubscriptionQueryTool>>().Object),
+            new GetResourceHealthTool(new Mock<ILogger<GetResourceHealthTool>>().Object),
+            new GetNetworkTopologyTool(new Mock<ILogger<GetNetworkTopologyTool>>().Object),
+            new AnalyzeTagsTool(new Mock<ILogger<AnalyzeTagsTool>>().Object),
+            new GetResourceChangesTool(new Mock<ILogger<GetResourceChangesTool>>().Object),
+            new GetOrphanedResourcesTool(new Mock<ILogger<GetOrphanedResourcesTool>>().Object),
+            new GetResourceMetricsTool(new Mock<ILogger<GetResourceMetricsTool>>().Object)
+        });
 
     [Fact] public void AgentId_Returns_Discovery() => CreateAgent().AgentId.Should().Be("discovery");
     [Fact] public void AgentName_Returns_DiscoveryAgent() => CreateAgent().AgentName.Should().Be("Discovery Agent");

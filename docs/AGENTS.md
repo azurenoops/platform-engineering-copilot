@@ -7,7 +7,7 @@
 
 ## Overview
 
-The Platform Engineering Copilot uses **7 specialized AI agents** built on the BaseAgent/BaseTool pattern. Each agent extends `BaseAgent` and registers domain-specific tools that extend `BaseTool`.
+The Platform Engineering Copilot uses **8 specialized AI agents** built on the BaseAgent/BaseTool pattern. Each agent extends `BaseAgent` and registers domain-specific tools that extend `BaseTool`.
 
 ### Agent Summary
 
@@ -20,6 +20,7 @@ The Platform Engineering Copilot uses **7 specialized AI agents** built on the B
 | [Environment](#environment-agent) | `environment` | 10 | Template lifecycle, drift detection |
 | [Knowledge Base](#knowledge-base-agent) | `knowledgebase` | 8 | Compliance education, NIST/STIG |
 | [Configuration](#configuration-agent) | `configuration` | 1 | Subscription settings |
+| [Security](#security-agent) | `security` | 3 | Defender scores, security posture |
 
 ### BaseAgent Pattern
 
@@ -32,18 +33,48 @@ public class MyAgent : BaseAgent
     public override string AgentName => "My Agent";
     public override string Description => "What this agent does";
     
-    public MyAgent(IChatClient chatClient, ILogger logger, MyTool tool)
-        : base(chatClient, logger)
+    public MyAgent(
+        ILogger<MyAgent> logger,
+        BaseTool[] tools,
+        IChatClient? chatClient = null,
+        IOptions<AzureOpenAIOptions>? aiOptions = null)
+        : base(logger, chatClient, aiOptions)
     {
-        RegisterTool(tool);  // Tools available to this agent
+        foreach (var tool in tools)
+            RegisterTool(tool);
     }
     
-    protected override string GetSystemPrompt()
+    public override string GetSystemPrompt()
     {
         // Loaded from external prompt file via SystemPromptLoader
         return SystemPromptLoader.LoadFromType<MyAgent>("MyAgent.prompt.txt") ?? "";
     }
 }
+```
+
+### AI-Powered Agent Responses
+
+When Azure OpenAI is configured and `AgentAIEnabled` is `true`, agents process messages through the LLM pipeline:
+
+1. **ProcessMessageAsync** — Entry point for AI-powered message processing
+2. **BuildChatMessages** — Assembles system prompt + conversation history (up to 10 messages) + user message
+3. **BuildAITools** — Wraps registered `BaseTool` instances as `AIFunction` objects for LLM function calling
+4. **FunctionInvokingChatClient** — Automatically handles multi-round tool calling loops
+5. **Streaming** — Tokens streamed via `IProgress<ProgressUpdate>` for real-time UI updates
+
+When AI is disabled (default) or unavailable, agents fall back to direct tool execution returning raw JSON—preserving full backward compatibility.
+
+```csharp
+// AI-enabled: natural-language response
+var result = await agent.ProcessMessageAsync(
+    "Run a compliance assessment",
+    conversationHistory,
+    progress,
+    cancellationToken);
+// Returns: "I've completed the NIST 800-53 assessment. Your compliance score is 85%..."
+
+// Fallback (no AI): raw JSON
+// Returns: {"status":"success","complianceScore":85,"findings":[...]}
 ```
 
 ---

@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.SignalR;
 using Platform.Engineering.Copilot.Core.Agents;
 using Platform.Engineering.Copilot.Core.Data.Enumerations;
 
+// Use SessionMessage from Core.Agents, not a local definition
+using SessionMessage = Platform.Engineering.Copilot.Core.Agents.SessionMessage;
+
 namespace Platform.Engineering.Copilot.Chat.Hubs;
 
 /// <summary>
@@ -54,31 +57,34 @@ public class ChatHub : Hub
 
             if (routingResult.IsMatch && routingResult.Agent is not null)
             {
-                // Execute the agent's first matching tool or use routing explanation
+                // Process through AI pipeline (or fallback to direct tool execution)
                 var agentResponse = routingResult.Explanation;
 
-                // Try to execute via the agent
                 try
                 {
-                    var toolResult = await routingResult.Agent.ExecuteToolAsync(
-                        routingResult.Agent.GetToolMetadata().First().Name,
-                        new Dictionary<string, object?>(),
-                        new Progress<ProgressUpdate>(async p =>
+                    var progress = new Progress<ProgressUpdate>(async p =>
+                    {
+                        await Clients.Caller.SendAsync("ProgressUpdate", new
                         {
-                            await Clients.Caller.SendAsync("ProgressUpdate", new
-                            {
-                                correlationId,
-                                percentComplete = p.PercentComplete,
-                                status = p.PercentComplete >= 100 ? "Completed" : "Running",
-                                phase = p.Message
-                            });
-                        }));
-                    if (!string.IsNullOrEmpty(toolResult))
-                        agentResponse = toolResult;
+                            correlationId,
+                            percentComplete = p.PercentComplete,
+                            status = p.PercentComplete >= 100 ? "Completed" : "Running",
+                            phase = p.Message
+                        });
+                    });
+
+                    var aiResponse = await routingResult.Agent.ProcessMessageAsync(
+                        message.Content,
+                        session.Messages,
+                        progress,
+                        Context.ConnectionAborted);
+
+                    if (!string.IsNullOrEmpty(aiResponse))
+                        agentResponse = aiResponse;
                 }
                 catch
                 {
-                    // If tool execution fails, use the routing explanation
+                    // If AI processing fails, use the routing explanation
                 }
 
                 // Stream tokens progressively
@@ -375,13 +381,4 @@ public class ConversationSession
     {
         get { lock (_lock) { return _messages.Count; } }
     }
-}
-
-public class SessionMessage
-{
-    public string Role { get; set; } = "";
-    public string Content { get; set; } = "";
-    public DateTimeOffset Timestamp { get; set; }
-    public string CorrelationId { get; set; } = "";
-    public string? AgentId { get; set; }
 }

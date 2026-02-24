@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Platform.Engineering.Copilot.Core.Agents;
 using Platform.Engineering.Copilot.Agents.Environment;
 using Platform.Engineering.Copilot.Agents.Environment.Tools;
 
@@ -147,7 +148,7 @@ public class EnvironmentFlowTests
     {
         var agent = new EnvironmentAgent(
             new Mock<ILogger<EnvironmentAgent>>().Object,
-            _clone, _drift, _compare, _promote, _list, _status, _create, _delete, _history, _validate);
+            new BaseTool[] { _clone, _drift, _compare, _promote, _list, _status, _create, _delete, _history, _validate });
 
         var tools = agent.GetToolMetadata();
         tools.Should().HaveCount(10);

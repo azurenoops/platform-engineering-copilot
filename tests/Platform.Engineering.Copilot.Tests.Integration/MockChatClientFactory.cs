@@ -16,11 +16,11 @@ public static class MockChatClientFactory
     {
         var mock = new Mock<IChatClient>();
 
-        mock.Setup(c => c.CompleteAsync(
+        mock.Setup(c => c.GetResponseAsync(
                 It.IsAny<IList<ChatMessage>>(),
                 It.IsAny<ChatOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChatCompletion(new ChatMessage(ChatRole.Assistant, responseText)));
+            .ReturnsAsync(new ChatResponse(new ChatMessage(ChatRole.Assistant, responseText)));
 
         return mock;
     }
@@ -33,7 +33,7 @@ public static class MockChatClientFactory
     {
         var mock = new Mock<IChatClient>();
 
-        mock.Setup(c => c.CompleteAsync(
+        mock.Setup(c => c.GetResponseAsync(
                 It.IsAny<IList<ChatMessage>>(),
                 It.IsAny<ChatOptions?>(),
                 It.IsAny<CancellationToken>()))
@@ -45,12 +45,12 @@ public static class MockChatClientFactory
                 {
                     if (userMessage.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase))
                     {
-                        return new ChatCompletion(
+                        return new ChatResponse(
                             new ChatMessage(ChatRole.Assistant, kvp.Value));
                     }
                 }
 
-                return new ChatCompletion(
+                return new ChatResponse(
                     new ChatMessage(ChatRole.Assistant, "none"));
             });
 
@@ -65,7 +65,7 @@ public static class MockChatClientFactory
     {
         var mock = new Mock<IChatClient>();
 
-        mock.Setup(c => c.CompleteAsync(
+        mock.Setup(c => c.GetResponseAsync(
                 It.IsAny<IList<ChatMessage>>(),
                 It.IsAny<ChatOptions?>(),
                 It.IsAny<CancellationToken>()))

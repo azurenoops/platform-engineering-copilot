@@ -15,12 +15,15 @@ public class CostManagementAgentTests
 {
     private CostManagementAgent CreateAgent() => new(
         new Mock<ILogger<CostManagementAgent>>().Object,
-        new GetCostAnalysisTool(new Mock<ILogger<GetCostAnalysisTool>>().Object),
-        new GetCostForecastTool(new Mock<ILogger<GetCostForecastTool>>().Object),
-        new GetOptimizationSuggestionsTool(new Mock<ILogger<GetOptimizationSuggestionsTool>>().Object),
-        new GetCachedCostReportTool(new Mock<ILogger<GetCachedCostReportTool>>().Object),
-        new GetBudgetStatusTool(new Mock<ILogger<GetBudgetStatusTool>>().Object),
-        new GetCostAnomaliesTool(new Mock<ILogger<GetCostAnomaliesTool>>().Object));
+        new BaseTool[]
+        {
+            new GetCostAnalysisTool(new Mock<ILogger<GetCostAnalysisTool>>().Object),
+            new GetCostForecastTool(new Mock<ILogger<GetCostForecastTool>>().Object),
+            new GetOptimizationSuggestionsTool(new Mock<ILogger<GetOptimizationSuggestionsTool>>().Object),
+            new GetCachedCostReportTool(new Mock<ILogger<GetCachedCostReportTool>>().Object),
+            new GetBudgetStatusTool(new Mock<ILogger<GetBudgetStatusTool>>().Object),
+            new GetCostAnomaliesTool(new Mock<ILogger<GetCostAnomaliesTool>>().Object)
+        });
 
     [Fact] public void AgentId_Returns_CostManagement() => CreateAgent().AgentId.Should().Be("costmanagement");
     [Fact] public void AgentName_Returns_CostManagementAgent() => CreateAgent().AgentName.Should().Be("Cost Management Agent");

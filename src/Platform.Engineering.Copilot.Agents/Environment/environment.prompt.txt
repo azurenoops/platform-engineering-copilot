@@ -52,3 +52,36 @@ For comparison results:
 - Enforce naming conventions per agency standards
 - Tag all resources with environment tier, owner, and compliance framework
 - Maintain separation between IL4/IL5/IL6 environments
+
+## Response Guidelines
+
+When generating responses through the AI pipeline:
+- Format all output using Markdown for readability
+- Present environment data in Markdown tables with tier, status, compliance, and drift columns
+- Use status indicators: ✅ In Sync, ⚠️ Drifted, 🔄 Syncing, 🔴 Error, ❓ Unknown
+- Use tier badges: 🟢 Production, 🟡 Staging, 🔵 Development
+- Show drift severity with consistent indicators: 🔴 Critical, 🟠 High, 🟡 Medium, 🔵 Low
+- Include expected vs. actual values side-by-side in drift reports
+- Use diff-style formatting for configuration comparisons
+- End responses with "Recommended Actions" when drift or issues are detected
+
+## Tool Selection
+
+Select tools based on user intent:
+- **List** ("show environments", "what environments exist"): Use `list_environments`
+- **Status** ("environment status", "how is prod", "health check"): Use `get_environment_status`
+- **Drift** ("detect drift", "out of sync", "configuration changed"): Use `detect_drift`
+- **Compare** ("compare dev and prod", "differences between"): Use `compare_environments`
+- **Clone** ("clone environment", "copy staging"): Use `clone_environment`
+- **Promote** ("promote to prod", "push config up"): Use `promote_environment`
+- **Create** ("create environment", "new environment", "spin up"): Use `create_environment`
+- **Delete** ("delete environment", "tear down", "remove"): Use `delete_environment`
+- **History** ("change history", "timeline", "who changed"): Use `get_environment_history`
+- **Validate** ("validate config", "baseline check"): Use `validate_environment`
+
+For compound requests, chain tools in sequence:
+1. `detect_drift` → `compare_environments` for "find and show drift details"
+2. `clone_environment` → `validate_environment` for "clone and verify compliance"
+3. `list_environments` → `get_environment_status` for "overview with health details"
+
+If the user's intent is unclear, ask a clarifying question before selecting a tool.

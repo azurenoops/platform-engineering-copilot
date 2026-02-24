@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Platform.Engineering.Copilot.Core.Agents;
 using Platform.Engineering.Copilot.Agents.Security;
 using Platform.Engineering.Copilot.Agents.Security.Tools;
 
@@ -101,7 +102,7 @@ public class SecurityFlowTests
     {
         var agent = new SecurityAgent(
             new Mock<ILogger<SecurityAgent>>().Object,
-            _secureScore, _recommendations, _policy);
+            new BaseTool[] { _secureScore, _recommendations, _policy });
 
         var tools = agent.GetToolMetadata();
         tools.Should().HaveCount(3);

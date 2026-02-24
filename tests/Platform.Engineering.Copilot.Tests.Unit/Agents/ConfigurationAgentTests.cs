@@ -24,7 +24,7 @@ public class ConfigurationAgentTests
             stateManager);
         _agent = new ConfigurationAgent(
             new Mock<ILogger<ConfigurationAgent>>().Object,
-            tool);
+            new BaseTool[] { tool });
     }
 
     [Fact]

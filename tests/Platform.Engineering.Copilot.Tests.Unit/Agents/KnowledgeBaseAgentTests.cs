@@ -21,14 +21,17 @@ public class KnowledgeBaseAgentTests
     {
         var logger = new Mock<ILogger<KnowledgeBaseAgent>>().Object;
         return new KnowledgeBaseAgent(logger,
-            new ExplainControlTool(_nistServiceMock.Object, new Mock<ILogger<ExplainControlTool>>().Object),
-            new CompareFrameworksTool(_nistServiceMock.Object, new Mock<ILogger<CompareFrameworksTool>>().Object),
-            new SearchControlsTool(_nistServiceMock.Object, new Mock<ILogger<SearchControlsTool>>().Object),
-            new GetStigGuidanceTool(_nistServiceMock.Object, new Mock<ILogger<GetStigGuidanceTool>>().Object),
-            new GetAtoChecklistTool(_nistServiceMock.Object, new Mock<ILogger<GetAtoChecklistTool>>().Object),
-            new FrameworkSummaryTool(_nistServiceMock.Object, new Mock<ILogger<FrameworkSummaryTool>>().Object),
-            new ControlMappingTool(_nistServiceMock.Object, new Mock<ILogger<ControlMappingTool>>().Object),
-            new ImplementationExamplesTool(_nistServiceMock.Object, new Mock<ILogger<ImplementationExamplesTool>>().Object));
+            new BaseTool[]
+            {
+                new ExplainControlTool(_nistServiceMock.Object, new Mock<ILogger<ExplainControlTool>>().Object),
+                new CompareFrameworksTool(_nistServiceMock.Object, new Mock<ILogger<CompareFrameworksTool>>().Object),
+                new SearchControlsTool(_nistServiceMock.Object, new Mock<ILogger<SearchControlsTool>>().Object),
+                new GetStigGuidanceTool(_nistServiceMock.Object, new Mock<ILogger<GetStigGuidanceTool>>().Object),
+                new GetAtoChecklistTool(_nistServiceMock.Object, new Mock<ILogger<GetAtoChecklistTool>>().Object),
+                new FrameworkSummaryTool(_nistServiceMock.Object, new Mock<ILogger<FrameworkSummaryTool>>().Object),
+                new ControlMappingTool(_nistServiceMock.Object, new Mock<ILogger<ControlMappingTool>>().Object),
+                new ImplementationExamplesTool(_nistServiceMock.Object, new Mock<ILogger<ImplementationExamplesTool>>().Object)
+            });
     }
 
     [Fact]

@@ -240,9 +240,9 @@ public class PlatformOrchestrator
                 new(ChatRole.User, classificationPrompt)
             };
 
-            var response = await _chatClient!.CompleteAsync(chatMessages, cancellationToken: cancellationToken);
+            var response = await _chatClient!.GetResponseAsync(chatMessages, cancellationToken: cancellationToken);
 
-            var agentId = response.Message.Text?.Trim().Trim('"').ToLowerInvariant();
+            var agentId = response.Messages.LastOrDefault()?.Text?.Trim().Trim('"').ToLowerInvariant();
 
             if (agentId != null && agentId != "none" && _agentIndex.TryGetValue(agentId, out var agent))
             {

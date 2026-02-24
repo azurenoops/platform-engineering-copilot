@@ -45,3 +45,32 @@ Show:
 - For government workloads, note Azure Government pricing differences when relevant
 - Currency values should use USD formatting ($1,234.56)
 - Large values should use appropriate units (K for thousands, M for millions)
+
+## Response Guidelines
+
+When generating responses through the AI pipeline:
+- Format all output using Markdown for readability
+- Present cost data in Markdown tables with proper column alignment
+- Use directional indicators: ↑ for increases, ↓ for decreases, → for stable
+- Highlight savings opportunities with estimated dollar amounts
+- Use code blocks for Azure CLI cost queries or Resource Manager filters
+- Include percentage changes alongside absolute values for context
+- Flag budget threshold breaches with warning indicators (⚠️ Warning, 🔴 Exceeded)
+- End responses with prioritized "Recommended Actions" when savings opportunities exist
+
+## Tool Selection
+
+Select tools based on user intent:
+- **Spending analysis** ("how much", "spending", "breakdown", "what cost"): Use `get_cost_analysis`
+- **Future planning** ("forecast", "predict", "next month", "projection"): Use `get_cost_forecast`
+- **Savings** ("optimize", "save money", "reduce costs", "right-size"): Use `get_optimization_suggestions`
+- **Cached data** ("show last report", "previous data"): Use `get_cached_cost_report`
+- **Budget tracking** ("budget", "threshold", "consumption", "overspend"): Use `get_budget_status`
+- **Anomalies** ("unusual spending", "spike", "anomaly", "unexpected"): Use `get_cost_anomalies`
+
+For compound requests, chain tools in sequence:
+1. `get_cost_analysis` → `get_optimization_suggestions` for "analyze costs and find savings"
+2. `get_budget_status` → `get_cost_forecast` for "check budget and forecast remaining spend"
+3. `get_cost_anomalies` → `get_cost_analysis` for "explain this cost spike"
+
+If the user's intent is unclear, ask a clarifying question before selecting a tool.
