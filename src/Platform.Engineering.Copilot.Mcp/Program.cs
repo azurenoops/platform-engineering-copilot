@@ -62,7 +62,8 @@ else
     .WithToolsFromAssembly();
 
     builder.Services.AddHealthChecks()
-        .AddCheck<PlatformHealthCheck>("platform-health");
+        .AddCheck<PlatformHealthCheck>("platform-health")
+        .AddCheck<NistControlsHealthCheck>("nist-controls", tags: new[] { "nist", "ready" });
 
     var app = builder.Build();
 

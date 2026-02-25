@@ -1,0 +1,407 @@
+{
+  "catalog": {
+    "uuid": "nist-800-53-rev5-offline-fallback",
+    "metadata": {
+      "title": "NIST SP 800-53 Rev 5 — Offline Fallback",
+      "version": "5.1.1",
+      "last-modified": "2024-02-01T00:00:00Z"
+    },
+    "groups": [
+      {
+        "id": "AC",
+        "title": "Access Control",
+        "controls": [
+          {
+            "id": "AC-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate an access control policy and procedures.",
+            "guidance": "Access control policy can be included as part of the general security and privacy policy.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "AC-2",
+            "title": "Account Management",
+            "description": "Define and document the types of accounts allowed and specifically prohibited for use within the system.",
+            "guidance": "Account management includes the creation, modification, enabling, disabling, and removal of accounts.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "AC-3",
+            "title": "Access Enforcement",
+            "description": "Enforce approved authorizations for logical access to information and system resources.",
+            "guidance": "Access control policies and access enforcement mechanisms control access between entities in systems.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "AC-4",
+            "title": "Information Flow Enforcement",
+            "description": "Enforce approved authorizations for controlling the flow of information within the system and between connected systems.",
+            "guidance": "Information flow control regulates where information can travel within a system and between systems.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": false }
+          },
+          {
+            "id": "AC-5",
+            "title": "Separation of Duties",
+            "description": "Identify and document duties of individuals requiring separation and define system access authorizations to support separation of duties.",
+            "guidance": "Separation of duties addresses the potential for abuse of authorized privileges.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": false }
+          },
+          {
+            "id": "AC-6",
+            "title": "Least Privilege",
+            "description": "Employ the principle of least privilege, allowing only authorized accesses for users and processes.",
+            "guidance": "Organizations employ least privilege for specific duties and systems.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": false }
+          },
+          {
+            "id": "AC-7",
+            "title": "Unsuccessful Logon Attempts",
+            "description": "Enforce a limit of consecutive invalid logon attempts by a user and automatically lock the account.",
+            "guidance": "The need to limit unsuccessful logon attempts and take subsequent action when the maximum number of attempts is exceeded.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "AC-8",
+            "title": "System Use Notification",
+            "description": "Display system use notification message or banner before granting access to the system.",
+            "guidance": "System use notifications can be implemented using messages or warning banners displayed before individuals log in.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "AT",
+        "title": "Awareness and Training",
+        "controls": [
+          {
+            "id": "AT-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate an awareness and training policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "AT-2",
+            "title": "Literacy Training and Awareness",
+            "description": "Provide security and privacy literacy training to system users.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "AU",
+        "title": "Audit and Accountability",
+        "controls": [
+          {
+            "id": "AU-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate an audit and accountability policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "AU-2",
+            "title": "Event Logging",
+            "description": "Identify the types of events that the system is capable of logging in support of the audit function.",
+            "guidance": "An event is any observable occurrence in a system.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "AU-3",
+            "title": "Content of Audit Records",
+            "description": "Ensure that audit records contain information that establishes what type of event occurred, when the event occurred, where the event occurred, the source of the event, the outcome of the event, and the identity of any individuals, subjects, or objects/entities associated with the event.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "CA",
+        "title": "Assessment, Authorization, and Monitoring",
+        "controls": [
+          {
+            "id": "CA-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate an assessment, authorization, and monitoring policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "CM",
+        "title": "Configuration Management",
+        "controls": [
+          {
+            "id": "CM-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate a configuration management policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "CP",
+        "title": "Contingency Planning",
+        "controls": [
+          {
+            "id": "CP-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate a contingency planning policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "CP-9",
+            "title": "System Backup",
+            "description": "Conduct backups of user-level information, system-level information, and system documentation.",
+            "guidance": "System-level information includes system state information, operating system software, middleware, application software, and licenses.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "CP-10",
+            "title": "System Recovery and Reconstitution",
+            "description": "Provide for the recovery and reconstitution of the system to a known state within time period after a disruption, compromise, or failure.",
+            "guidance": "Recovery is executing contingency plan activities to restore organizational missions and business functions.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "IA",
+        "title": "Identification and Authentication",
+        "controls": [
+          {
+            "id": "IA-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate an identification and authentication policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "IA-5",
+            "title": "Authenticator Management",
+            "description": "Manage system authenticators by verifying the identity of the individual, group, role, service, or device receiving the authenticator.",
+            "guidance": "Authenticators include passwords, cryptographic devices, biometrics, certificates, one-time password devices, and ID badges.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "IR",
+        "title": "Incident Response",
+        "controls": [
+          {
+            "id": "IR-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate an incident response policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "MA",
+        "title": "Maintenance",
+        "controls": [
+          {
+            "id": "MA-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate a system maintenance policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "MP",
+        "title": "Media Protection",
+        "controls": [
+          {
+            "id": "MP-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate a media protection policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "PE",
+        "title": "Physical and Environmental Protection",
+        "controls": [
+          {
+            "id": "PE-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate a physical and environmental protection policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "PL",
+        "title": "Planning",
+        "controls": [
+          {
+            "id": "PL-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate a planning policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "PM",
+        "title": "Program Management",
+        "controls": [
+          {
+            "id": "PM-1",
+            "title": "Information Security Program Plan",
+            "description": "Develop and disseminate an organization-wide information security program plan.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "PS",
+        "title": "Personnel Security",
+        "controls": [
+          {
+            "id": "PS-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate a personnel security policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "PT",
+        "title": "Personally Identifiable Information Processing and Transparency",
+        "controls": [
+          {
+            "id": "PT-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate personally identifiable information processing and transparency policies and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "RA",
+        "title": "Risk Assessment",
+        "controls": [
+          {
+            "id": "RA-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate a risk assessment policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "SA",
+        "title": "System and Services Acquisition",
+        "controls": [
+          {
+            "id": "SA-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate a system and services acquisition policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "SC",
+        "title": "System and Communications Protection",
+        "controls": [
+          {
+            "id": "SC-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate a system and communications protection policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "SC-7",
+            "title": "Boundary Protection",
+            "description": "Monitor and control communications at the external managed interfaces to the system and at key internal boundaries within the system.",
+            "guidance": "Managed interfaces include gateways, routers, firewalls, guards, network-based malicious code analysis.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "SC-13",
+            "title": "Cryptographic Protection",
+            "description": "Determine the cryptographic uses and implement the following types of cryptography required for each specified cryptographic use.",
+            "guidance": "Cryptography can be employed to support many security solutions.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "SC-28",
+            "title": "Protection of Information at Rest",
+            "description": "Protect the confidentiality and integrity of information at rest.",
+            "guidance": "Information at rest refers to the state of information when it is not in process or in transit.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": false }
+          }
+        ]
+      },
+      {
+        "id": "SI",
+        "title": "System and Information Integrity",
+        "controls": [
+          {
+            "id": "SI-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate a system and information integrity policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          },
+          {
+            "id": "SI-4",
+            "title": "System Monitoring",
+            "description": "Monitor the system to detect attacks and indicators of potential attacks, unauthorized connections, and unauthorized use.",
+            "guidance": "System monitoring includes external and internal monitoring.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      },
+      {
+        "id": "SR",
+        "title": "Supply Chain Risk Management",
+        "controls": [
+          {
+            "id": "SR-1",
+            "title": "Policy and Procedures",
+            "description": "Develop, document, and disseminate a supply chain risk management policy and procedures.",
+            "priority": "P1",
+            "baselines": { "high": true, "moderate": true, "low": true }
+          }
+        ]
+      }
+    ]
+  }
+}

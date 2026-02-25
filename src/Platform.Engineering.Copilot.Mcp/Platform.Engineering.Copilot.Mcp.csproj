@@ -16,4 +16,10 @@
     <ProjectReference Include="..\Platform.Engineering.Copilot.Agents\Platform.Engineering.Copilot.Agents.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Data\nist-800-53-fallback.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

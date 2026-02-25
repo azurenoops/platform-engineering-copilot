@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Platform.Engineering.Copilot.Agents.Compliance;
+using Platform.Engineering.Copilot.Agents.Compliance.Services;
 using Platform.Engineering.Copilot.Agents.Compliance.Tools;
 using Platform.Engineering.Copilot.Agents.Configuration;
 using Platform.Engineering.Copilot.Agents.Configuration.Tools;
@@ -20,6 +21,7 @@ using Platform.Engineering.Copilot.Agents.KnowledgeBase.Tools;
 using Platform.Engineering.Copilot.Agents.Security;
 using Platform.Engineering.Copilot.Agents.Security.Tools;
 using Platform.Engineering.Copilot.Core.Agents;
+using Platform.Engineering.Copilot.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Data.Services;
 using Platform.Engineering.Copilot.Core.Observability;
 using Platform.Engineering.Copilot.Core.Services;
@@ -45,8 +47,17 @@ public static class ServiceCollectionExtensions
         services.Configure<AzureOpenAIOptions>(
             configuration.GetSection(AzureOpenAIOptions.SectionName));
 
+        // ─── NIST Controls Configuration & Caching ───
+        services.AddMemoryCache();
+        services.AddOptions<NistControlsOptions>()
+            .Bind(configuration.GetSection(NistControlsOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         // ─── Core Services ───
+        services.AddSingleton<ComplianceMetricsService>();
         services.AddSingleton<INistService, NistService>();
+        services.AddHostedService<NistControlsCacheWarmupService>();
         services.AddSingleton<HealthCheckService>();
         services.AddSingleton<MetricsService>();
         services.AddSingleton<AuditLogService>();
