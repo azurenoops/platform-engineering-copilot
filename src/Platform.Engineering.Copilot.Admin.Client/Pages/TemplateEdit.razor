@@ -1,0 +1,283 @@
+@page "/templates/edit/{Id:guid}"
+@inject TemplateApiService TemplateApi
+@inject NavigationManager NavigationManager
+@inject IToastService ToastService
+
+<PageTitle>Edit Template — Platform Engineering Admin</PageTitle>
+
+<Breadcrumb Crumbs="@(new List<Breadcrumb.BreadcrumbItem>
+{
+    new("Templates", "/templates"),
+    new(_template?.DisplayName ?? _template?.Name ?? "Edit", $"/templates/{Id}"),
+    new("Edit")
+})" />
+
+@if (_loading)
+{
+    <LoadingSpinner Text="Loading template..." />
+}
+else if (_template is null)
+{
+    <EmptyState Icon="fas fa-exclamation-triangle fa-3x text-warning"
+                Title="Template Not Found"
+                ActionText="Back to Catalog"
+                OnAction='() => NavigationManager.NavigateTo("/templates")' />
+}
+else
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-control" value="@_template.Name" disabled />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Display Name</label>
+                    <input type="text" class="form-control" @bind="_updateRequest.DisplayName" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Version</label>
+                    <input type="text" class="form-control" value="@_template.Version" disabled />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Description</label>
+                <textarea class="form-control" @bind="_updateRequest.Description" rows="2"></textarea>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Category</label>
+                    <input type="text" class="form-control" @bind="_updateRequest.Category" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Format</label>
+                    <select class="form-select" @bind="_updateRequest.Format">
+                        <option value="Bicep">Bicep</option>
+                        <option value="ARM">ARM</option>
+                        <option value="Terraform">Terraform</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Deployment Scope</label>
+                    <select class="form-select" @bind="_updateRequest.DeploymentScope">
+                        <option value="ResourceGroup">Resource Group</option>
+                        <option value="Subscription">Subscription</option>
+                        <option value="ManagementGroup">Management Group</option>
+                        <option value="Tenant">Tenant</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Content</label>
+                <textarea class="form-control font-monospace" @bind="_updateRequest.Content" rows="12"></textarea>
+                <button class="btn btn-outline-secondary btn-sm mt-2" @onclick="ParseFromContent" disabled="@_parsing">
+                    @if (_parsing) { <LoadingSpinner Inline="true" /> }
+                    <i class="fas fa-cogs me-1"></i> Parse & Merge Parameters
+                </button>
+            </div>
+
+            @* Parameters *@
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">Parameters (@_parameters.Count)</h6>
+                    <button class="btn btn-outline-primary btn-sm" @onclick="AddParameter">
+                        <i class="fas fa-plus me-1"></i> Add
+                    </button>
+                </div>
+                @if (_parameters.Any())
+                {
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Type</th>
+                                        <th>Required</th>
+                                        <th>Default</th>
+                                        <th>Description</th>
+                                        <th style="width:50px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (var i = 0; i < _parameters.Count; i++)
+                                    {
+                                        var idx = i;
+                                        <tr>
+                                            <td><input type="text" class="form-control form-control-sm" @bind="_parameters[idx].Name" /></td>
+                                            <td>
+                                                <select class="form-select form-select-sm" @bind="_parameters[idx].Type">
+                                                    <option value="string">string</option>
+                                                    <option value="int">int</option>
+                                                    <option value="bool">bool</option>
+                                                    <option value="object">object</option>
+                                                    <option value="array">array</option>
+                                                </select>
+                                            </td>
+                                            <td><input type="checkbox" class="form-check-input" @bind="_parameters[idx].Required" /></td>
+                                            <td><input type="text" class="form-control form-control-sm" @bind="_parameters[idx].DefaultValue" /></td>
+                                            <td><input type="text" class="form-control form-control-sm" @bind="_parameters[idx].Description" /></td>
+                                            <td>
+                                                <button class="btn btn-outline-danger btn-sm" @onclick="() => _parameters.RemoveAt(idx)">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @* Keywords *@
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label">Keywords</label>
+                    <input type="text" class="form-control" @bind="_updateRequest.Keywords" placeholder="Comma-separated" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Use Cases</label>
+                    <input type="text" class="form-control" @bind="_updateRequest.UseCases" placeholder="Comma-separated" />
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" @onclick="SaveTemplate" disabled="@_saving">
+                    @if (_saving) { <LoadingSpinner Inline="true" /> }
+                    <i class="fas fa-save me-1"></i> Save Changes
+                </button>
+                <button class="btn btn-secondary" @onclick="CancelEdit">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private bool _saving;
+    private bool _parsing;
+    private TemplateDetailDto? _template;
+    private UpdateTemplateRequest _updateRequest = new();
+    private List<TemplateParameterDto> _parameters = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        _template = await TemplateApi.GetTemplateByIdAsync(Id);
+
+        if (_template is not null)
+        {
+            _updateRequest = new UpdateTemplateRequest
+            {
+                DisplayName = _template.DisplayName,
+                Description = _template.Description,
+                Content = _template.Content,
+                Category = _template.Category,
+                Format = _template.Format,
+                DeploymentScope = _template.DeploymentScope,
+                Keywords = _template.Keywords,
+                UseCases = _template.UseCases,
+                AiSelectionHints = _template.AiSelectionHints,
+                ComplianceFrameworks = _template.ComplianceFrameworks
+            };
+
+            _parameters = DeserializeList<TemplateParameterDto>(_template.ParametersJson);
+        }
+
+        _loading = false;
+    }
+
+    private async Task ParseFromContent()
+    {
+        if (string.IsNullOrWhiteSpace(_updateRequest.Content))
+        {
+            ToastService.ShowWarning("Enter template content first.");
+            return;
+        }
+
+        _parsing = true;
+        StateHasChanged();
+
+        var parsed = await TemplateApi.ParseBicepParametersAsync(
+            new ParseBicepParametersRequest { BicepContent = _updateRequest.Content });
+
+        if (parsed.Any())
+        {
+            var existingNames = _parameters.Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var newCount = 0;
+            foreach (var p in parsed)
+            {
+                if (!existingNames.Contains(p.Name))
+                {
+                    _parameters.Add(p);
+                    existingNames.Add(p.Name);
+                    newCount++;
+                }
+            }
+            ToastService.ShowSuccess($"Merged {newCount} new parameters. {parsed.Count - newCount} existing skipped.");
+        }
+        else
+        {
+            ToastService.ShowInfo("No parameters found in content.");
+        }
+
+        _parsing = false;
+        StateHasChanged();
+    }
+
+    private void AddParameter()
+    {
+        _parameters.Add(new TemplateParameterDto { Type = "string" });
+    }
+
+    private async Task SaveTemplate()
+    {
+        _saving = true;
+        StateHasChanged();
+
+        if (_parameters.Any())
+            _updateRequest.ParametersJson = JsonSerializer.Serialize(_parameters,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+
+        var result = await TemplateApi.UpdateTemplateAsync(Id, _updateRequest);
+
+        if (result is not null)
+        {
+            ToastService.ShowSuccess("Template updated successfully.");
+            NavigationManager.NavigateTo($"/templates/{Id}");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to update template.");
+        }
+
+        _saving = false;
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        NavigationManager.NavigateTo($"/templates/{Id}");
+    }
+
+    private static List<T> DeserializeList<T>(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return new();
+        try
+        {
+            return JsonSerializer.Deserialize<List<T>>(json,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }) ?? new();
+        }
+        catch { return new(); }
+    }
+}

@@ -1,0 +1,37 @@
+@* Breadcrumb.razor — Dynamic breadcrumb trail *@
+@inject NavigationManager NavigationManager
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        @foreach (var crumb in Crumbs)
+        {
+            @if (crumb == Crumbs.Last())
+            {
+                <li class="breadcrumb-item active" aria-current="page">@crumb.Label</li>
+            }
+            else
+            {
+                <li class="breadcrumb-item">
+                    <a href="@crumb.Href">@crumb.Label</a>
+                </li>
+            }
+        }
+    </ol>
+</nav>
+
+@code {
+    [Parameter] public List<BreadcrumbItem> Crumbs { get; set; } = new();
+
+    public class BreadcrumbItem
+    {
+        public string Label { get; set; } = string.Empty;
+        public string Href { get; set; } = string.Empty;
+
+        public BreadcrumbItem() { }
+        public BreadcrumbItem(string label, string href = "")
+        {
+            Label = label;
+            Href = href;
+        }
+    }
+}

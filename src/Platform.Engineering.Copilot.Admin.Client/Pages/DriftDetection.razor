@@ -1,0 +1,211 @@
+@page "/drift"
+@inject EnvironmentApiService EnvironmentApi
+@inject IToastService ToastService
+
+<h2 class="mb-4"><i class="fa-solid fa-code-compare me-2"></i>Drift Detection</h2>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (!_environments.Any())
+{
+    <EmptyState Icon="fa-code-compare" Title="No Environments"
+                Message="No environments found. Provision an environment first."
+                ActionText="Create Environment" ActionUrl="/environments/create" />
+}
+else
+{
+    <div class="d-flex justify-content-end mb-3">
+        <button class="btn btn-primary" @onclick="ScanAll" disabled="@_scanningAll">
+            @if (_scanningAll)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            <i class="fa-solid fa-magnifying-glass me-1"></i>Scan All Environments
+        </button>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <table class="table table-sm table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Environment</th>
+                        <th>Status</th>
+                        <th>Drift Items</th>
+                        <th>Last Scanned</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var env in _environments)
+                    {
+                        <tr>
+                            <td>
+                                <a href="/environments/@env.Id">@(env.DisplayName ?? env.Name)</a>
+                            </td>
+                            <td>
+                                @if (_scanningSet.Contains(env.Id))
+                                {
+                                    <span class="spinner-border spinner-border-sm text-primary"></span>
+                                }
+                                else if (_driftResults.TryGetValue(env.Id, out var result) && result is not null)
+                                {
+                                    @if (result.TotalDriftCount > 0)
+                                    {
+                                        <span class="badge bg-warning text-dark">@result.TotalDriftCount Drift Items</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">In Sync</span>
+                                    }
+                                }
+                                else if (env.HasDrift)
+                                {
+                                    <span class="badge bg-warning text-dark">@env.DriftCount Drift Items</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Not Scanned</span>
+                                }
+                            </td>
+                            <td>
+                                @if (_driftResults.TryGetValue(env.Id, out var driftResult) && driftResult is not null)
+                                {
+                                    @driftResult.TotalDriftCount
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td>
+                                @if (_driftResults.TryGetValue(env.Id, out var dr) && dr is not null)
+                                {
+                                    @dr.DetectedAt.ToString("g")
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" @onclick="() => ScanEnvironment(env.Id)"
+                                            disabled="@(_scanningSet.Contains(env.Id))">
+                                        @if (_scanningSet.Contains(env.Id))
+                                        {
+                                            <span class="spinner-border spinner-border-sm"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="fa-solid fa-magnifying-glass"></i>
+                                        }
+                                        Scan
+                                    </button>
+                                    @if (_driftResults.TryGetValue(env.Id, out var remResult) && remResult is not null && remResult.TotalDriftCount > 0)
+                                    {
+                                        <button class="btn btn-outline-warning" @onclick="() => RemediateEnvironment(env.Id)"
+                                                disabled="@(_remediatingSet.Contains(env.Id))">
+                                            @if (_remediatingSet.Contains(env.Id))
+                                            {
+                                                <span class="spinner-border spinner-border-sm"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="fa-solid fa-wrench"></i>
+                                            }
+                                            Remediate
+                                        </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private List<EnvironmentDetailDto> _environments = new();
+    private Dictionary<Guid, DriftDetectionResultDto?> _driftResults = new();
+    private HashSet<Guid> _scanningSet = new();
+    private HashSet<Guid> _remediatingSet = new();
+    private bool _loading = true;
+    private bool _scanningAll;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await EnvironmentApi.GetEnvironmentsAsync();
+        _environments = result.Items ?? new();
+        _loading = false;
+    }
+
+    private async Task ScanEnvironment(Guid envId)
+    {
+        _scanningSet.Add(envId);
+        StateHasChanged();
+
+        var result = await EnvironmentApi.DetectDriftAsync(envId);
+        _driftResults[envId] = result;
+
+        if (result is not null)
+        {
+            ToastService.ShowSuccess($"Drift scan complete: {result.TotalDriftCount} item(s) found.");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to scan environment for drift.");
+        }
+
+        _scanningSet.Remove(envId);
+        StateHasChanged();
+    }
+
+    private async Task ScanAll()
+    {
+        _scanningAll = true;
+        foreach (var env in _environments) _scanningSet.Add(env.Id);
+        StateHasChanged();
+
+        var tasks = _environments.Select(env => ScanEnvironmentInternal(env.Id));
+        await Task.WhenAll(tasks);
+
+        _scanningAll = false;
+        _scanningSet.Clear();
+        StateHasChanged();
+
+        ToastService.ShowSuccess("All environment drift scans complete.");
+    }
+
+    private async Task ScanEnvironmentInternal(Guid envId)
+    {
+        var result = await EnvironmentApi.DetectDriftAsync(envId);
+        _driftResults[envId] = result;
+    }
+
+    private async Task RemediateEnvironment(Guid envId)
+    {
+        _remediatingSet.Add(envId);
+        StateHasChanged();
+
+        var result = await EnvironmentApi.RemediateDriftAsync(envId);
+        if (result is not null)
+        {
+            ToastService.ShowSuccess($"Remediated {result.RemediatedCount} item(s). {result.RemainingCount} remaining.");
+            // Re-scan to update
+            var driftResult = await EnvironmentApi.DetectDriftAsync(envId);
+            _driftResults[envId] = driftResult;
+        }
+        else
+        {
+            ToastService.ShowError("Failed to remediate drift.");
+        }
+
+        _remediatingSet.Remove(envId);
+        StateHasChanged();
+    }
+}

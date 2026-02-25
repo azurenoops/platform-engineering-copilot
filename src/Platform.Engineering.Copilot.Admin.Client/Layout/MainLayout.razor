@@ -1,16 +1,104 @@
 ﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+@inject NavigationManager NavigationManager
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+<div class="app-container">
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <i class="fas fa-server me-2"></i>
+            <span>Platform Admin</span>
         </div>
 
-        <article class="content px-4">
+        <div class="sidebar-section">
+            <NavLink href="/" Match="NavLinkMatch.All" class="nav-link">
+                <i class="fas fa-tachometer-alt"></i> Dashboard
+            </NavLink>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Management</div>
+            <NavLink href="/templates" Match="NavLinkMatch.Prefix" class="nav-link">
+                <i class="fas fa-file-code"></i> Service Templates
+            </NavLink>
+            <NavLink href="/environments" Match="NavLinkMatch.Prefix" class="nav-link">
+                <i class="fas fa-cloud"></i> Environments
+            </NavLink>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Operations</div>
+            <NavLink href="/drift" Match="NavLinkMatch.Prefix" class="nav-link">
+                <i class="fas fa-exchange-alt"></i> Drift Detection
+            </NavLink>
+            <NavLink href="/health" Match="NavLinkMatch.Prefix" class="nav-link">
+                <i class="fas fa-heartbeat"></i> Health Status
+            </NavLink>
+        </div>
+
+        <div class="sidebar-section">
+            <NavLink href="/compliance" Match="NavLinkMatch.Prefix" class="nav-link">
+                <i class="fas fa-shield-alt"></i> Compliance
+            </NavLink>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        <header class="header-bar">
+            <h5 class="mb-0">@PageTitle</h5>
+            <div class="dropdown admin-dropdown">
+                <button class="btn btn-link text-decoration-none dropdown-toggle" type="button"
+                        data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-user-circle me-1"></i> Admin
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                        <a class="dropdown-item" href="/settings">
+                            <i class="fas fa-cog me-2"></i> Settings
+                        </a>
+                    </li>
+                    <li><hr class="dropdown-divider" /></li>
+                    <li>
+                        <a class="dropdown-item" href="#">
+                            <i class="fas fa-sign-out-alt me-2"></i> Sign Out
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </header>
+
+        <main class="content-area">
             @Body
-        </article>
-    </main>
+        </main>
+    </div>
 </div>
+
+@code {
+    private string PageTitle => GetPageTitle();
+
+    protected override void OnInitialized()
+    {
+        NavigationManager.LocationChanged += (_, _) => StateHasChanged();
+    }
+
+    private string GetPageTitle()
+    {
+        var path = new Uri(NavigationManager.Uri).AbsolutePath.TrimEnd('/').ToLowerInvariant();
+
+        return path switch
+        {
+            "" or "/" => "Dashboard",
+            "/templates" => "Service Templates",
+            "/templates/create" => "Create Template",
+            _ when path.StartsWith("/templates/edit/") => "Edit Template",
+            _ when path.StartsWith("/templates/") => "Template Details",
+            "/environments" => "Environments",
+            "/environments/create" => "Provision Environment",
+            _ when path.StartsWith("/environments/") => "Environment Details",
+            "/compliance" => "Compliance",
+            _ when path.StartsWith("/compliance/environment/") => "Compliance Details",
+            "/drift" => "Drift Detection",
+            "/health" => "Health Status",
+            "/settings" => "Settings",
+            _ => "Platform Engineering Admin"
+        };
+    }
+}

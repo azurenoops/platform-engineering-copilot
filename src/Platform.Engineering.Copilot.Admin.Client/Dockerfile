@@ -15,7 +15,7 @@ RUN dotnet publish src/Platform.Engineering.Copilot.Admin.Client/Platform.Engine
 
 # Stage 2: Serve with nginx
 FROM nginx:alpine AS runtime
-EXPOSE 5000
+EXPOSE 80
 
 # Copy published Blazor WASM output to nginx
 COPY --from=build /app/publish/wwwroot /usr/share/nginx/html

@@ -1,0 +1,36 @@
+@* EmptyState.razor — Empty state display with icon, message, and action button *@
+
+<div class="empty-state">
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        <i class="@Icon"></i>
+    }
+    <h5>@Title</h5>
+    @if (!string.IsNullOrEmpty(Message))
+    {
+        <p class="text-muted">@Message</p>
+    }
+    <div>
+        @if (OnAction.HasDelegate)
+        {
+            <button class="btn btn-primary me-2" @onclick="OnAction">
+                <i class="fas fa-plus me-1"></i> @ActionText
+            </button>
+        }
+        @if (OnRetry.HasDelegate)
+        {
+            <button class="btn btn-outline-secondary" @onclick="OnRetry">
+                <i class="fas fa-sync-alt me-1"></i> Retry
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Icon { get; set; } = "fas fa-inbox fa-3x text-muted";
+    [Parameter] public string Title { get; set; } = "No items found";
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public string ActionText { get; set; } = "Create New";
+    [Parameter] public EventCallback OnAction { get; set; }
+    [Parameter] public EventCallback OnRetry { get; set; }
+}

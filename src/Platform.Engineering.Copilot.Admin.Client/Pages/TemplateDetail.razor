@@ -1,0 +1,432 @@
+@page "/templates/{Id:guid}"
+@inject TemplateApiService TemplateApi
+@inject NavigationManager NavigationManager
+@inject IToastService ToastService
+
+<PageTitle>Template Details — Platform Engineering Admin</PageTitle>
+
+<Breadcrumb Crumbs="_breadcrumbs" />
+
+@if (_loading)
+{
+    <LoadingSpinner Text="Loading template details..." />
+}
+else if (_template is null)
+{
+    <EmptyState Icon="fas fa-exclamation-triangle fa-3x text-warning"
+                Title="Template Not Found"
+                Message="The template may have been deleted."
+                ActionText="Back to Catalog"
+                OnAction='() => NavigationManager.NavigateTo("/templates")' />
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+            <h4>@(_template.DisplayName ?? _template.Name)</h4>
+            <div class="d-flex gap-2 align-items-center">
+                <StatusBadge Status="@_template.Status" />
+                @if (!string.IsNullOrEmpty(_template.Category))
+                {
+                    <span class="badge bg-info">@_template.Category</span>
+                }
+                @if (!string.IsNullOrEmpty(_template.Version))
+                {
+                    <span class="badge bg-secondary">v@(_template.Version)</span>
+                }
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            @if (_template.Status == "Draft")
+            {
+                <button class="btn btn-warning btn-sm" @onclick="SubmitForApproval" disabled="@_processing">
+                    <i class="fas fa-paper-plane me-1"></i> Submit for Approval
+                </button>
+            }
+            @if (_template.Status == "PendingApproval")
+            {
+                <button class="btn btn-success btn-sm" @onclick="() => _showApproveModal = true" disabled="@_processing">
+                    <i class="fas fa-check me-1"></i> Approve
+                </button>
+            }
+            @if (_template.Status == "Published")
+            {
+                <button class="btn btn-dark btn-sm" @onclick="Deprecate" disabled="@_processing">
+                    <i class="fas fa-archive me-1"></i> Deprecate
+                </button>
+            }
+            <button class="btn btn-outline-primary btn-sm" @onclick="EditTemplate">
+                <i class="fas fa-edit me-1"></i> Edit
+            </button>
+            <button class="btn btn-outline-danger btn-sm" @onclick="() => _showDeleteModal = true">
+                <i class="fas fa-trash me-1"></i> Delete
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_template.Description))
+    {
+        <p class="text-muted">@_template.Description</p>
+    }
+
+    @* Metadata *@
+    <div class="card mb-3">
+        <div class="card-header"><h6 class="mb-0">Metadata</h6></div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4">
+                    <dl>
+                        <dt>Format</dt><dd>@_template.Format</dd>
+                        <dt>Deployment Scope</dt><dd>@(_template.DeploymentScope ?? "—")</dd>
+                        <dt>Requires Approval</dt><dd>@(_template.RequiresApproval ? "Yes" : "No")</dd>
+                    </dl>
+                </div>
+                <div class="col-md-4">
+                    <dl>
+                        <dt>Created</dt><dd>@_template.CreatedAt.ToString("g")</dd>
+                        <dt>Updated</dt><dd>@_template.UpdatedAt.ToString("g")</dd>
+                        <dt>Created By</dt><dd>@(_template.CreatedBy ?? "—")</dd>
+                    </dl>
+                </div>
+                <div class="col-md-4">
+                    @if (_template.ApprovedAt.HasValue)
+                    {
+                        <dl>
+                            <dt>Approved By</dt><dd>@(_template.ApprovedBy ?? "—")</dd>
+                            <dt>Approved At</dt><dd>@_template.ApprovedAt.Value.ToString("g")</dd>
+                            <dt>Comments</dt><dd>@(_template.ApprovalComments ?? "—")</dd>
+                        </dl>
+                    }
+                    @if (_template.DeprecatedAt.HasValue)
+                    {
+                        <dl>
+                            <dt>Deprecated By</dt><dd>@(_template.DeprecatedBy ?? "—")</dd>
+                            <dt>Deprecated At</dt><dd>@_template.DeprecatedAt.Value.ToString("g")</dd>
+                            <dt>Reason</dt><dd>@(_template.DeprecationReason ?? "—")</dd>
+                        </dl>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* Content *@
+    <div class="card mb-3">
+        <div class="card-header"><h6 class="mb-0">Template Content</h6></div>
+        <div class="card-body">
+            <pre class="code-block"><code>@_template.Content</code></pre>
+        </div>
+    </div>
+
+    @* Parameters *@
+    @if (_parameters.Any())
+    {
+        <div class="card mb-3">
+            <div class="card-header"><h6 class="mb-0">Parameters (@_parameters.Count)</h6></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Default</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var param in _parameters)
+                            {
+                                <tr>
+                                    <td><code>@param.Name</code></td>
+                                    <td>@param.Type</td>
+                                    <td>@(param.Required ? "Yes" : "No")</td>
+                                    <td>@(param.DefaultValue ?? "—")</td>
+                                    <td>@(param.Description ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Guardrails *@
+    @if (_guardrails.Any())
+    {
+        <div class="card mb-3">
+            <div class="card-header"><h6 class="mb-0">Guardrails (@_guardrails.Count)</h6></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>Property</th>
+                                <th>Operator</th>
+                                <th>Value</th>
+                                <th>Action</th>
+                                <th>Error</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var g in _guardrails)
+                            {
+                                <tr>
+                                    <td>@g.Type</td>
+                                    <td><code>@g.Property</code></td>
+                                    <td>@g.Operator</td>
+                                    <td>@g.Value</td>
+                                    <td><span class="badge @(g.Action == "Deny" ? "bg-danger" : "bg-warning")">@g.Action</span></td>
+                                    <td>@g.ErrorMessage</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Git Source *@
+    @if (_template.HasGitSource)
+    {
+        <div class="card mb-3">
+            <div class="card-header"><h6 class="mb-0">Git Source</h6></div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Repository</dt><dd class="col-sm-9">@_template.GitRepositoryUrl</dd>
+                    <dt class="col-sm-3">Branch</dt><dd class="col-sm-9">@(_template.GitBranch ?? "main")</dd>
+                    <dt class="col-sm-3">Path</dt><dd class="col-sm-9">@(_template.GitPath ?? "/")</dd>
+                    <dt class="col-sm-3">Auto Sync</dt><dd class="col-sm-9">@(_template.GitAutoSync ? "Enabled" : "Disabled")</dd>
+                    <dt class="col-sm-3">Last Synced</dt><dd class="col-sm-9">@(_template.LastSyncedFromGit?.ToString("g") ?? "Never")</dd>
+                </dl>
+                <div class="mt-2">
+                    <button class="btn btn-outline-primary btn-sm" @onclick="SyncFromGit" disabled="@_syncing">
+                        @if (_syncing)
+                        {
+                            <LoadingSpinner Inline="true" />
+                        }
+                        <i class="fas fa-sync me-1"></i> Sync Now
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Additional Files *@
+    @if (!string.IsNullOrEmpty(_template.AdditionalFilesJson))
+    {
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Additional Files</h6>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showAdditionalFiles = !_showAdditionalFiles">
+                    <i class="fas @(_showAdditionalFiles ? "fa-chevron-up" : "fa-chevron-down")"></i>
+                </button>
+            </div>
+            @if (_showAdditionalFiles)
+            {
+                <div class="card-body">
+                    <pre class="code-block"><code>@_template.AdditionalFilesJson</code></pre>
+                </div>
+            }
+        </div>
+    }
+
+    @* Approve Modal *@
+    @if (_showApproveModal)
+    {
+        <div class="confirm-modal-backdrop" @onclick="() => _showApproveModal = false">
+            <div class="confirm-modal" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h5 class="modal-title">Approve Template</h5>
+                    <button type="button" class="btn-close" @onclick="() => _showApproveModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Approved By</label>
+                        <input type="text" class="form-control" @bind="_approvedBy" placeholder="Your name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Comments (optional)</label>
+                        <textarea class="form-control" @bind="_approvalComments" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _showApproveModal = false">Cancel</button>
+                    <button class="btn btn-success" @onclick="ApproveTemplate"
+                            disabled="@(string.IsNullOrWhiteSpace(_approvedBy) || _processing)">
+                        @if (_processing) { <LoadingSpinner Inline="true" /> }
+                        Approve
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Delete Confirm *@
+    <ConfirmModal IsVisible="_showDeleteModal"
+                  Title="Delete Template"
+                  Message="@($"Are you sure you want to delete '{_template.DisplayName ?? _template.Name}'? This action cannot be undone.")"
+                  ConfirmText="Delete"
+                  IsProcessing="_processing"
+                  OnConfirm="DeleteTemplate"
+                  OnCancel="() => _showDeleteModal = false" />
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private bool _processing;
+    private bool _syncing;
+    private bool _showDeleteModal;
+    private bool _showApproveModal;
+    private bool _showAdditionalFiles;
+    private string _approvedBy = string.Empty;
+    private string _approvalComments = string.Empty;
+    private TemplateDetailDto? _template;
+    private List<TemplateParameterDto> _parameters = new();
+    private List<TemplateGuardrailDto> _guardrails = new();
+
+    private List<Breadcrumb.BreadcrumbItem> _breadcrumbs => new()
+    {
+        new("Templates", "/templates"),
+        new(_template?.DisplayName ?? _template?.Name ?? "Details")
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTemplateAsync();
+    }
+
+    private async Task LoadTemplateAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        var result = await TemplateApi.GetTemplateByIdAsync(Id);
+        _template = result;
+
+        if (_template is not null)
+        {
+            _parameters = DeserializeList<TemplateParameterDto>(_template.ParametersJson);
+            _guardrails = DeserializeList<TemplateGuardrailDto>(_template.GuardrailsJson);
+        }
+        else
+        {
+            ToastService.ShowError("Template not found.");
+        }
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task SubmitForApproval()
+    {
+        _processing = true;
+        var result = await TemplateApi.SubmitForApprovalAsync(Id);
+        if (result is not null)
+        {
+            _template = result;
+            ToastService.ShowSuccess("Submitted for approval.");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to submit for approval.");
+        }
+        _processing = false;
+    }
+
+    private async Task ApproveTemplate()
+    {
+        _processing = true;
+        var request = new ApprovalRequest
+        {
+            ApprovedBy = _approvedBy,
+            ApprovalSource = "AdminDashboard",
+            Comments = _approvalComments
+        };
+        var result = await TemplateApi.ApproveTemplateAsync(Id, request);
+        if (result is not null)
+        {
+            _template = result;
+            _showApproveModal = false;
+            ToastService.ShowSuccess("Template approved.");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to approve template.");
+        }
+        _processing = false;
+    }
+
+    private async Task Deprecate()
+    {
+        _processing = true;
+        var result = await TemplateApi.DeprecateTemplateAsync(Id, "Admin", "Deprecated via dashboard");
+        if (result is not null)
+        {
+            _template = result;
+            ToastService.ShowSuccess("Template deprecated.");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to deprecate template.");
+        }
+        _processing = false;
+    }
+
+    private async Task DeleteTemplate()
+    {
+        _processing = true;
+        var success = await TemplateApi.DeleteTemplateAsync(Id, "Admin");
+        _showDeleteModal = false;
+        if (success)
+        {
+            ToastService.ShowSuccess("Template deleted.");
+            NavigationManager.NavigateTo("/templates");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to delete template.");
+        }
+        _processing = false;
+    }
+
+    private async Task SyncFromGit()
+    {
+        _syncing = true;
+        StateHasChanged();
+        var result = await TemplateApi.SyncTemplateAsync(Id);
+        if (result is not null)
+        {
+            _template = result;
+            _parameters = DeserializeList<TemplateParameterDto>(_template.ParametersJson);
+            ToastService.ShowSuccess("Synced from Git.");
+        }
+        else
+        {
+            ToastService.ShowError("Failed to sync from Git.");
+        }
+        _syncing = false;
+    }
+
+    private void EditTemplate()
+    {
+        NavigationManager.NavigateTo($"/templates/edit/{Id}");
+    }
+
+    private static List<T> DeserializeList<T>(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return new();
+        try
+        {
+            return JsonSerializer.Deserialize<List<T>>(json,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }) ?? new();
+        }
+        catch { return new(); }
+    }
+}

@@ -1,0 +1,27 @@
+@* LoadingSpinner.razor — Centered page spinner or inline button spinner *@
+
+@if (Inline)
+{
+    <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+    @if (!string.IsNullOrEmpty(Text))
+    {
+        <span>@Text</span>
+    }
+}
+else
+{
+    <div class="loading-spinner">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        @if (!string.IsNullOrEmpty(Text))
+        {
+            <p class="mt-2 text-muted">@Text</p>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public bool Inline { get; set; }
+    [Parameter] public string? Text { get; set; }
+}

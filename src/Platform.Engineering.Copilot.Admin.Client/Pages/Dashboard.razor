@@ -1,0 +1,213 @@
+@page "/"
+@inject EnvironmentApiService EnvironmentApi
+@inject TemplateApiService TemplateApi
+@inject ComplianceApiService ComplianceApi
+@inject NavigationManager NavigationManager
+@inject IToastService ToastService
+
+<PageTitle>Dashboard — Platform Engineering Admin</PageTitle>
+
+@if (_loading)
+{
+    <LoadingSpinner Text="Loading dashboard data..." />
+}
+else if (_loadError)
+{
+    <EmptyState Icon="fas fa-exclamation-triangle fa-3x text-danger"
+                Title="Failed to Load Dashboard"
+                Message="Unable to connect to the Admin API. Please check the service is running."
+                OnRetry="LoadDataAsync" />
+}
+else
+{
+    @* Summary Cards *@
+    <div class="row g-3 mb-4">
+        <div class="col-lg-3 col-md-6">
+            <div class="stat-card">
+                <div class="stat-value">@(_summary?.TotalCount ?? 0)</div>
+                <div class="stat-label">Total Environments</div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="stat-card">
+                <div class="stat-value text-success">@(_summary?.HealthyCount ?? 0)</div>
+                <div class="stat-label">Healthy</div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="stat-card">
+                <div class="stat-value text-danger">@(_summary?.UnhealthyCount ?? 0)</div>
+                <div class="stat-label">Unhealthy</div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="stat-card">
+                <div class="stat-value text-warning">@(_summary?.DriftCount ?? 0)</div>
+                <div class="stat-label">Drifted</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-3 col-md-6">
+            <div class="stat-card">
+                <div class="stat-value">@(_templates?.Count ?? 0)</div>
+                <div class="stat-label">Templates</div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="stat-card">
+                <div class="stat-value">@(_templates?.Count(t => t.Status == "Published") ?? 0)</div>
+                <div class="stat-label">Published Templates</div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="stat-card">
+                <div class="stat-value">@(_complianceScore)</div>
+                <div class="stat-label">Compliance Score</div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-md-6">
+            <div class="stat-card">
+                <div class="stat-value">@(_summary?.TotalEstimatedMonthlyCost.ToString("C0") ?? "$0")</div>
+                <div class="stat-label">Estimated Cost</div>
+            </div>
+        </div>
+    </div>
+
+    @* Recent Environments *@
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Recent Environments</h6>
+            <a href="/environments" class="btn btn-sm btn-outline-primary">View All</a>
+        </div>
+        <div class="card-body p-0">
+            @if (_recentEnvironments.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Template</th>
+                                <th>Status</th>
+                                <th>Drift</th>
+                                <th>Cost</th>
+                                <th>Created</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var env in _recentEnvironments)
+                            {
+                                <tr>
+                                    <td>
+                                        <a href="/environments/@env.Id">@env.Name</a>
+                                    </td>
+                                    <td>@env.TemplateName</td>
+                                    <td><StatusBadge Status="@env.Status" /></td>
+                                    <td>
+                                        @if (env.HasDrift)
+                                        {
+                                            <span class="drift-indicator" title="Drift detected">
+                                                <i class="fas fa-exclamation-triangle text-warning"></i>
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-success"><i class="fas fa-check-circle"></i></span>
+                                        }
+                                    </td>
+                                    <td>@(env.EstimatedMonthlyCost?.ToString("C0") ?? "—")</td>
+                                    <td>@env.CreatedAt.ToString("MMM dd, yyyy")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="p-4 text-center text-muted">
+                    No environments provisioned yet.
+                </div>
+            }
+        </div>
+    </div>
+
+    @* Quick Actions *@
+    <div class="card">
+        <div class="card-header">
+            <h6 class="mb-0">Quick Actions</h6>
+        </div>
+        <div class="card-body">
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-primary" @onclick='() => NavigationManager.NavigateTo("/templates/create")'>
+                    <i class="fas fa-plus me-1"></i> Create Template
+                </button>
+                <button class="btn btn-success" @onclick='() => NavigationManager.NavigateTo("/environments/create")'>
+                    <i class="fas fa-cloud me-1"></i> Provision Environment
+                </button>
+                <button class="btn btn-warning" @onclick='() => NavigationManager.NavigateTo("/drift")'>
+                    <i class="fas fa-exchange-alt me-1"></i> Detect Drift
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _loadError;
+    private EnvironmentSummaryDto? _summary;
+    private List<TemplateSummaryDto> _templates = new();
+    private List<EnvironmentDetailDto> _recentEnvironments = new();
+    private string _complianceScore = "—";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        _loadError = false;
+        StateHasChanged();
+
+        try
+        {
+            var summaryTask = EnvironmentApi.GetSummaryAsync();
+            var templatesTask = TemplateApi.GetTemplatesAsync();
+            var environmentsTask = EnvironmentApi.GetEnvironmentsAsync();
+            var complianceTask = ComplianceApi.GetSummaryAsync();
+
+            await Task.WhenAll(summaryTask, templatesTask, environmentsTask, complianceTask);
+
+            _summary = await summaryTask;
+            _templates = await templatesTask ?? new();
+            var envResult = await environmentsTask;
+            _recentEnvironments = envResult.Items?.OrderByDescending(e => e.CreatedAt).Take(5).ToList() ?? new();
+
+            var compliance = await complianceTask;
+            _complianceScore = compliance?.OverallScore != null
+                ? $"{compliance.OverallScore:F0}%"
+                : "—";
+
+            if (_summary is null)
+            {
+                _loadError = true;
+                ToastService.ShowError("Failed to load dashboard data. Check API connection.");
+            }
+        }
+        catch (Exception)
+        {
+            _loadError = true;
+            ToastService.ShowError("Failed to load dashboard data.");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+}

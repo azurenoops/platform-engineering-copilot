@@ -1,0 +1,254 @@
+@page "/settings"
+@inject AppSettingsService SettingsService
+@inject IToastService ToastService
+
+<h2 class="mb-4"><i class="fa-solid fa-gear me-2"></i>Settings</h2>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else
+{
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == "general" ? "active" : "")" @onclick="TabGeneral">
+                <i class="fa-solid fa-sliders me-1"></i>General
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == "notifications" ? "active" : "")" @onclick="TabNotifications">
+                <i class="fa-solid fa-bell me-1"></i>Notifications
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == "defaults" ? "active" : "")" @onclick="TabDefaults">
+                <i class="fa-solid fa-wand-magic-sparkles me-1"></i>Defaults
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == "display" ? "active" : "")" @onclick="TabDisplay">
+                <i class="fa-solid fa-palette me-1"></i>Display
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == "agents" ? "active" : "")" @onclick="TabAgents">
+                <i class="fa-solid fa-robot me-1"></i>Agents
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(_activeTab == "security" ? "active" : "")" @onclick="TabSecurity">
+                <i class="fa-solid fa-shield-halved me-1"></i>Security
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="card">
+        <div class="card-body">
+            @if (_activeTab == "general")
+            {
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Organization Name</label>
+                    <input type="text" class="form-control" @bind="_settings.OrganizationName" />
+                    <small class="text-muted">Displayed in the header and dashboards.</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Default Subscription ID</label>
+                    <input type="text" class="form-control" @bind="_settings.DefaultSubscriptionId" />
+                    <small class="text-muted">Pre-filled when provisioning environments.</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Default Location</label>
+                    <input type="text" class="form-control" @bind="_settings.DefaultLocation" />
+                    <small class="text-muted">Azure region for new environments (e.g., usgovvirginia).</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Auto-Refresh Interval (seconds)</label>
+                    <input type="number" class="form-control" min="5" max="300" @bind="_settings.AutoRefreshInterval" />
+                    <small class="text-muted">How often to auto-refresh dashboard data.</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Page Size</label>
+                    <input type="number" class="form-control" min="5" max="100" @bind="_settings.PageSize" />
+                    <small class="text-muted">Number of items per page in tables.</small>
+                </div>
+            }
+            else if (_activeTab == "notifications")
+            {
+                <div class="mb-3 form-check form-switch">
+                    <input type="checkbox" class="form-check-input" id="enableToasts" @bind="_settings.EnableToastNotifications" />
+                    <label class="form-check-label fw-bold" for="enableToasts">Enable Toast Notifications</label>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Toast Duration (seconds)</label>
+                    <input type="number" class="form-control" min="1" max="30" @bind="_settings.ToastDuration" />
+                </div>
+                <div class="mb-3 form-check form-switch">
+                    <input type="checkbox" class="form-check-input" id="showSuccess" @bind="_settings.ShowSuccessToasts" />
+                    <label class="form-check-label" for="showSuccess">Show Success Toasts</label>
+                </div>
+                <div class="mb-3 form-check form-switch">
+                    <input type="checkbox" class="form-check-input" id="showError" @bind="_settings.ShowErrorToasts" />
+                    <label class="form-check-label" for="showError">Show Error Toasts</label>
+                </div>
+                <div class="mb-3 form-check form-switch">
+                    <input type="checkbox" class="form-check-input" id="showWarning" @bind="_settings.ShowWarningToasts" />
+                    <label class="form-check-label" for="showWarning">Show Warning Toasts</label>
+                </div>
+            }
+            else if (_activeTab == "defaults")
+            {
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Default Expiration (days)</label>
+                    <input type="number" class="form-control" min="1" max="365" @bind="_settings.DefaultExpirationDays" />
+                    <small class="text-muted">Default number of days before environments expire.</small>
+                </div>
+                <div class="mb-3 form-check form-switch">
+                    <input type="checkbox" class="form-check-input" id="autoDelete" @bind="_settings.DefaultAutoDelete" />
+                    <label class="form-check-label fw-bold" for="autoDelete">Default Auto-Delete</label>
+                    <div><small class="text-muted">Automatically delete expired environments.</small></div>
+                </div>
+                <div class="mb-3 form-check form-switch">
+                    <input type="checkbox" class="form-check-input" id="requireApproval" @bind="_settings.DefaultRequiresApproval" />
+                    <label class="form-check-label fw-bold" for="requireApproval">Default Requires Approval</label>
+                    <div><small class="text-muted">Templates require approval by default.</small></div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Default Deployment Scope</label>
+                    <select class="form-select" @bind="_settings.DefaultDeploymentScope">
+                        <option value="ResourceGroup">Resource Group</option>
+                        <option value="Subscription">Subscription</option>
+                        <option value="ManagementGroup">Management Group</option>
+                        <option value="Tenant">Tenant</option>
+                    </select>
+                </div>
+            }
+            else if (_activeTab == "display")
+            {
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Theme</label>
+                    <select class="form-select" @bind="_settings.Theme">
+                        <option value="Auto">Auto (System)</option>
+                        <option value="Light">Light</option>
+                        <option value="Dark">Dark</option>
+                    </select>
+                    <small class="text-muted">Auto follows your OS preference.</small>
+                </div>
+                <div class="mb-3 form-check form-switch">
+                    <input type="checkbox" class="form-check-input" id="sidebarCollapsed" @bind="_settings.SidebarCollapsed" />
+                    <label class="form-check-label" for="sidebarCollapsed">Collapse Sidebar</label>
+                </div>
+                <div class="mb-3 form-check form-switch">
+                    <input type="checkbox" class="form-check-input" id="showCosts" @bind="_settings.ShowCostEstimates" />
+                    <label class="form-check-label" for="showCosts">Show Cost Estimates</label>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Date Format</label>
+                    <select class="form-select" @bind="_settings.DateFormat">
+                        <option value="relative">Relative (e.g., 2 hours ago)</option>
+                        <option value="absolute">Absolute (e.g., Jan 15, 2025)</option>
+                        <option value="iso">ISO 8601</option>
+                    </select>
+                </div>
+                <div class="mb-3 form-check form-switch">
+                    <input type="checkbox" class="form-check-input" id="compactMode" @bind="_settings.CompactMode" />
+                    <label class="form-check-label" for="compactMode">Compact Mode</label>
+                    <div><small class="text-muted">Reduce spacing for information-dense views.</small></div>
+                </div>
+            }
+            else if (_activeTab == "agents")
+            {
+                <div class="mb-3 form-check form-switch">
+                    <input type="checkbox" class="form-check-input" id="enableAi" @bind="_settings.EnableAiMatching" />
+                    <label class="form-check-label fw-bold" for="enableAi">Enable AI Template Matching</label>
+                    <div><small class="text-muted">Use AI to match templates based on natural language descriptions.</small></div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Minimum Match Score</label>
+                    <input type="number" class="form-control" min="0" max="1" step="0.05" @bind="_settings.AiMatchMinScore" />
+                    <small class="text-muted">Minimum similarity score (0.0 - 1.0) for template matches.</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Max Results</label>
+                    <input type="number" class="form-control" min="1" max="20" @bind="_settings.AiMatchMaxResults" />
+                    <small class="text-muted">Maximum number of template match results to return.</small>
+                </div>
+            }
+            else if (_activeTab == "security")
+            {
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Session Timeout (minutes)</label>
+                    <input type="number" class="form-control" min="5" max="480" @bind="_settings.SessionTimeout" />
+                    <small class="text-muted">Inactivity timeout before requiring re-authentication.</small>
+                </div>
+                <div class="mb-3 form-check form-switch">
+                    <input type="checkbox" class="form-check-input" id="requireConfirm" @bind="_settings.RequireConfirmation" />
+                    <label class="form-check-label fw-bold" for="requireConfirm">Require Confirmation for Destructive Actions</label>
+                    <div><small class="text-muted">Show confirmation dialogs for delete, purge, and destructive operations.</small></div>
+                </div>
+                <div class="mb-3 form-check form-switch">
+                    <input type="checkbox" class="form-check-input" id="auditLog" @bind="_settings.AuditLogEnabled" />
+                    <label class="form-check-label fw-bold" for="auditLog">Enable Audit Logging</label>
+                    <div><small class="text-muted">Log all user actions for compliance and auditing.</small></div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="d-flex justify-content-between mt-3">
+        <button class="btn btn-outline-danger" @onclick="ResetToDefaults">
+            <i class="fa-solid fa-rotate-left me-1"></i>Reset to Defaults
+        </button>
+        <button class="btn btn-primary" @onclick="SaveSettings" disabled="@_saving">
+            @if (_saving)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            <i class="fa-solid fa-floppy-disk me-1"></i>Save Settings
+        </button>
+    </div>
+}
+
+@code {
+    private AppSettings _settings = AppSettings.CreateDefaults();
+    private bool _loading = true;
+    private bool _saving;
+    private string _activeTab = "general";
+
+    // Tab wrapper methods
+    private void TabGeneral() => _activeTab = "general";
+    private void TabNotifications() => _activeTab = "notifications";
+    private void TabDefaults() => _activeTab = "defaults";
+    private void TabDisplay() => _activeTab = "display";
+    private void TabAgents() => _activeTab = "agents";
+    private void TabSecurity() => _activeTab = "security";
+
+    protected override void OnInitialized()
+    {
+        _settings = SettingsService.CurrentSettings;
+        _loading = false;
+    }
+
+    private async Task SaveSettings()
+    {
+        _saving = true;
+        StateHasChanged();
+
+        await SettingsService.SaveAsync();
+        ToastService.ShowSuccess("Settings saved successfully.");
+
+        _saving = false;
+        StateHasChanged();
+    }
+
+    private async Task ResetToDefaults()
+    {
+        await SettingsService.ResetToDefaultsAsync();
+        _settings = SettingsService.CurrentSettings;
+        ToastService.ShowSuccess("Settings reset to defaults.");
+        StateHasChanged();
+    }
+}
