@@ -30,23 +30,15 @@ public class DevOpsAgent : BaseAgent
         IChatClient chatClient,
         ILogger<DevOpsAgent> logger,
         IOptions<DevOpsAgentOptions> options,
-        // GitHub Repository Management Tools
+        // GitHub Repository Management Tools (2 working, 8 pending refactor)
         CreateGitHubRepositoryTool createGitHubRepositoryTool,
         ListGitHubRepositoriesTool listGitHubRepositoriesTool,
-        UpdateGitHubRepositoryTool updateGitHubRepositoryTool,
-        DeleteGitHubRepositoryTool deleteGitHubRepositoryTool,
-        // GitHub Issues Tools
-        CreateGitHubIssueTool createGitHubIssueTool,
-        ListGitHubIssuesTool listGitHubIssuesTool,
-        // GitHub Pull Request Tools
-        CreateGitHubPullRequestTool createGitHubPullRequestTool,
-        ListGitHubPullRequestsTool listGitHubPullRequestsTool,
-        // GitHub Actions Tools
-        TriggerGitHubActionTool triggerGitHubActionTool,
-        ListGitHubActionRunsTool listGitHubActionRunsTool,
-        // GitHub Team Management Tools
-        AddGitHubTeamMemberTool addGitHubTeamMemberTool,
-        ListGitHubTeamsTool listGitHubTeamsTool,
+        // TODO: Add these 8 tools once refactored to BaseTool pattern:
+        // UpdateGitHubRepositoryTool, DeleteGitHubRepositoryTool,
+        // CreateGitHubIssueTool, ListGitHubIssuesTool,
+        // CreateGitHubPullRequestTool, ListGitHubPullRequestsTool,
+        // TriggerGitHubActionTool, ListGit HubActionRunsTool,
+        // AddGitHubTeamMemberTool, ListGitHubTeamsTool
         IAgentStateManager? agentStateManager = null,
         ISharedMemory? sharedMemory = null)
         : base(chatClient, logger, agentStateManager, sharedMemory)
@@ -56,27 +48,27 @@ public class DevOpsAgent : BaseAgent
         // Register GitHub tools (if enabled)
         if (_options.GitHub.Enabled)
         {
-            // Repository management (CRUD)
+            // Repository management (2/4 complete)
             RegisterTool(createGitHubRepositoryTool);
             RegisterTool(listGitHubRepositoriesTool);
-            RegisterTool(updateGitHubRepositoryTool);
-            RegisterTool(deleteGitHubRepositoryTool);
+            // TODO: RegisterToolmUpdateGitHubRepositoryTool);
+            // TODO: RegisterTool(deleteGitHubRepositoryTool);
 
-            // Issue tracking
-            RegisterTool(createGitHubIssueTool);
-            RegisterTool(listGitHubIssuesTool);
+            // Issue tracking (0/2 - pending refactor)
+            // TODO: RegisterTool(createGitHubIssueTool);
+            // TODO: RegisterTool(listGitHubIssuesTool);
 
-            // Pull requests
-            RegisterTool(createGitHubPullRequestTool);
-            RegisterTool(listGitHubPullRequestsTool);
+            // Pull requests (0/2 - pending refactor)
+            // TODO: RegisterTool(createGitHubPullRequestTool);
+            // TODO: RegisterTool(listGitHubPullRequestsTool);
 
-            // GitHub Actions/CI-CD
-            RegisterTool(triggerGitHubActionTool);
-            RegisterTool(listGitHubActionRunsTool);
+            // GitHub Actions/CI-CD (0/2 - pending refactor)
+            // TODO: RegisterTool(triggerGitHubActionTool);
+            // TODO: RegisterTool(listGitHubActionRunsTool);
 
-            // Team management
-            RegisterTool(addGitHubTeamMemberTool);
-            RegisterTool(listGitHubTeamsTool);
+            // Team management (0/2 - pending refactor)
+            // TODO: RegisterTool(addGitHubTeamMemberTool);
+            // TODO: RegisterTool(listGitHubTeamsTool);
         }
 
         // TODO: Register Azure DevOps tools (when implemented)
@@ -86,7 +78,7 @@ public class DevOpsAgent : BaseAgent
         // }
 
         Logger.LogInformation("✅ DevOps Agent initialized with {ToolCount} tools (GitHub: {GitHubEnabled}, ADO: {ADOEnabled}, Temperature: {Temperature})",
-            Tools.Count, _options.GitHub.Enabled, _options.AzureDevOps.Enabled, _options.Temperature);
+            RegisteredTools.Count, _options.GitHub.Enabled, _options.AzureDevOps.Enabled, _options.Temperature);
     }
 
     /// <summary>

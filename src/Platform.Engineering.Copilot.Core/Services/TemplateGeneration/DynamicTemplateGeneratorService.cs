@@ -14,7 +14,8 @@ using Platform.Engineering.Copilot.Core.Services.Generators.Observability;
 using Platform.Engineering.Copilot.Core.Services.Generators.Repository;
 using Platform.Engineering.Copilot.Core.Services.Generators.Workflow;
 using Platform.Engineering.Copilot.Core.Services.Generators.Base;
-using Platform.Engineering.Copilot.Core.Services.Generators.ARM;
+// TODO: ARM generator not yet implemented
+// using Platform.Engineering.Copilot.Core.Services.Generators.ARM;
 using Platform.Engineering.Copilot.Core.Services.Generators.CloudFormation;
 
 namespace Platform.Engineering.Copilot.Core.Services
@@ -76,7 +77,8 @@ namespace Platform.Engineering.Copilot.Core.Services
                 [InfrastructureFormat.Kubernetes] = unifiedOrchestrator,  // K8s clusters via Terraform/Bicep
                 [InfrastructureFormat.Bicep] = unifiedOrchestrator,  // Unified orchestrator handles Bicep
                 [InfrastructureFormat.Terraform] = unifiedOrchestrator,  // Unified orchestrator handles Terraform
-                [InfrastructureFormat.ARM] = new ARMGenerator(),
+                // TODO: ARM generator not yet implemented
+                // [InfrastructureFormat.ARM] = new ARMGenerator(),
                 [InfrastructureFormat.CloudFormation] = new CloudFormationGenerator()
             };
         }

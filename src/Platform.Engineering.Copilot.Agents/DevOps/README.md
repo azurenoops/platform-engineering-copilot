@@ -1,27 +1,41 @@
 # DevOps Agent Implementation
 
-## Status: **GitHub Tools Complete** (10/20 tools)
+## Status: **Partially Registered - 2 Tools Functional** (2/20 tools)
 
 This folder contains the DevOps Agent implementation for GitHub and Azure DevOps automation.
 
-## Implemented Tools
+**Current State:** The DevOps Agent is **registered in DI container** and will appear in orchestration, but only 2 GitHub tools are functional. The remaining 8 GitHub tools are implemented but need refactoring to match the BaseTool pattern before they can be registered.
 
-### GitHub Tools (10/10) ✅
-- ✅ `create_github_repository` - Create repositories with templates and branch protection
-- ✅ `list_github_repositories` - List and filter repositories
-- ✅ `update_github_repository` - Update repository settings
-- ✅ `delete_github_repository` - Delete repositories with confirmation
-- ✅ `create_github_issue` - Create issues with labels and assignees
-- ✅ `list_github_issues` - List and filter issues
-- ✅ `create_github_pull_request` - Create pull requests with reviewers
-- ✅ `list_github_pull_requests` - List and filter pull requests
-- ✅ `trigger_github_action` - Trigger GitHub Actions workflows
-- ✅ `list_github_action_runs` - List workflow runs and status
-- ✅ `add_github_team_member` - Add users to teams with roles
-- ✅ `list_github_teams` - List organization teams with permissions
+## Registered & Functional Tools
 
-### Azure DevOps Tools (0/10)
+### GitHub Tools (2/10) ✅
+- ✅ `create_github_repository` - Create repositories with templates and branch protection (**WORKING**)
+- ✅ `list_github_repositories` - List and filter repositories  (**WORKING**)
+- ⚠️ `update_github_repository` - Update repository settings (**NEEDS REFACTOR**)
+- ⚠️ `delete_github_repository` - Delete repositories with confirmation (**NEEDS REFACTOR**)
+- ⚠️ `create_github_issue` - Create issues with labels and assignees (**NEEDS REFACTOR**)
+- ⚠️ `list_github_issues` - List and filter issues (**NEEDS REFACTOR**)
+- ⚠️ `create_github_pull_request` - Create pull requests with reviewers (**NEEDS REFACTOR**)
+- ⚠️ `list_github_pull_requests` - List and filter pull requests (**NEEDS REFACTOR**)
+- ⚠️ `trigger_github_action` - Trigger GitHub Actions workflows (**NEEDS REFACTOR**)
+- ⚠️ `list_github_action_runs` - List workflow runs and status (**NEEDS REFACTOR**)
+- ⚠️ `add_github_team_member` - Add users to teams with roles (**NEEDS REFACTOR**)
+- ⚠️ `list_github_teams` - List organization teams with permissions (**NEEDS REFACTOR**)
+
+###Azure DevOps Tools (0/10)
 - ⬜ All ADO tools pending implementation
+
+## Technical Issue
+
+The 8 GitHub tools marked "NEEDS REFACTOR" were initially implemented using `[KernelFunction]` attributes, which is incompatible with the `BaseTool` pattern used by the Platform Engineering Copilot framework. They need to be rewritten to:
+
+1. Override `Name` and `Description` properties
+2. Call `base(logger)` in constructor  
+3. Define parameters using `Parameters.Add(new ToolParameter())` 
+4. Override `ExecuteAsync(IDictionary<string, object?> arguments, CancellationToken)` method
+5 Return JSON-serialized results
+
+See [CreateGitHubRepositoryTool.cs](Tools/GitHub/CreateGitHubRepositoryTool.cs) for the correct pattern.
 
 ## Structure
 

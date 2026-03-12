@@ -1,7 +1,7 @@
 using Microsoft.SemanticKernel;
+using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.DevOps.Configuration;
 using Platform.Engineering.Copilot.Core.Configuration;
-using Platform.Engineering.Copilot.Core.Tools;
 using System.ComponentModel;
 using System.Text;
 using System.Text.Json;
@@ -67,7 +67,7 @@ public class TriggerGitHubActionTool : BaseTool
             }
 
             var httpClient = _httpClientFactory.CreateClient();
-            httpClient.DefaultRequestHeaders.Add("Authorization", $"token {_gatewayOptions.GitHubToken}");
+            httpClient.DefaultRequestHeaders.Add("Authorization", $"token {_gatewayOptions.GitHub.AccessToken}");
             httpClient.DefaultRequestHeaders.Add("User-Agent", "Platform-Engineering-Copilot");
             httpClient.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
 

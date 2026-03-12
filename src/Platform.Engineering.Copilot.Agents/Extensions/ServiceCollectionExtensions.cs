@@ -21,6 +21,9 @@ using Platform.Engineering.Copilot.Agents.CostManagement.Agents;
 using Platform.Engineering.Copilot.Agents.CostManagement.Configuration;
 using Platform.Engineering.Copilot.Agents.CostManagement.State;
 using Platform.Engineering.Copilot.Agents.CostManagement.Tools;
+using Platform.Engineering.Copilot.Agents.DevOps.Agents;
+using Platform.Engineering.Copilot.Agents.DevOps.Configuration;
+using Platform.Engineering.Copilot.Agents.DevOps.Tools.GitHub;
 using Platform.Engineering.Copilot.Agents.Discovery.Agents;
 using Platform.Engineering.Copilot.Agents.Discovery.Configuration;
 using Platform.Engineering.Copilot.Agents.Discovery.State;
@@ -111,6 +114,9 @@ public static class ServiceCollectionExtensions
 
         // Add knowledge base agent
         services.AddKnowledgeBaseAgent(configuration);
+
+        // Add DevOps agent
+        services.AddDevOpsAgent(configuration);
 
         // Add tool registry
         services.AddToolRegistry();
@@ -206,6 +212,9 @@ public static class ServiceCollectionExtensions
 
         // Add knowledge base agent
         services.AddKnowledgeBaseAgent(configuration);
+
+        // Add DevOps agent
+        services.AddDevOpsAgent(configuration);
 
         // Add tool registry
         services.AddToolRegistry();
@@ -590,6 +599,52 @@ public static class ServiceCollectionExtensions
         if (options.Enabled)
         {
             services.AddScoped<BaseAgent>(sp => sp.GetRequiredService<EnvironmentAgent>());
+        }
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds the DevOps Agent for GitHub and Azure DevOps automation.
+    /// </summary>
+    public static IServiceCollection AddDevOpsAgent(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Bind configuration
+        services.Configure<DevOpsAgentOptions>(
+            configuration.GetSection(DevOpsAgentOptions.SectionName));
+
+        // Check if agent is enabled
+        var options = configuration.GetSection(DevOpsAgentOptions.SectionName)
+            .Get<DevOpsAgentOptions>() ?? new DevOpsAgentOptions();
+
+        // Add GitHub tools (only 2 working, 8 pending refactor to BaseTool pattern)
+        services.AddScoped<CreateGitHubRepositoryTool>();
+        services.AddScoped<ListGitHubRepositoriesTool>();
+
+        // TODO: Refactor these 8 tools to use BaseTool pattern (not [KernelFunction])
+        // services.AddScoped<UpdateGitHubRepositoryTool>();
+        // services.AddScoped<DeleteGitHubRepositoryTool>();
+        // services.AddScoped<CreateGitHubIssueTool>();
+        // services.AddScoped<ListGitHubIssuesTool>();
+        // services.AddScoped<CreateGitHubPullRequestTool>();
+        // services.AddScoped<ListGitHubPullRequestsTool>();
+        // services.AddScoped<TriggerGitHubActionTool>();
+        // services.AddScoped<ListGitHubActionRunsTool>();
+        // services.AddScoped<AddGitHubTeamMemberTool>();
+        // services.AddScoped<ListGitHubTeamsTool>();
+
+        // TODO: Add Azure DevOps tools when implemented
+        // services.AddScoped<CreateADORepositoryTool>();
+        // services.AddScoped<CreateWorkItemTool>();
+        // etc.
+
+        // Only register agent if enabled
+        services.AddScoped<DevOpsAgent>();
+        if (options.Enabled)
+        {
+            services.AddScoped<BaseAgent>(sp => sp.GetRequiredService<DevOpsAgent>());
         }
 
         return services;

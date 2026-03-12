@@ -7,7 +7,7 @@ public class DevOpsAgentOptions
 {
     public bool Enabled { get; set; } = true;
     public double Temperature { get; set; } = 0.3;
-    public int MaxTokens { get; set} = 4000;
+    public int MaxTokens { get; set; } = 4000;
     
     public GitHubOptions GitHub { get; set; } = new();
     public AzureDevOpsOptions AzureDevOps { get; set; } = new();
@@ -34,6 +34,6 @@ public class AzureDevOpsOptions
 public class DefaultTemplates
 {
     public string Workflow { get; set; } = "dotnet-build";
-    public string GitIgnore { get; set} = "VisualStudio";
+    public string GitIgnore { get; set; } = "VisualStudio";
     public string License { get; set; } = "MIT";
 }

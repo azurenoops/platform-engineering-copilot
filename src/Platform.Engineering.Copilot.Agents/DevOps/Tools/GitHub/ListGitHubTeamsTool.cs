@@ -1,7 +1,6 @@
 using Microsoft.SemanticKernel;
+using Platform.Engineering.Copilot.Agents.Common;
 using Platform.Engineering.Copilot.Agents.DevOps.Configuration;
-using Platform.Engineering.Copilot.Core.Configuration;
-using Platform.Engineering.Copilot.Core.Tools;
 using System.ComponentModel;
 using System.Text.Json;
 using System.Web;
@@ -49,7 +48,7 @@ public class ListGitHubTeamsTool : BaseTool
             var perPage = Math.Min(maxResults ?? 30, 100);
 
             var httpClient = _httpClientFactory.CreateClient();
-            httpClient.DefaultRequestHeaders.Add("Authorization", $"token {_gatewayOptions.GitHubToken}");
+            httpClient.DefaultRequestHeaders.Add("Authorization", $"token {_gatewayOptions.GitHub.AccessToken}");
             httpClient.DefaultRequestHeaders.Add("User-Agent", "Platform-Engineering-Copilot");
             httpClient.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
 
