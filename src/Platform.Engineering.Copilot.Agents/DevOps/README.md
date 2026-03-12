@@ -1,22 +1,24 @@
 # DevOps Agent Implementation
 
-## Status: **Initial Implementation** (2/20 tools)
+## Status: **GitHub Tools Complete** (10/20 tools)
 
 This folder contains the DevOps Agent implementation for GitHub and Azure DevOps automation.
 
 ## Implemented Tools
 
-### GitHub Tools (2/10)
+### GitHub Tools (10/10) ✅
 - ✅ `create_github_repository` - Create repositories with templates and branch protection
 - ✅ `list_github_repositories` - List and filter repositories
-- ⬜ `update_github_repository` - Update repository settings
-- ⬜ `delete_github_repository` - Delete repositories
-- ⬜ `create_github_issue` - Create issues
-- ⬜ `list_github_issues` - List and filter issues/PRs
-- ⬜ `create_github_pull_request` - Create pull requests
-- ⬜ `create_github_workflow` - Create GitHub Actions workflows
-- ⬜ `list_github_workflow_runs` - List workflow runs
-- ⬜ `manage_github_team` - Manage teams and members
+- ✅ `update_github_repository` - Update repository settings
+- ✅ `delete_github_repository` - Delete repositories with confirmation
+- ✅ `create_github_issue` - Create issues with labels and assignees
+- ✅ `list_github_issues` - List and filter issues
+- ✅ `create_github_pull_request` - Create pull requests with reviewers
+- ✅ `list_github_pull_requests` - List and filter pull requests
+- ✅ `trigger_github_action` - Trigger GitHub Actions workflows
+- ✅ `list_github_action_runs` - List workflow runs and status
+- ✅ `add_github_team_member` - Add users to teams with roles
+- ✅ `list_github_teams` - List organization teams with permissions
 
 ### Azure DevOps Tools (0/10)
 - ⬜ All ADO tools pending implementation
@@ -26,7 +28,7 @@ This folder contains the DevOps Agent implementation for GitHub and Azure DevOps
 ```
 DevOps/
 ├── Agents/
-│   └── DevOpsAgent.cs           # Main agent class
+│   └── DevOpsAgent.cs           # Main agent class with all 10 GitHub tools
 ├── Configuration/
 │   └── DevOpsAgentOptions.cs    # Configuration options
 ├── Models/
@@ -35,7 +37,17 @@ DevOps/
 └── Tools/
     └── GitHub/
         ├── CreateGitHubRepositoryTool.cs
-        └── ListGitHubRepositoriesTool.cs
+        ├── ListGitHubRepositoriesTool.cs
+        ├── UpdateGitHubRepositoryTool.cs
+        ├── DeleteGitHubRepositoryTool.cs
+        ├── CreateGitHubIssueTool.cs
+        ├── ListGitHubIssuesTool.cs
+        ├── CreateGitHubPullRequestTool.cs
+        ├── ListGitHubPullRequestsTool.cs
+        ├── TriggerGitHubActionTool.cs
+        ├── ListGitHubActionRunsTool.cs
+        ├── AddGitHubTeamMemberTool.cs
+        └── ListGitHubTeamsTool.cs
 ```
 
 ## Configuration
@@ -74,6 +86,7 @@ GITHUB_DEFAULT_OWNER=your-org
 
 ## Usage Examples
 
+### Repository Management
 ```plaintext
 "Create a new GitHub repository called 'my-api' with .NET template"
 → Creates repo with README, gitignore, license, branch protection
@@ -81,17 +94,64 @@ GITHUB_DEFAULT_OWNER=your-org
 "List all repositories in my organization"
 → Returns list of repos with metadata
 
-"Create a private repo 'user-service' with topics 'microservice' and 'dotnet'"
-→ Creates repo with specified topics
+"Update repository 'user-service' to make it private"
+→ Updates visibility and settings
+
+"Delete repository 'temp-testing' with confirmation"
+→ Safely deletes after confirmation
+```
+
+### Issue Tracking
+```plaintext
+"Create bug issue in repo 'my-api' about authentication failure"
+→ Creates issue with bug label and assignees
+
+"List all open high-priority issues in 'platform-core'"
+→ Filters and lists matching issues
+```
+
+### Pull Requests
+```plaintext
+"Create PR from feature-branch to main in 'my-api'"
+→ Creates PR with reviewers and labels
+
+"List all PRs waiting for review in 'user-service'"
+→ Shows open PRs needing attention
+```
+
+### CI/CD Automation
+```plaintext
+"Trigger the deploy workflow for production in 'my-api'"
+→ Manually triggers deployment workflow
+
+"Show me the last 10 workflow runs for 'my-api'"
+→ Lists recent CI/CD runs with status
+```
+
+### Team Management
+```plaintext
+"Add user john.doe to platform-engineering-team as maintainer"
+→ Adds team member with specified role
+
+"List all teams in my organization"
+→ Shows teams with members and permissions
 ```
 
 ## Next Steps
 
-1. ⬜ Register DevOpsAgent in DI container
-2. ⬜ Add DevOpsAgent to PlatformAgentGroupChat
-3. ⬜ Add remaining GitHub tools (8 more)
-4. ⬜ Implement Azure DevOps tools (10 tools)
-5. ⬜ Add workflow templates
-6. ⬜ Integration testing
+1. ⬜ Register DevOpsAgent in DI container (`ProgramExtensions.cs` or similar)
+2. ⬜ Add DevOpsAgent to PlatformAgentGroupChat orchestration
+3. ⬜ Add appsettings.json configuration for DevOpsAgent
+4. ⬜ Integration testing with GitHub API
+5. ⬜ Implement Azure DevOps tools (10 tools remaining)
+6. ⬜ Add workflow/pipeline templates
+7. ⬜ Unit tests for all tools
 
-See DEVOPS-AGENT-DESIGN.md in docs/ for full specification.
+### Immediate Action Required
+Before the DevOps Agent can be used:
+- ✅ All 10 GitHub tools implemented
+- ⬜ Register tools in Dependency Injection container
+- ⬜ Add to agent orchestration
+- ⬜ Test with live GitHub token
+
+See [DEVOPS-AGENT-DESIGN.md](../../../docs/DEVOPS-AGENT-DESIGN.md) for full specification.

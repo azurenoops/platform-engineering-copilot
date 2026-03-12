@@ -30,9 +30,23 @@ public class DevOpsAgent : BaseAgent
         IChatClient chatClient,
         ILogger<DevOpsAgent> logger,
         IOptions<DevOpsAgentOptions> options,
-        // GitHub Tools
+        // GitHub Repository Management Tools
         CreateGitHubRepositoryTool createGitHubRepositoryTool,
         ListGitHubRepositoriesTool listGitHubRepositoriesTool,
+        UpdateGitHubRepositoryTool updateGitHubRepositoryTool,
+        DeleteGitHubRepositoryTool deleteGitHubRepositoryTool,
+        // GitHub Issues Tools
+        CreateGitHubIssueTool createGitHubIssueTool,
+        ListGitHubIssuesTool listGitHubIssuesTool,
+        // GitHub Pull Request Tools
+        CreateGitHubPullRequestTool createGitHubPullRequestTool,
+        ListGitHubPullRequestsTool listGitHubPullRequestsTool,
+        // GitHub Actions Tools
+        TriggerGitHubActionTool triggerGitHubActionTool,
+        ListGitHubActionRunsTool listGitHubActionRunsTool,
+        // GitHub Team Management Tools
+        AddGitHubTeamMemberTool addGitHubTeamMemberTool,
+        ListGitHubTeamsTool listGitHubTeamsTool,
         IAgentStateManager? agentStateManager = null,
         ISharedMemory? sharedMemory = null)
         : base(chatClient, logger, agentStateManager, sharedMemory)
@@ -42,8 +56,27 @@ public class DevOpsAgent : BaseAgent
         // Register GitHub tools (if enabled)
         if (_options.GitHub.Enabled)
         {
+            // Repository management (CRUD)
             RegisterTool(createGitHubRepositoryTool);
             RegisterTool(listGitHubRepositoriesTool);
+            RegisterTool(updateGitHubRepositoryTool);
+            RegisterTool(deleteGitHubRepositoryTool);
+
+            // Issue tracking
+            RegisterTool(createGitHubIssueTool);
+            RegisterTool(listGitHubIssuesTool);
+
+            // Pull requests
+            RegisterTool(createGitHubPullRequestTool);
+            RegisterTool(listGitHubPullRequestsTool);
+
+            // GitHub Actions/CI-CD
+            RegisterTool(triggerGitHubActionTool);
+            RegisterTool(listGitHubActionRunsTool);
+
+            // Team management
+            RegisterTool(addGitHubTeamMemberTool);
+            RegisterTool(listGitHubTeamsTool);
         }
 
         // TODO: Register Azure DevOps tools (when implemented)
@@ -52,8 +85,8 @@ public class DevOpsAgent : BaseAgent
         //     RegisterTool(createADORepositoryTool);
         // }
 
-        Logger.LogInformation("✅ DevOps Agent initialized (GitHub: {GitHubEnabled}, ADO: {ADOEnabled}, Temperature: {Temperature})",
-            _options.GitHub.Enabled, _options.AzureDevOps.Enabled, _options.Temperature);
+        Logger.LogInformation("✅ DevOps Agent initialized with {ToolCount} tools (GitHub: {GitHubEnabled}, ADO: {ADOEnabled}, Temperature: {Temperature})",
+            Tools.Count, _options.GitHub.Enabled, _options.AzureDevOps.Enabled, _options.Temperature);
     }
 
     /// <summary>
