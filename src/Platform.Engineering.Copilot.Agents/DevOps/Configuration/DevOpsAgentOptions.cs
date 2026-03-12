@@ -5,6 +5,8 @@ namespace Platform.Engineering.Copilot.Agents.DevOps.Configuration;
 /// </summary>
 public class DevOpsAgentOptions
 {
+    public const string SectionName = "DevOpsAgent";
+    
     public bool Enabled { get; set; } = true;
     public double Temperature { get; set; } = 0.3;
     public int MaxTokens { get; set; } = 4000;

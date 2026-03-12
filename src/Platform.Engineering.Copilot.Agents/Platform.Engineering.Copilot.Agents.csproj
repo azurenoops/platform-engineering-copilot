@@ -39,4 +39,18 @@
     <EmbeddedResource Include="Prompts\*.prompt.txt" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Temporarily exclude broken DevOps Agent GitHub tools pending BaseTool refactor -->
+    <Compile Remove="DevOps\Tools\GitHub\UpdateGitHubRepositoryTool.cs" />
+    <Compile Remove="DevOps\Tools\GitHub\DeleteGitHubRepositoryTool.cs" />
+    <Compile Remove="DevOps\Tools\GitHub\CreateGitHubIssueTool.cs" />
+    <Compile Remove="DevOps\Tools\GitHub\ListGitHubIssuesTool.cs" />
+    <Compile Remove="DevOps\Tools\GitHub\CreateGitHubPullRequestTool.cs" />
+    <Compile Remove="DevOps\Tools\GitHub\ListGitHubPullRequestsTool.cs" />
+    <Compile Remove="DevOps\Tools\GitHub\TriggerGitHubActionTool.cs" />
+    <Compile Remove="DevOps\Tools\GitHub\ListGitHubActionRunsTool.cs" />
+    <Compile Remove="DevOps\Tools\GitHub\AddGitHubTeamMemberTool.cs" />
+    <Compile Remove="DevOps\Tools\GitHub\ListGitHubTeamsTool.cs" />
+  </ItemGroup>
+
 </Project>
