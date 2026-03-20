@@ -23,15 +23,15 @@ public class OrchestratorTests
 
     // ─── Test Agent Implementations ─────────────────────────────────
 
-    private class TestComplianceAgent : BaseAgent
+    private class TestKnowledgeAgent : BaseAgent
     {
-        public override string AgentId => "compliance";
-        public override string AgentName => "Compliance Agent";
-        public override string Description => "Handles compliance assessments, NIST controls, and FedRAMP audits.";
-        public override IReadOnlyList<string> Keywords => ["compliance", "nist", "fedramp", "assessment", "stig", "controls"];
+        public override string AgentId => "knowledge";
+        public override string AgentName => "Knowledge Base Agent";
+        public override string Description => "Handles platform knowledge, documentation, and help queries.";
+        public override IReadOnlyList<string> Keywords => ["knowledge", "documentation", "platform", "help", "info", "guide"];
 
-        public TestComplianceAgent() : base(Mock.Of<ILogger>()) { }
-        public override string GetSystemPrompt() => "You are the compliance agent.";
+        public TestKnowledgeAgent() : base(Mock.Of<ILogger>()) { }
+        public override string GetSystemPrompt() => "You are the knowledge base agent.";
     }
 
     private class TestCostAgent : BaseAgent
@@ -60,7 +60,7 @@ public class OrchestratorTests
     private PlatformOrchestrator CreateWithAgents()
     {
         var orchestrator = CreateOrchestrator();
-        orchestrator.RegisterAgent(new TestComplianceAgent());
+        orchestrator.RegisterAgent(new TestKnowledgeAgent());
         orchestrator.RegisterAgent(new TestCostAgent());
         orchestrator.RegisterAgent(new TestIaCAgent());
         return orchestrator;
@@ -72,18 +72,18 @@ public class OrchestratorTests
     public void RegisterAgent_AddsAgentToList()
     {
         var orchestrator = CreateOrchestrator();
-        orchestrator.RegisterAgent(new TestComplianceAgent());
+        orchestrator.RegisterAgent(new TestKnowledgeAgent());
 
         orchestrator.Agents.Should().HaveCount(1);
-        orchestrator.Agents[0].AgentId.Should().Be("compliance");
+        orchestrator.Agents[0].AgentId.Should().Be("knowledge");
     }
 
     [Fact]
     public void RegisterAgent_DuplicateId_SkipsDuplicate()
     {
         var orchestrator = CreateOrchestrator();
-        orchestrator.RegisterAgent(new TestComplianceAgent());
-        orchestrator.RegisterAgent(new TestComplianceAgent()); // duplicate
+        orchestrator.RegisterAgent(new TestKnowledgeAgent());
+        orchestrator.RegisterAgent(new TestKnowledgeAgent()); // duplicate
 
         orchestrator.Agents.Should().HaveCount(1);
     }
@@ -105,13 +105,13 @@ public class OrchestratorTests
     {
         var orchestrator = CreateWithAgents();
 
-        var result = await orchestrator.RouteAsync("@compliance check my NIST controls");
+        var result = await orchestrator.RouteAsync("@knowledge find platform documentation");
 
         result.IsMatch.Should().BeTrue();
-        result.Agent!.AgentId.Should().Be("compliance");
+        result.Agent!.AgentId.Should().Be("knowledge");
         result.Method.Should().Be(RoutingMethod.DirectTarget);
-        result.Explanation.Should().Contain("Compliance Agent");
-        result.Explanation.Should().Contain("@compliance");
+        result.Explanation.Should().Contain("Knowledge Base Agent");
+        result.Explanation.Should().Contain("@knowledge");
     }
 
     [Fact]
@@ -131,11 +131,11 @@ public class OrchestratorTests
     {
         var orchestrator = CreateWithAgents();
 
-        var result = await orchestrator.RouteAsync("@unknown check compliance status");
+        var result = await orchestrator.RouteAsync("@unknown find knowledge documentation");
 
-        // Should fall through to keyword matching (compliance keyword)
+        // Should fall through to keyword matching (knowledge keyword)
         result.IsMatch.Should().BeTrue();
-        result.Agent!.AgentId.Should().Be("compliance");
+        result.Agent!.AgentId.Should().Be("knowledge");
         result.Method.Should().Be(RoutingMethod.KeywordMatch);
     }
 
@@ -144,19 +144,19 @@ public class OrchestratorTests
     {
         var orchestrator = CreateWithAgents();
 
-        var result = await orchestrator.RouteAsync("@Compliance check my controls");
+        var result = await orchestrator.RouteAsync("@Knowledge find documentation");
 
         result.IsMatch.Should().BeTrue();
-        result.Agent!.AgentId.Should().Be("compliance");
+        result.Agent!.AgentId.Should().Be("knowledge");
         result.Method.Should().Be(RoutingMethod.DirectTarget);
     }
 
     // ─── Keyword Fast-Path ──────────────────────────────────────────
 
     [Theory]
-    [InlineData("What is the compliance status?", "compliance")]
-    [InlineData("Show me the NIST controls for AC-2", "compliance")]
-    [InlineData("What's the FedRAMP assessment result?", "compliance")]
+    [InlineData("Where can I find platform knowledge?", "knowledge")]
+    [InlineData("Show me the documentation for deployment", "knowledge")]
+    [InlineData("I need help with the platform guide", "knowledge")]
     [InlineData("Show me spending for this month", "cost-management")]
     [InlineData("What's the budget for Q1?", "cost-management")]
     [InlineData("Generate a Terraform template", "iac")]
@@ -177,9 +177,9 @@ public class OrchestratorTests
     {
         var orchestrator = CreateWithAgents();
 
-        var result = await orchestrator.RouteAsync("Run a compliance assessment");
+        var result = await orchestrator.RouteAsync("Find platform knowledge documentation");
 
-        result.Explanation.Should().Contain("Compliance Agent");
+        result.Explanation.Should().Contain("Knowledge Base Agent");
         result.Explanation.Should().Contain("keyword");
     }
 
@@ -188,10 +188,10 @@ public class OrchestratorTests
     {
         var orchestrator = CreateWithAgents();
 
-        // "compliance assessment controls" has 3 keywords for compliance
-        var result = await orchestrator.RouteAsync("Run a compliance assessment and check controls");
+        // "knowledge documentation platform" has 3 keywords for knowledge
+        var result = await orchestrator.RouteAsync("Find knowledge documentation for platform guide");
 
-        result.Agent!.AgentId.Should().Be("compliance");
+        result.Agent!.AgentId.Should().Be("knowledge");
         result.Method.Should().Be(RoutingMethod.KeywordMatch);
     }
 
@@ -200,8 +200,8 @@ public class OrchestratorTests
     {
         var orchestrator = CreateWithAgents();
 
-        // "compliance" + "cost" → 2 agents, each with 1 hit
-        var result = await orchestrator.RouteAsync("compliance cost analysis");
+        // "knowledge" + "cost" → 2 agents, each with 1 hit
+        var result = await orchestrator.RouteAsync("knowledge cost analysis");
 
         result.IsMatch.Should().BeTrue();
         // Should mention other candidates in explanation
@@ -255,17 +255,17 @@ public class OrchestratorTests
                 It.IsAny<IList<ChatMessage>>(),
                 It.IsAny<ChatOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChatResponse(new ChatMessage(ChatRole.Assistant, "compliance")));
+            .ReturnsAsync(new ChatResponse(new ChatMessage(ChatRole.Assistant, "knowledge")));
 
         var orchestrator = new PlatformOrchestrator(_loggerMock.Object, mockChatClient.Object);
-        orchestrator.RegisterAgent(new TestComplianceAgent());
+        orchestrator.RegisterAgent(new TestKnowledgeAgent());
         orchestrator.RegisterAgent(new TestCostAgent());
 
-        // "audit my environment" has no keywords but should route to compliance via LLM
-        var result = await orchestrator.RouteAsync("audit my environment");
+        // "research my environment" has no keywords but should route to knowledge via LLM
+        var result = await orchestrator.RouteAsync("research my environment");
 
         result.IsMatch.Should().BeTrue();
-        result.Agent!.AgentId.Should().Be("compliance");
+        result.Agent!.AgentId.Should().Be("knowledge");
         result.Method.Should().Be(RoutingMethod.LlmClassification);
         result.Explanation.Should().Contain("intent classification");
     }
@@ -282,7 +282,7 @@ public class OrchestratorTests
             .ReturnsAsync(new ChatResponse(new ChatMessage(ChatRole.Assistant, "none")));
 
         var orchestrator = new PlatformOrchestrator(_loggerMock.Object, mockChatClient.Object);
-        orchestrator.RegisterAgent(new TestComplianceAgent());
+        orchestrator.RegisterAgent(new TestKnowledgeAgent());
 
         var result = await orchestrator.RouteAsync("tell me a joke");
 
@@ -301,7 +301,7 @@ public class OrchestratorTests
             .ThrowsAsync(new HttpRequestException("Timeout"));
 
         var orchestrator = new PlatformOrchestrator(_loggerMock.Object, mockChatClient.Object);
-        orchestrator.RegisterAgent(new TestComplianceAgent());
+        orchestrator.RegisterAgent(new TestKnowledgeAgent());
 
         var result = await orchestrator.RouteAsync("audit my system");
 
@@ -316,9 +316,9 @@ public class OrchestratorTests
         var mockChatClient = new Mock<IChatClient>();
 
         var orchestrator = new PlatformOrchestrator(_loggerMock.Object, mockChatClient.Object);
-        orchestrator.RegisterAgent(new TestComplianceAgent());
+        orchestrator.RegisterAgent(new TestKnowledgeAgent());
 
-        var result = await orchestrator.RouteAsync("Check NIST compliance");
+        var result = await orchestrator.RouteAsync("Find platform knowledge documentation");
 
         result.Method.Should().Be(RoutingMethod.KeywordMatch);
 
@@ -338,8 +338,8 @@ public class OrchestratorTests
     {
         var orchestrator = CreateWithAgents();
 
-        // Message has @cost targeting but "compliance" keyword — direct target should win
-        var result = await orchestrator.RouteAsync("@cost-management what is the compliance cost?");
+        // Message has @cost targeting but "knowledge" keyword — direct target should win
+        var result = await orchestrator.RouteAsync("@cost-management what is the knowledge cost?");
 
         result.Agent!.AgentId.Should().Be("cost-management");
         result.Method.Should().Be(RoutingMethod.DirectTarget);
@@ -350,7 +350,7 @@ public class OrchestratorTests
     [Fact]
     public void Agent_RequiredPimTier_DefaultsToNone()
     {
-        var agent = new TestComplianceAgent();
+        var agent = new TestKnowledgeAgent();
         agent.RequiredPimTier.Should().Be(PimTier.None);
     }
 
@@ -383,7 +383,7 @@ public class OrchestratorTests
     [Fact]
     public void RegisterTool_AddsTool()
     {
-        var agent = new TestComplianceAgent();
+        var agent = new TestKnowledgeAgent();
         agent.RegisterTool(new TestTool());
 
         agent.Tools.Should().HaveCount(1);
@@ -393,7 +393,7 @@ public class OrchestratorTests
     [Fact]
     public void RegisterTool_DuplicateName_SkipsDuplicate()
     {
-        var agent = new TestComplianceAgent();
+        var agent = new TestKnowledgeAgent();
         agent.RegisterTool(new TestTool());
         agent.RegisterTool(new TestTool()); // same name
 
@@ -403,7 +403,7 @@ public class OrchestratorTests
     [Fact]
     public async Task ExecuteToolAsync_ValidTool_ExecutesAndReturnsResult()
     {
-        var agent = new TestComplianceAgent();
+        var agent = new TestKnowledgeAgent();
         agent.RegisterTool(new TestTool());
 
         var result = await agent.ExecuteToolAsync("test_tool", new Dictionary<string, object?>());
@@ -414,7 +414,7 @@ public class OrchestratorTests
     [Fact]
     public async Task ExecuteToolAsync_UnknownTool_Throws()
     {
-        var agent = new TestComplianceAgent();
+        var agent = new TestKnowledgeAgent();
 
         var act = async () => await agent.ExecuteToolAsync("nonexistent", []);
 
@@ -425,14 +425,14 @@ public class OrchestratorTests
     [Fact]
     public void GetToolMetadata_ReturnsCorrectMetadata()
     {
-        var agent = new TestComplianceAgent();
+        var agent = new TestKnowledgeAgent();
         agent.RegisterTool(new TestTool());
 
         var metadata = agent.GetToolMetadata();
 
         metadata.Should().HaveCount(1);
         metadata[0].Name.Should().Be("test_tool");
-        metadata[0].AgentId.Should().Be("compliance");
+        metadata[0].AgentId.Should().Be("knowledge");
         metadata[0].RequiresAuthentication.Should().BeTrue();
         metadata[0].PimTierRequired.Should().Be(PimTier.None);
     }

@@ -9,8 +9,8 @@ using Platform.Engineering.Copilot.Core.Services;
 namespace Platform.Engineering.Copilot.Agents.KnowledgeBase;
 
 /// <summary>
-/// Knowledge Base Agent — 8 tools for offline compliance knowledge queries.
-/// All data from INistService embedded OSCAL catalog. No auth required (SC-008).
+/// Knowledge Base Agent — platform knowledge and documentation shell.
+/// Currently a tool-less shell; will be repurposed with MCP servers (Azure) in a future feature.
 /// Extends BaseAgent per Constitution Principle II.
 /// </summary>
 public class KnowledgeBaseAgent : BaseAgent
@@ -35,14 +35,12 @@ public class KnowledgeBaseAgent : BaseAgent
     public override string AgentName => "Knowledge Base Agent";
 
     public override string Description =>
-        "Provides plain-language explanations of NIST 800-53 controls, framework comparisons, " +
-        "STIG guidance, and implementation examples. All offline — no Azure connectivity required.";
+        "Platform knowledge and documentation agent. " +
+        "Assists with platform engineering documentation, Azure resource guidance, and general knowledge queries.";
 
     public override string[] Keywords =>
     [
-        "explain", "stig", "control", "guidance", "ato", "nist explain",
-        "compare frameworks", "search controls", "knowledge", "checklist",
-        "framework summary", "implementation example", "mapping"
+        "knowledge", "documentation", "platform", "help"
     ];
 
     public override PimTier RequiredPimTier => PimTier.None;

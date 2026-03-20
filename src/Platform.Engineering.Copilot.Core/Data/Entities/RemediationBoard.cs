@@ -27,7 +27,6 @@ public class RemediationBoard
     public DateTimeOffset UpdatedAt { get; set; }
 
     // Navigation
-    public ComplianceAssessment Assessment { get; set; } = null!;
     public User User { get; set; } = null!;
     public ICollection<RemediationTask> Tasks { get; set; } = new List<RemediationTask>();
 }

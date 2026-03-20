@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Platform Engineering Copilot uses Entity Framework Core 9.0 with **SQL Server** (Azure SQL Edge in containers, Azure SQL in production) as the primary database. The database stores infrastructure templates, deployment tracking, compliance assessments, audit logs, and agent configurations.
+The Platform Engineering Copilot uses Entity Framework Core 9.0 with **SQL Server** (Azure SQL Edge in containers, Azure SQL in production) as the primary database. The database stores infrastructure templates, deployment tracking, audit logs, and agent configurations.
 
 ## Database Contexts
 
@@ -10,7 +10,7 @@ The platform uses two separate database contexts:
 
 | Context | Purpose | Project |
 |---------|---------|---------|
-| `PlatformEngineeringCopilotContext` | Main platform database - templates, deployments, compliance, audit | `Platform.Engineering.Copilot.Core` |
+| `PlatformEngineeringCopilotContext` | Main platform database - templates, deployments, audit | `Platform.Engineering.Copilot.Core` |
 | `ChatDbContext` | Chat conversation history and attachments | `Platform.Engineering.Copilot.Chat` |
 
 ---
@@ -51,7 +51,7 @@ The platform has **two distinct template systems** that serve different purposes
 - **Permanent** - Versioned catalog with approval workflow
 - Status lifecycle: `Draft` → `PendingApproval` → `Published` → `Deprecated` → `Archived`
 - Git sync support for pulling from approved repositories
-- Guardrails and compliance enforcement
+- Guardrails and security enforcement
 - Drift detection against template definitions
 
 ---
@@ -128,26 +128,9 @@ Deployments of AI-generated templates to Azure.
 | `ProgressPercentage` | int | Deployment progress |
 | `EstimatedMonthlyCost` | decimal(10,2) | Cost estimate |
 
-#### ComplianceAssessment (`ComplianceAssessments`)
-
-NIST 800-53 compliance scan results.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `Id` | nvarchar(100) | Primary key |
-| `SubscriptionId` | nvarchar(100) | Azure subscription |
-| `AssessmentType` | nvarchar(50) | NIST-800-53, FedRAMP, etc. |
-| `Status` | nvarchar(20) | InProgress, Completed, Failed |
-| `ComplianceScore` | decimal(5,2) | Compliance percentage |
-| `TotalFindings` | int | Total findings count |
-| `CriticalFindings` | int | Critical severity count |
-| `HighFindings` | int | High severity count |
-| `Results` | nvarchar(max) | JSON detailed results |
-| `Recommendations` | nvarchar(max) | JSON remediation guidance |
-
 #### AuditLogEntity (`AuditLogs`)
 
-NIST 800-53 compliant audit trail (AU-2, AU-3, AU-9).
+Audit trail for platform operations.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -331,9 +314,8 @@ The `DatabaseSeeder` populates:
 | `ServiceTemplates` | `(Category, Status)` | Catalog filtering |
 | `ProvisionedEnvironments` | `(SubscriptionId, ResourceGroup)` | Azure resource lookup |
 | `ProvisionedEnvironments` | `(Status, HasDrift)` | Status monitoring |
-| `AuditLogs` | `(Timestamp, Severity)` | Compliance queries |
+| `AuditLogs` | `(Timestamp, Severity)` | Audit queries |
 | `AuditLogs` | `(ActorId, Timestamp)` | User activity audit |
-| `ComplianceAssessments` | `(SubscriptionId, AssessmentType)` | Assessment lookup |
 
 ### Query Filters
 
@@ -359,9 +341,6 @@ InfrastructureTemplate
     ├── TemplateFile (1:N)
     └── InfrastructureDeployment (1:N)
             └── DeploymentHistory (1:N)
-
-ComplianceAssessment
-    └── ComplianceFinding (1:N)
 ```
 
 ---

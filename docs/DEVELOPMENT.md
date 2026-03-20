@@ -41,11 +41,11 @@ graph TB
 
   subgraph "Agent Layer"
     Infra[Infrastructure Agent<br/>6 tools]
-    Compliance[Compliance Agent<br/>12 tools]
+    Security[Security Agent<br/>6 tools]
     Cost[Cost Management Agent<br/>6 tools]
     Discovery[Discovery Agent<br/>9 tools]
     Environment[Environment Agent<br/>10 tools]
-    KnowledgeBase[Knowledge Base Agent<br/>8 tools]
+    KnowledgeBase[Knowledge Base Agent<br/>0 tools]
     Configuration[Configuration Agent<br/>1 tool]
   end
 
@@ -68,7 +68,7 @@ graph TB
   MCPClients --> MCP
 
   MCP --> Infra
-  MCP --> Compliance
+  MCP --> Security
   MCP --> Cost
   MCP --> Discovery
   MCP --> Environment
@@ -77,7 +77,7 @@ graph TB
 
   Infra --> ARM
   Cost --> CostMgmt
-  Compliance --> Policy
+  Security --> Policy
   Discovery --> Monitor
   Configuration --> KeyVault
 
@@ -100,15 +100,15 @@ The platform uses a **fast-path agent selection pattern** where the `PlatformSel
 
 | Agent | ID | Tools | Domain |
 |-------|-----|-------|--------|
-| **Compliance** | `compliance` | 12 | NIST 800-53, FedRAMP, remediation |
+| **Security** | `security` | 6 | Security posture, vulnerability scanning |
 | **Infrastructure** | `infrastructure` | 6 | Azure provisioning, IaC generation |
 | **Cost Management** | `cost-management` | 6 | Cost analysis, optimization |
 | **Discovery** | `discovery` | 9 | Resource inventory, health |
 | **Environment** | `environment` | 10 | Template lifecycle, drift detection |
-| **Knowledge Base** | `knowledgebase` | 8 | Compliance education, NIST/STIG |
+| **Knowledge Base** | `knowledgebase` | 0 | Platform knowledge shell (future MCP) |
 | **Configuration** | `configuration` | 1 | Subscription settings |
 
-> **Remediation Boundary**: Compliance Agent handles configuration-level changes (tags, encryption, firewall rules via ARM PATCH). Infrastructure Agent handles resource lifecycle changes (create/delete, topology).
+> **Remediation Boundary**: Security Agent handles configuration-level changes (tags, encryption, firewall rules via ARM PATCH). Infrastructure Agent handles resource lifecycle changes (create/delete, topology).
 
 ### Project Structure
 
@@ -133,11 +133,11 @@ platform-engineering-copilot/
 │   │   ├── Prompts/                               # Externalized agent prompts (*.prompt.txt)
 │   │   ├── Orchestration/                         # Agent orchestration & selection strategies
 │   │   ├── Infrastructure/                        # Infrastructure agent (6 tools)
-│   │   ├── Compliance/                            # Compliance agent (12 tools)
+│   │   ├── Security/                              # Security agent (6 tools)
 │   │   ├── CostManagement/                        # Cost management agent (6 tools)
 │   │   ├── Discovery/                             # Discovery agent (9 tools)
 │   │   ├── Environment/                           # Environment agent (10 tools)
-│   │   ├── KnowledgeBase/                         # Knowledge base agent (8 tools)
+│   │   ├── KnowledgeBase/                         # Knowledge base agent (0 tools — future MCP)
 │   │   └── Configuration/                         # Configuration agent (1 tool)
 │   ├── Platform.Engineering.Copilot.Chat/         # Chat UI with SignalR
 │   │   ├── Controllers/                           # REST endpoints
@@ -159,7 +159,6 @@ platform-engineering-copilot/
 │   │   ├── Models/                                # Domain models
 │   │   ├── Services/                              # Domain services
 │   │   │   ├── Azure/                             # Azure SDK integrations
-│   │   │   ├── Compliance/                        # Compliance scanning services
 │   │   │   ├── Chat/                              # Chat processing services
 │   │   │   ├── GitHub/                            # GitHub integration
 │   │   │   ├── TemplateGeneration/                # IaC template generation
@@ -206,7 +205,7 @@ platform-engineering-copilot/
 - **Technology**: .NET 9.0 + Semantic Kernel 1.26.0
 - **Key Components**:
   - `Orchestration/` - `PlatformAgentGroupChat`, `PlatformSelectionStrategy`, `PlatformTerminationStrategy`
-  - `{Domain}/` - Domain-specific agent implementations (Infrastructure, Compliance, Cost, etc.)
+  - `{Domain}/` - Domain-specific agent implementations (Infrastructure, Security, Cost, etc.)
   - `Common/` - Shared agent abstractions and base classes
 - **Responsibilities**:
   - Implements multi-agent orchestration using Semantic Kernel Agent Framework
@@ -219,9 +218,8 @@ platform-engineering-copilot/
 - **Key Components**:
   - `Data/` - `PlatformEngineeringCopilotContext`, entities, migrations
   - `Services/Azure/` - ARM SDK wrappers for resource management
-  - `Services/Compliance/` - NIST 800-53 scanning and remediation
   - `Services/TemplateGeneration/` - Bicep/Terraform generation
-  - `Services/GitHub/` - Repository automation (ATO workflows)
+  - `Services/GitHub/` - Repository automation
   - `Interfaces/` - Service contracts for dependency injection
 - **Responsibilities**:
   - Shared domain logic consumed by MCP, Agents, Chat, and Admin
@@ -272,7 +270,7 @@ platform-engineering-copilot/
 - **Responsibilities**:
   - RESTful admin operations with Swagger documentation
   - CRUD for templates, environments, deployments
-  - Governance workflows and compliance snapshots
+  - Governance workflows and security snapshots
 
 #### Admin Client Layer (`Platform.Engineering.Copilot.Admin.Client`)
 - **Technology**: Blazor WebAssembly (standalone) + Nginx
@@ -327,10 +325,10 @@ platform-engineering-copilot/
 
 #### Cloud Integrations
 - **Azure Resource Manager SDK** (Compute, Network, Storage, AppService, ContainerService)
-- **Azure Policy Insights SDK** for compliance evaluation
+- **Azure Policy Insights SDK** for policy evaluation
 - **Azure Cost Management API** for budgeting and optimization insights
 - **Azure Monitor Query** for logs and metrics
-- **GitHub Octokit** for repository automation (ATO documentation workflows)
+- **GitHub Octokit** for repository automation
 - **KubernetesClient** for future multi-cloud agent operations
 
 ---
@@ -798,7 +796,7 @@ Content-Type: application/json
 {
   "conversationId": "b0f2dc71-c486-4e3a-9d83-33f3c44fd15f",
   "userId": "john.doe",
-  "message": "Scan subscription 1234 for FedRAMP gaps"
+  "message": "Scan subscription 1234 for security issues"
 }
 ```
 
@@ -832,7 +830,7 @@ Swagger UI is available at `http://localhost:5050` (development). Core controlle
 | `TemplateAdminController` | `api/admin/templates` | CRUD for environment templates, validation, preview rendering. |
 | `EnvironmentAdminController` | `api/admin/environments` | Environment inventory, status updates, lifecycle management. |
 | `DeploymentAdminController` | `api/admin/deployments` | Trigger redeployments, fetch history, retrieve artifacts. |
-| `GovernanceAdminController` | `api/admin/governance` | Policy evaluation, approval workflows, compliance snapshots. |
+| `GovernanceAdminController` | `api/admin/governance` | Policy evaluation, approval workflows, security snapshots. |
 | `CostAdminController` | `api/admin/cost` | Cost trend reports, budget status, optimization insights. |
 | `ServiceCreationAdminController` | `api/admin/ServiceCreation` | Navy Flankspeed ServiceCreation workflows. |
 
@@ -980,7 +978,7 @@ public class McpCommandParserTests
 {
     [TestMethod]
     [DataRow("/mcp azure_discover_resources subscription_id=test", "azure_discover_resources")]
-    [DataRow("/mcp ato_compliance_scan resource_group=rg", "ato_compliance_scan")]
+    [DataRow("/mcp scan_subscription_security subscription_id=sub1", "scan_subscription_security")]
     public void ParseCommand_ValidInput_ExtractsToolName(string input, string expectedTool)
     {
         // Arrange
@@ -1082,7 +1080,7 @@ reportgenerator -reports:"coverage/**/coverage.cobertura.xml" -targetdir:coverag
 **Coverage Targets:**
 - **Unit Tests**: 80%+ line coverage
 - **Integration Tests**: 70%+ end-to-end coverage
-- **Critical Paths**: 95%+ coverage for security and compliance code
+- **Critical Paths**: 95%+ coverage for security code
 
 ---
 ## 🔨 Building and Packaging

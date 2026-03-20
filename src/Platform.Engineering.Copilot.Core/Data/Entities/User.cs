@@ -52,8 +52,5 @@ public class User
 
     // Navigation properties
     public Configuration? Configuration { get; set; }
-    public ICollection<ComplianceAssessment> Assessments { get; set; } = new List<ComplianceAssessment>();
-    public ICollection<EvidencePackage> EvidencePackages { get; set; } = new List<EvidencePackage>();
-    public ICollection<ComplianceDocument> Documents { get; set; } = new List<ComplianceDocument>();
     public ICollection<IaCTemplate> IaCTemplates { get; set; } = new List<IaCTemplate>();
 }

@@ -45,9 +45,4 @@
     <PackageReference Include="Polly.Core" Version="8.5.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Embedded OSCAL data files for NistService offline fallback -->
-    <EmbeddedResource Include="Services\NistData\*.json" />
-  </ItemGroup>
-
 </Project>

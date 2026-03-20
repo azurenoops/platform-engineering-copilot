@@ -10,7 +10,7 @@ This document provides natural language test queries for each specialized agent.
 1. [Configuration Agent](#1-configuration-agent)
 2. [Discovery Agent](#2-discovery-agent)
 3. [Infrastructure Agent](#3-infrastructure-agent)
-4. [Compliance Agent](#4-compliance-agent)
+4. [Security Agent](#4-security-agent)
 5. [Cost Management Agent](#5-cost-management-agent)
 6. [KnowledgeBase Agent](#6-knowledgebase-agent)
 7. [Environment Agent](#7-environment-agent)
@@ -139,8 +139,8 @@ This document provides natural language test queries for each specialized agent.
 | **Query** | `Generate a Bicep template for a storage account` |
 | **Command** | `@platform /infrastructure Create a Bicep template for a secure storage account` |
 | **Tool Called** | `generate_infrastructure_template` |
-| **Parameters** | `resource_type: "storage"`, `format: "bicep"`, `enable_compliance: true` |
-| **Expected Result** | Bicep template with HTTPS-only, encryption, FedRAMP High controls |
+| **Parameters** | `resource_type: "storage"`, `format: "bicep"` |
+| **Expected Result** | Bicep template with HTTPS-only, encryption, security best practices |
 
 ### Test Case 3.2: Generate Terraform Template
 | Field | Value |
@@ -150,12 +150,12 @@ This document provides natural language test queries for each specialized agent.
 | **Parameters** | `resource_type: "aks"`, `format: "terraform"`, `location: "eastus"` |
 | **Expected Result** | Terraform HCL template for AKS with networking |
 
-### Test Case 3.3: Compliance-Enhanced Template
+### Test Case 3.3: Security-Enhanced Template
 | Field | Value |
 |-------|-------|
-| **Query** | `Generate a DoD IL5 compliant Key Vault template` |
+| **Query** | `Generate a secure Key Vault template` |
 | **Tool Called** | `generate_infrastructure_template` |
-| **Parameters** | `resource_type: "keyvault"`, `enable_compliance: true`, `compliance_framework: "DoD_IL5"` |
+| **Parameters** | `resource_type: "keyvault"`, `enable_security: true` |
 | **Expected Result** | Key Vault template with purge protection, RBAC, private endpoints |
 
 ### Test Case 3.4: Provision Storage Account
@@ -193,124 +193,57 @@ This document provides natural language test queries for each specialized agent.
 
 ---
 
-## 4. Compliance Agent
+## 4. Security Agent
 
-**Purpose**: NIST 800-53 compliance assessment, remediation, and documentation.
+**Purpose**: Security posture assessment, vulnerability scanning, and Defender for Cloud integration.
 
-**Routing Keywords**: "compliance", "NIST", "FedRAMP", "scan", "assess", "remediate", "SSP", "SAR", "POA&M", "audit", "security", "policy"
+**Routing Keywords**: "security", "secure", "defender", "vulnerability", "threat", "posture", "score"
 
-### Scan Types
-
-The Compliance Agent supports two scan types:
-
-| Scan Type | Description | Use Case |
-|-----------|-------------|----------|
-| `full` (default) | Comprehensive security scan using built-in analyzers | Deep resource-level security analysis |
-| `policy` | Azure Policy compliance scan with NIST 800-53 mapping | Real-time policy state from Azure Policy engine |
-
-### Test Case 4.1: Run Full Compliance Assessment
+### Test Case 4.1: Get Security Posture
 | Field | Value |
 |-------|-------|
-| **Query** | `Run a compliance scan on my subscription` |
-| **Command** | `@platform /compliance Scan my Azure resources for NIST 800-53 compliance` |
-| **Tool Called** | `run_compliance_assessment` |
-| **Parameters** | `subscription_id: "<configured-id>"`, `scan_type: "full"` |
-| **Expected Result** | Assessment with findings by control family, severity counts, remediation guidance |
+| **Query** | `What's my security posture?` |
+| **Command** | `@platform /security Show my security posture` |
+| **Tool Called** | `get_security_posture` |
+| **Parameters** | `subscription_id: "<configured-id>"` |
+| **Expected Result** | Security score, recommendations count, resource health summary |
 
-### Test Case 4.2: Run Policy Compliance Scan
+### Test Case 4.2: Run Vulnerability Scan
 | Field | Value |
 |-------|-------|
-| **Query** | `Scan my subscription for policy compliance` |
-| **Alternative Queries** | `Check Azure Policy compliance`, `Run a policy scan`, `Show policy compliance status` |
-| **Command** | `@platform /compliance Scan for Azure Policy compliance` |
-| **Tool Called** | `run_compliance_assessment` |
-| **Parameters** | `subscription_id: "<configured-id>"`, `scan_type: "policy"` |
-| **Expected Result** | Policy compliance results with NIST 800-53 control mappings, compliance score, resource counts |
-| **Sample Output** | Compliance Score: 48%, Resources: 25, NIST Controls with findings: AC-3, AU-2, AU-6, AU-12, SI-2, SI-3, SI-4, IA-2 |
+| **Query** | `Run a vulnerability scan on my subscription` |
+| **Tool Called** | `run_vulnerability_scan` |
+| **Parameters** | `subscription_id: "<configured-id>"` |
+| **Expected Result** | Vulnerability findings by severity with remediation guidance |
 
-### Test Case 4.3: Policy Scan Then POA&M (Workflow)
+### Test Case 4.3: Get Security Recommendations
 | Field | Value |
 |-------|-------|
-| **Query** | `Scan for policy compliance and then generate a POA&M` |
-| **Step 1** | `run_compliance_assessment` with `scan_type: "policy"` |
-| **Step 2** | `generate_compliance_document` with `document_type: "POAM"` |
-| **Expected Result** | POA&M document populated with **actual findings** from the policy scan (not placeholders) |
-| **Verification** | POA&M table should show real controls like AC-3, storage private link findings |
-| **Note** | Assessment is automatically cached for document generation |
+| **Query** | `What security improvements should I make?` |
+| **Tool Called** | `get_security_recommendations` |
+| **Parameters** | `subscription_id: "<configured-id>"` |
+| **Expected Result** | Prioritized security recommendations from Defender for Cloud |
 
-### Test Case 4.4: Scoped Assessment (Resource Group)
+### Test Case 4.4: Get Threat Alerts
 | Field | Value |
 |-------|-------|
-| **Query** | `Assess compliance for rg-webapp resource group` |
-| **Tool Called** | `run_compliance_assessment` |
-| **Parameters** | `subscription_id: "<id>"`, `resource_group: "rg-webapp"` |
-| **Expected Result** | Findings scoped to resources in rg-webapp only |
+| **Query** | `Are there any active security threats?` |
+| **Tool Called** | `get_threat_alerts` |
+| **Parameters** | `subscription_id: "<configured-id>"` |
+| **Expected Result** | Active threat alerts with severity and affected resources |
 
-### Test Case 4.5: Specific Control Family Assessment
+### Test Case 4.5: Get Policy Status
 | Field | Value |
 |-------|-------|
-| **Query** | `Check Access Control (AC) compliance only` |
-| **Tool Called** | `run_compliance_assessment` |
-| **Parameters** | `control_families: "AC"` |
-| **Expected Result** | Findings for AC control family only |
+| **Query** | `Show Azure Policy status for my subscription` |
+| **Tool Called** | `get_policy_compliance` |
+| **Parameters** | `subscription_id: "<configured-id>"` |
+| **Expected Result** | Policy assignment status, compliant/non-compliant resource counts |
 
-### Test Case 4.6: Include Passed Controls
+### Test Case 4.6: Missing Subscription Error
 | Field | Value |
 |-------|-------|
-| **Query** | `Show me all controls including passed ones` |
-| **Tool Called** | `run_compliance_assessment` |
-| **Parameters** | `include_passed: true` |
-| **Expected Result** | Both passed and failed controls in results |
-
-### Test Case 4.7: Execute Remediation (Dry Run)
-| Field | Value |
-|-------|-------|
-| **Query** | `Preview remediation for finding storage-https-001` |
-| **Command** | `@platform /compliance Show what remediation would do for storage-https-001` |
-| **Tool Called** | `execute_remediation` |
-| **Parameters** | `subscription_id: "<id>"`, `finding_id: "storage-https-001"`, `dry_run: true` |
-| **Expected Result** | Preview of changes without applying them |
-
-### Test Case 4.8: Execute Remediation (Apply)
-| Field | Value |
-|-------|-------|
-| **Query** | `Fix the storage-https-001 finding now` |
-| **Tool Called** | `execute_remediation` |
-| **Parameters** | `subscription_id: "<id>"`, `finding_id: "storage-https-001"`, `dry_run: false` |
-| **Expected Result** | Remediation applied, confirmation with resource changes |
-
-### Test Case 4.9: Generate SSP Document
-| Field | Value |
-|-------|-------|
-| **Query** | `Generate a System Security Plan for MyApp` |
-| **Command** | `@platform /compliance Create an SSP for MyApp system` |
-| **Tool Called** | `generate_compliance_document` |
-| **Parameters** | `document_type: "SSP"`, `system_name: "MyApp"`, `include_evidence: true` |
-| **Expected Result** | Markdown SSP document with control implementations |
-
-### Test Case 4.10: Generate POA&M from Cached Assessment
-| Field | Value |
-|-------|-------|
-| **Query** | `Create a POA&M from the latest assessment` |
-| **Prerequisite** | Run a compliance scan first (full or policy) |
-| **Tool Called** | `generate_compliance_document` |
-| **Parameters** | `document_type: "POAM"`, `system_name: "MyApp"` |
-| **Expected Result** | POA&M with actual findings from cached assessment |
-| **Verification** | Table should contain real control IDs and findings, not placeholder data |
-
-### Test Case 4.11: Generate SAR
-| Field | Value |
-|-------|-------|
-| **Query** | `Generate a Security Assessment Report for MyApp` |
-| **Tool Called** | `generate_compliance_document` |
-| **Parameters** | `document_type: "SAR"`, `system_name: "MyApp"`, `output_format: "markdown"` |
-| **Expected Result** | SAR document with assessment findings and recommendations |
-
-### Test Case 4.12: Missing Subscription Error
-| Field | Value |
-|-------|-------|
-| **Query** | `Scan for compliance` (without subscription) |
-| **Tool Called** | `run_compliance_assessment` |
+| **Query** | `Check security posture` (without subscription) |
 | **Expected Result** | ❌ Error: "Subscription ID is required. Use 'Set my subscription to <id>' first" |
 
 ---
@@ -397,79 +330,28 @@ The Compliance Agent supports two scan types:
 
 ## 6. KnowledgeBase Agent
 
-**Purpose**: Educational/informational content about NIST 800-53, STIGs, RMF, and compliance frameworks.
+**Purpose**: Platform knowledge and documentation assistance. Shell agent — no tools currently registered. Reserved for future MCP integration.
 
-**Routing Keywords**: "what is", "explain", "define", "tell me about", "how does", "NIST control", "STIG", "RMF", "FedRAMP", "impact level"
+**Routing Keywords**: "knowledge", "documentation", "platform", "help", "guide"
 
-### Test Case 6.1: Explain NIST Control
+### Test Case 6.1: Platform Help
 | Field | Value |
 |-------|-------|
-| **Query** | `What is AC-2?` |
-| **Command** | `@platform /knowledge Explain NIST control AC-2` |
-| **Tool Called** | `explain_nist_control` |
-| **Parameters** | `control_id: "AC-2"` |
-| **Expected Result** | AC-2 definition, requirements, Azure implementation guidance |
+| **Query** | `What can the platform engineering copilot do?` |
+| **Command** | `@platform /knowledge Help me understand the platform` |
+| **Expected Result** | Overview of platform capabilities and available agents |
 
-### Test Case 6.2: Explain Control Enhancement
+### Test Case 6.2: Agent Documentation
 | Field | Value |
 |-------|-------|
-| **Query** | `Explain IA-2(1) - multi-factor authentication` |
-| **Tool Called** | `explain_nist_control` |
-| **Parameters** | `control_id: "IA-2(1)"` |
-| **Expected Result** | IA-2(1) enhancement description with MFA requirements |
+| **Query** | `What agents are available?` |
+| **Expected Result** | List of 7 agents with their capabilities |
 
-### Test Case 6.3: Explain SC Controls
+### Test Case 6.3: Architecture Overview
 | Field | Value |
 |-------|-------|
-| **Query** | `What does SC-28 require for data at rest?` |
-| **Tool Called** | `explain_nist_control` |
-| **Parameters** | `control_id: "SC-28"` |
-| **Expected Result** | SC-28 encryption requirements and Azure services that satisfy it |
-
-### Test Case 6.4: Invalid Control ID
-| Field | Value |
-|-------|-------|
-| **Query** | `What is XX-99?` |
-| **Tool Called** | `explain_nist_control` |
-| **Parameters** | `control_id: "XX-99"` |
-| **Expected Result** | ❌ Error: "Control 'XX-99' was not found in the NIST 800-53 catalog" |
-
-### Test Case 6.5: Compare Impact Levels
-| Field | Value |
-|-------|-------|
-| **Query** | `What's the difference between FedRAMP High and Moderate?` |
-| **Tool Called** | `explain_impact_levels` or general knowledge response |
-| **Expected Result** | Comparison of control requirements, use cases, certification scope |
-
-### Test Case 6.6: RMF Process
-| Field | Value |
-|-------|-------|
-| **Query** | `Explain the RMF authorization process` |
-| **Command** | `@platform /knowledge How does RMF work?` |
-| **Tool Called** | `explain_rmf_process` |
-| **Expected Result** | 7-step RMF process explanation (Prepare, Categorize, Select, Implement, Assess, Authorize, Monitor) |
-
-### Test Case 6.7: STIG Explanation
-| Field | Value |
-|-------|-------|
-| **Query** | `What is the Windows Server 2022 STIG?` |
-| **Tool Called** | `explain_stig` |
-| **Expected Result** | STIG description, finding categories, CAT I/II/III explanation |
-
-### Test Case 6.8: DoD Impact Levels
-| Field | Value |
-|-------|-------|
-| **Query** | `What is DoD IL5?` |
-| **Tool Called** | `explain_impact_levels` |
-| **Parameters** | `impact_level: "IL5"` |
-| **Expected Result** | IL5 requirements, CUI handling, isolation requirements |
-
-### Test Case 6.9: FedRAMP Template
-| Field | Value |
-|-------|-------|
-| **Query** | `What template should I use for FedRAMP High SSP?` |
-| **Tool Called** | `get_fedramp_template` |
-| **Expected Result** | FedRAMP SSP template guidance and structure |
+| **Query** | `How does the agent architecture work?` |
+| **Expected Result** | Explanation of BaseAgent/BaseTool pattern and routing |
 
 ---
 
@@ -497,7 +379,7 @@ The Compliance Agent supports two scan types:
 | **Alternative Queries** | `Get details for AKS template`, `What parameters does the AKS template need?` |
 | **Tool Called** | `get_template_details` |
 | **Parameters** | `templateId: "aks-standard"` (or partial match like "AKS") |
-| **Expected Result** | Template parameters, guardrails, compliance frameworks, version |
+| **Expected Result** | Template parameters, guardrails, version |
 | **Notes** | The tool supports partial matching - "AKS" will find "aks-standard". First run `list_service_templates` to see available template names. |
 
 ### Test Case 7.3: Find Matching Template
@@ -511,10 +393,10 @@ The Compliance Agent supports two scan types:
 ### Test Case 7.3: Find Matching Template
 | Field | Value |
 |-------|-------|
-| **Query** | `I need an environment for a FedRAMP High Compliant Landing Zone` |
+| **Query** | `I need an environment for a secure landing zone` |
 | **Tool Called** | `find_matching_template` |
-| **Parameters** | `requirements: "FedRAMP High Compliant "` |
-| **Expected Result** | Recommended templates (FedRAMP High Compliant Environment) with suitability scores |
+| **Parameters** | `requirements: "secure landing zone"` |
+| **Expected Result** | Recommended templates (Secure Landing Zone) with suitability scores |
 
 ### Test Case 7.4: Create Environment from Template
 | Field | Value |
@@ -581,23 +463,23 @@ These test cases involve the orchestrator routing to multiple agents.
 ### Test Case M.1: End-to-End Deployment
 | Field | Value |
 |-------|-------|
-| **Query** | `Create a compliant storage account, scan it, and show costs` |
-| **Agents Involved** | Infrastructure → Compliance → Cost Management |
-| **Expected Flow** | 1. Generate template, 2. Provision, 3. Scan compliance, 4. Show cost |
+| **Query** | `Create a secure storage account, scan it, and show costs` |
+| **Agents Involved** | Infrastructure → Security → Cost Management |
+| **Expected Flow** | 1. Generate template, 2. Provision, 3. Scan security, 4. Show cost |
 
-### Test Case M.2: Discovery + Compliance
+### Test Case M.2: Discovery + Security
 | Field | Value |
 |-------|-------|
-| **Query** | `Find all storage accounts and check their compliance` |
-| **Agents Involved** | Discovery → Compliance |
-| **Expected Flow** | 1. List storage accounts, 2. Assess each for compliance |
+| **Query** | `Find all storage accounts and check their security posture` |
+| **Agents Involved** | Discovery → Security |
+| **Expected Flow** | 1. List storage accounts, 2. Assess security posture |
 
-### Test Case M.3: Knowledge + Compliance
+### Test Case M.3: Knowledge + Security
 | Field | Value |
 |-------|-------|
-| **Query** | `Explain SC-28 and then check if my resources comply` |
-| **Agents Involved** | KnowledgeBase → Compliance |
-| **Expected Flow** | 1. Explain SC-28 control, 2. Run assessment for SC family |
+| **Query** | `Help me understand the security agent and then check my posture` |
+| **Agents Involved** | KnowledgeBase → Security |
+| **Expected Flow** | 1. Explain security capabilities, 2. Run security assessment |
 
 ---
 
@@ -643,7 +525,7 @@ For each agent, verify:
 - [ ] Error messages are helpful
 - [ ] Response includes agent attribution
 - [ ] Templates are properly formatted (Bicep/Terraform)
-- [ ] Compliance findings include severity and remediation
+- [ ] Security findings include severity and remediation
 
 ---
 
@@ -656,17 +538,17 @@ For each agent, verify:
 | "find storage accounts" | Discovery Agent |
 | "create a VM" | Infrastructure Agent |
 | "generate bicep" | Infrastructure Agent |
-| "scan for compliance" | Compliance Agent |
-| "policy compliance scan" | Compliance Agent |
-| "Azure Policy compliance" | Compliance Agent |
-| "remediate finding" | Compliance Agent |
-| "generate SSP" | Compliance Agent |
-| "generate POA&M" | Compliance Agent |
+| "scan for compliance" | Security Agent |
+| "policy compliance scan" | Security Agent |
+| "Azure Policy compliance" | Security Agent |
+| "remediate finding" | Security Agent |
+| "generate SSP" | Security Agent |
+| "generate POA&M" | Security Agent |
 | "what are my costs" | Cost Management Agent |
 | "optimize spending" | Cost Management Agent |
-| "what is AC-2" | KnowledgeBase Agent |
-| "explain NIST" | KnowledgeBase Agent |
-| "how does RMF work" | KnowledgeBase Agent |
+| "what is the platform" | KnowledgeBase Agent |
+| "help me understand" | KnowledgeBase Agent |
+| "how does RMF work" | Security Agent |
 | "show service templates" | Environment Agent |
 | "create environment" | Environment Agent |
 | "detect drift" | Environment Agent |
@@ -675,28 +557,6 @@ For each agent, verify:
 ---
 
 ## Troubleshooting
-
-### Compliance Agent - POA&M Shows Placeholder Data
-
-**Problem**: POA&M shows generic findings (AC-2, AU-6) instead of real scan data.
-
-**Causes & Solutions**:
-
-1. **No scan run first**: Run a compliance scan before generating documents:
-   ```
-   "Scan my subscription for policy compliance"
-   ```
-   Then generate POA&M:
-   ```
-   "Generate a POA&M for MySystem"
-   ```
-
-2. **Conversation context lost**: The assessment is cached per conversation. If you start a new conversation, run the scan again.
-
-3. **Check logs for caching**: Look for "Cached policy scan result" in MCP logs:
-   ```bash
-   docker logs pec-mcp 2>&1 | grep "Cached policy"
-   ```
 
 ### Environment Agent - No Templates Found
 

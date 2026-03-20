@@ -29,8 +29,9 @@ public class IaCTemplate
     [MaxLength(50)]
     public string Region { get; set; } = string.Empty;
 
-    /// <summary>Compliance framework used for annotations.</summary>
-    public ComplianceFramework? Framework { get; set; }
+    /// <summary>Compliance framework used for annotations (legacy string, nullable).</summary>
+    [MaxLength(100)]
+    public string? Framework { get; set; }
 
     /// <summary>Generated Bicep content.</summary>
     public string? ContentBicep { get; set; }

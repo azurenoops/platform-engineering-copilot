@@ -21,6 +21,10 @@ Auto-generated from all feature plans. Last updated: 2026-02-22
 - Browser localStorage (settings persistence only) (004-admin-client)
 - C# / .NET 9.0 (net9.0) + Microsoft.Extensions.Caching.Memory (new), Microsoft.Extensions.Http.Polly (new), System.Diagnostics.Activity (BCL), xUnit 2.9.2, FluentAssertions 7.0.0, Moq 4.20.72 (005-nist-controls-foundation)
 - IMemoryCache (in-memory), embedded JSON resources, offline fallback JSON file (005-nist-controls-foundation)
+- C# / .NET 9.0 (net9.0) + Azure.ResourceManager.* (ARM SDK), Azure.ResourceManager.PolicyInsights, Azure.ResourceManager.SecurityCenter, Azure.Storage.Blobs, Entity Framework Core 9.0, Microsoft.Extensions.Caching.Memory, Polly v8 (006-ato-compliance-engine)
+- SQL Server via EF Core (existing `PlatformEngineeringCopilotContext` with 18 DbSets), Azure Blob Storage (new — for evidence packages and certificates) (006-ato-compliance-engine)
+- C# / .NET 9.0 + Microsoft.Extensions.AI, Azure.AI.OpenAI, Azure.ResourceManager, Entity Framework Core, SignalR, ModelContextProtocol SDK 0.4.0-preview.2 (007-remove-ato-compliance)
+- EF Core with SQL Server (InMemory for tests); Azure Blob Storage (evidence — being removed) (007-remove-ato-compliance)
 
 ## Project Structure
 
@@ -66,9 +70,9 @@ docker compose -f docker-compose.mcp.yml up
 - **Testing**: Test-first (Constitution Principle III — NON-NEGOTIABLE). 80%+ unit coverage.
 
 ## Recent Changes
+- 007-remove-ato-compliance: Added C# / .NET 9.0 + Microsoft.Extensions.AI, Azure.AI.OpenAI, Azure.ResourceManager, Entity Framework Core, SignalR, ModelContextProtocol SDK 0.4.0-preview.2
+- 006-ato-compliance-engine: Added C# / .NET 9.0 (net9.0) + Azure.ResourceManager.* (ARM SDK), Azure.ResourceManager.PolicyInsights, Azure.ResourceManager.SecurityCenter, Azure.Storage.Blobs, Entity Framework Core 9.0, Microsoft.Extensions.Caching.Memory, Polly v8
 - 005-nist-controls-foundation: Added C# / .NET 9.0 (net9.0) + Microsoft.Extensions.Caching.Memory (new), Microsoft.Extensions.Http.Polly (new), System.Diagnostics.Activity (BCL), xUnit 2.9.2, FluentAssertions 7.0.0, Moq 4.20.72
-- 004-admin-client: Added C# / .NET 9.0 + Blazor WebAssembly 9.0.x, Blazored.Toast 4.2.1, Blazored.Modal 7.3.1, Blazored.LocalStorage 4.5.0, Bootstrap 5.3.2 (CDN), Font Awesome 6.5.1 (CDN)
-- 003-admin-api: Added C# 12 / .NET 9.0 + ASP.NET Core 9.0, EF Core 9.0 (SQL Server + InMemory), Serilog.AspNetCore, Swashbuckle.AspNetCore, Microsoft.AspNetCore.Authentication.JwtBearer, Azure.Identity
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

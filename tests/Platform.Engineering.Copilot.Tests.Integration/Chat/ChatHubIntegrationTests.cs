@@ -48,11 +48,11 @@ public class ChatHubIntegrationTests
 
         var logger = new Mock<ILogger<ChatHub>>();
 
-        // Create orchestrator with a mock agent that matches "compliance" keyword
+        // Create orchestrator with a mock agent that matches "security" keyword
         _orchestrator = new PlatformOrchestrator(new Mock<ILogger<PlatformOrchestrator>>().Object);
 
         // Register a mock agent for testing
-        var mockAgent = CreateMockComplianceAgent();
+        var mockAgent = CreateMockSecurityAgent();
         _orchestrator.RegisterAgent(mockAgent);
 
         _hub = new ChatHub(_orchestrator, logger.Object);
@@ -78,7 +78,7 @@ public class ChatHubIntegrationTests
             var message = new ChatMessage
             {
                 ConversationId = conversationId,
-                Content = $"compliance check message {i}"
+                Content = $"security check message {i}"
             };
             await _hub.SendMessage(message);
         }
@@ -88,7 +88,7 @@ public class ChatHubIntegrationTests
         var lastResult = await _hub.SendMessage(new ChatMessage
         {
             ConversationId = conversationId,
-            Content = "compliance final message"
+            Content = "security final message"
         });
 
         lastResult.Should().NotBeNullOrEmpty("correlation ID proves the session is still active");
@@ -105,7 +105,7 @@ public class ChatHubIntegrationTests
             var id = await _hub.SendMessage(new ChatMessage
             {
                 ConversationId = conversationId,
-                Content = $"compliance message {i}"
+                Content = $"security message {i}"
             });
             correlationIds.Add(id);
         }
@@ -117,8 +117,8 @@ public class ChatHubIntegrationTests
     [Fact]
     public async Task SessionContext_DifferentConversations_AreIsolated()
     {
-        var id1 = await _hub.SendMessage(new ChatMessage { ConversationId = "conv-A", Content = "compliance first" });
-        var id2 = await _hub.SendMessage(new ChatMessage { ConversationId = "conv-B", Content = "compliance second" });
+        var id1 = await _hub.SendMessage(new ChatMessage { ConversationId = "conv-A", Content = "security first" });
+        var id2 = await _hub.SendMessage(new ChatMessage { ConversationId = "conv-B", Content = "security second" });
 
         id1.Should().NotBe(id2);
     }
@@ -132,7 +132,7 @@ public class ChatHubIntegrationTests
         var correlationId = await _hub.SendMessage(new ChatMessage
         {
             ConversationId = "md-table",
-            Content = "compliance assessment"
+            Content = "security assessment"
         });
 
         var receiveMessages = _sentMessages
@@ -148,7 +148,7 @@ public class ChatHubIntegrationTests
         var correlationId = await _hub.SendMessage(new ChatMessage
         {
             ConversationId = "md-tokens",
-            Content = "compliance check"
+            Content = "security check"
         });
 
         var streamTokens = _sentMessages
@@ -165,7 +165,7 @@ public class ChatHubIntegrationTests
         var correlationId = await _hub.SendMessage(new ChatMessage
         {
             ConversationId = "severity-test",
-            Content = "compliance assessment"
+            Content = "security assessment"
         });
 
         correlationId.Should().NotBeNullOrEmpty();
@@ -181,7 +181,7 @@ public class ChatHubIntegrationTests
         await _hub.SendMessage(new ChatMessage
         {
             ConversationId = "stream-order",
-            Content = "compliance analysis"
+            Content = "security analysis"
         });
 
         var tokens = _sentMessages
@@ -201,7 +201,7 @@ public class ChatHubIntegrationTests
         await _hub.SendMessage(new ChatMessage
         {
             ConversationId = "stream-complete",
-            Content = "compliance report"
+            Content = "security report"
         });
 
         var tokens = _sentMessages
@@ -218,7 +218,7 @@ public class ChatHubIntegrationTests
         await _hub.SendMessage(new ChatMessage
         {
             ConversationId = "stream-after",
-            Content = "compliance check"
+            Content = "security check"
         });
 
         var streamIndices = _sentMessages
@@ -304,7 +304,7 @@ public class ChatHubIntegrationTests
         {
             CorrelationId = "test-corr-001",
             Confirmed = true,
-            Justification = "Approved by compliance officer"
+            Justification = "Approved by security lead"
         });
 
         var msg = _sentMessages.FirstOrDefault(m => m.Method == "ReceiveMessage");
@@ -351,35 +351,35 @@ public class ChatHubIntegrationTests
         error.Method.Should().Be("ErrorNotification");
     }
 
-    // ─── Helper: Create a mock compliance agent ───
+    // ─── Helper: Create a mock security agent ───
 
-    private BaseAgent CreateMockComplianceAgent()
+    private BaseAgent CreateMockSecurityAgent()
     {
-        return new TestComplianceAgent(NullLogger.Instance);
+        return new TestSecurityAgent(NullLogger.Instance);
     }
 
-    private class TestComplianceAgent : BaseAgent
+    private class TestSecurityAgent : BaseAgent
     {
-        public override string AgentId => "compliance";
-        public override string AgentName => "Compliance Agent";
-        public override string Description => "Test compliance agent for integration tests.";
-        public override IReadOnlyList<string> Keywords => new[] { "compliance", "nist", "fedramp", "assessment", "audit" };
+        public override string AgentId => "security";
+        public override string AgentName => "Security Agent";
+        public override string Description => "Test security agent for integration tests.";
+        public override IReadOnlyList<string> Keywords => new[] { "security", "defender", "vulnerability", "assessment", "threat" };
         public override PimTier RequiredPimTier => PimTier.Read;
 
-        public TestComplianceAgent(ILogger logger) : base(logger)
+        public TestSecurityAgent(ILogger logger) : base(logger)
         {
-            RegisterTool(new TestComplianceTool(NullLogger.Instance));
+            RegisterTool(new TestSecurityTool(NullLogger.Instance));
         }
 
-        public override string GetSystemPrompt() => "Test compliance agent for integration tests.";
+        public override string GetSystemPrompt() => "Test security agent for integration tests.";
     }
 
-    private class TestComplianceTool : BaseTool
+    private class TestSecurityTool : BaseTool
     {
-        public TestComplianceTool(ILogger logger) : base(logger) { }
+        public TestSecurityTool(ILogger logger) : base(logger) { }
 
-        public override string Name => "test_compliance_check";
-        public override string Description => "Test compliance check tool";
+        public override string Name => "test_security_check";
+        public override string Description => "Test security check tool";
         public override string Parameters => """{"type":"object","properties":{"query":{"type":"string"}}}""";
 
         public override Task<string> ExecuteAsync(
@@ -387,7 +387,7 @@ public class ChatHubIntegrationTests
             IProgress<ProgressUpdate>? progress = null,
             CancellationToken cancellationToken = default)
         {
-            return Task.FromResult("""{"status":"success","complianceScore":89.7,"framework":"NIST 800-53 Rev5","findings":[{"severity":"High","description":"Test finding"}]}""");
+            return Task.FromResult("""{"status":"success","securityScore":89.7,"threats":[{"severity":"High","description":"Test threat"}]}""");
         }
     }
 }

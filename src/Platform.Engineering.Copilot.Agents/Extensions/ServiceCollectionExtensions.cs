@@ -3,9 +3,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Platform.Engineering.Copilot.Agents.Compliance;
-using Platform.Engineering.Copilot.Agents.Compliance.Services;
-using Platform.Engineering.Copilot.Agents.Compliance.Tools;
 using Platform.Engineering.Copilot.Agents.Configuration;
 using Platform.Engineering.Copilot.Agents.Configuration.Tools;
 using Platform.Engineering.Copilot.Agents.CostManagement;
@@ -17,11 +14,9 @@ using Platform.Engineering.Copilot.Agents.Environment.Tools;
 using Platform.Engineering.Copilot.Agents.Infrastructure;
 using Platform.Engineering.Copilot.Agents.Infrastructure.Tools;
 using Platform.Engineering.Copilot.Agents.KnowledgeBase;
-using Platform.Engineering.Copilot.Agents.KnowledgeBase.Tools;
 using Platform.Engineering.Copilot.Agents.Security;
 using Platform.Engineering.Copilot.Agents.Security.Tools;
 using Platform.Engineering.Copilot.Core.Agents;
-using Platform.Engineering.Copilot.Core.Configuration;
 using Platform.Engineering.Copilot.Core.Data.Services;
 using Platform.Engineering.Copilot.Core.Observability;
 using Platform.Engineering.Copilot.Core.Services;
@@ -47,17 +42,8 @@ public static class ServiceCollectionExtensions
         services.Configure<AzureOpenAIOptions>(
             configuration.GetSection(AzureOpenAIOptions.SectionName));
 
-        // ─── NIST Controls Configuration & Caching ───
-        services.AddMemoryCache();
-        services.AddOptions<NistControlsOptions>()
-            .Bind(configuration.GetSection(NistControlsOptions.SectionName))
-            .ValidateDataAnnotations()
-            .ValidateOnStart();
-
         // ─── Core Services ───
-        services.AddSingleton<ComplianceMetricsService>();
-        services.AddSingleton<INistService, NistService>();
-        services.AddHostedService<NistControlsCacheWarmupService>();
+        services.AddMemoryCache();
         services.AddSingleton<HealthCheckService>();
         services.AddSingleton<MetricsService>();
         services.AddSingleton<AuditLogService>();
@@ -75,51 +61,6 @@ public static class ServiceCollectionExtensions
             return factory.CreateChatClient();
         });
 
-        // ─── Compliance Agent (16 tools) ───
-        services.AddSingleton<ComplianceAssessTool>();
-        services.AddSingleton<ComplianceGetControlFamilyTool>();
-        services.AddSingleton<ComplianceStatusTool>();
-        services.AddSingleton<ComplianceHistoryTool>();
-        services.AddSingleton<ComplianceRemediateTool>();
-        services.AddSingleton<ComplianceValidateRemediationTool>();
-        services.AddSingleton<ComplianceGeneratePlanTool>();
-        services.AddSingleton<ComplianceCollectEvidenceTool>();
-        services.AddSingleton<ComplianceGenerateDocumentTool>();
-        services.AddSingleton<ComplianceAuditLogTool>();
-        services.AddSingleton<ComplianceChatTool>();
-        services.AddSingleton<ComplianceMapControlsTool>();
-        services.AddSingleton<ComplianceCompareFrameworksTool>();
-        services.AddSingleton<ComplianceDashboardTool>();
-        services.AddSingleton<ComplianceExportTool>();
-        services.AddSingleton<ComplianceMonitoringTool>();
-        services.AddSingleton<ComplianceAgent>(sp =>
-        {
-            var tools = new BaseTool[]
-            {
-                sp.GetRequiredService<ComplianceAssessTool>(),
-                sp.GetRequiredService<ComplianceGetControlFamilyTool>(),
-                sp.GetRequiredService<ComplianceStatusTool>(),
-                sp.GetRequiredService<ComplianceHistoryTool>(),
-                sp.GetRequiredService<ComplianceRemediateTool>(),
-                sp.GetRequiredService<ComplianceValidateRemediationTool>(),
-                sp.GetRequiredService<ComplianceGeneratePlanTool>(),
-                sp.GetRequiredService<ComplianceCollectEvidenceTool>(),
-                sp.GetRequiredService<ComplianceGenerateDocumentTool>(),
-                sp.GetRequiredService<ComplianceAuditLogTool>(),
-                sp.GetRequiredService<ComplianceChatTool>(),
-                sp.GetRequiredService<ComplianceMapControlsTool>(),
-                sp.GetRequiredService<ComplianceCompareFrameworksTool>(),
-                sp.GetRequiredService<ComplianceDashboardTool>(),
-                sp.GetRequiredService<ComplianceExportTool>(),
-                sp.GetRequiredService<ComplianceMonitoringTool>()
-            };
-            return new ComplianceAgent(
-                sp.GetRequiredService<ILogger<ComplianceAgent>>(),
-                tools,
-                sp.GetService<IChatClient>(),
-                sp.GetRequiredService<IOptions<AzureOpenAIOptions>>());
-        });
-
         // ─── Configuration Agent (1 tool) ───
         services.AddSingleton<ConfigurationManageTool>();
         services.AddSingleton<ConfigurationAgent>(sp =>
@@ -131,30 +72,12 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<IOptions<AzureOpenAIOptions>>());
         });
 
-        // ─── Knowledge Base Agent (8 tools) ───
-        services.AddSingleton<ExplainControlTool>();
-        services.AddSingleton<CompareFrameworksTool>();
-        services.AddSingleton<SearchControlsTool>();
-        services.AddSingleton<GetStigGuidanceTool>();
-        services.AddSingleton<GetAtoChecklistTool>();
-        services.AddSingleton<FrameworkSummaryTool>();
-        services.AddSingleton<ControlMappingTool>();
-        services.AddSingleton<ImplementationExamplesTool>();
+        // ─── Knowledge Base Agent (shell — no tools) ───
         services.AddSingleton<KnowledgeBaseAgent>(sp =>
         {
             return new KnowledgeBaseAgent(
                 sp.GetRequiredService<ILogger<KnowledgeBaseAgent>>(),
-                new BaseTool[]
-                {
-                    sp.GetRequiredService<ExplainControlTool>(),
-                    sp.GetRequiredService<CompareFrameworksTool>(),
-                    sp.GetRequiredService<SearchControlsTool>(),
-                    sp.GetRequiredService<GetStigGuidanceTool>(),
-                    sp.GetRequiredService<GetAtoChecklistTool>(),
-                    sp.GetRequiredService<FrameworkSummaryTool>(),
-                    sp.GetRequiredService<ControlMappingTool>(),
-                    sp.GetRequiredService<ImplementationExamplesTool>()
-                },
+                Array.Empty<BaseTool>(),
                 sp.GetService<IChatClient>(),
                 sp.GetRequiredService<IOptions<AzureOpenAIOptions>>());
         });
@@ -296,7 +219,6 @@ public static class ServiceCollectionExtensions
                 chatClient);
 
             // Register all agents with the orchestrator
-            orchestrator.RegisterAgent(sp.GetRequiredService<ComplianceAgent>());
             orchestrator.RegisterAgent(sp.GetRequiredService<ConfigurationAgent>());
             orchestrator.RegisterAgent(sp.GetRequiredService<KnowledgeBaseAgent>());
             orchestrator.RegisterAgent(sp.GetRequiredService<InfrastructureAgent>());

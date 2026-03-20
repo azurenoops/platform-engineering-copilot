@@ -7,18 +7,18 @@
 
 ## Documentation Overview
 
-Welcome to the Platform Engineering Copilot documentation. This AI-powered platform helps teams manage Azure Government infrastructure, ensure NIST 800-53 compliance, and optimize cloud costs through natural language interactions.
+Welcome to the Platform Engineering Copilot documentation. This AI-powered platform helps teams manage Azure Government infrastructure, enforce security best practices, and optimize cloud costs through natural language interactions.
 
 ### What is Platform Engineering Copilot?
 
 An MCP-centric multi-agent platform built on .NET 9.0 that orchestrates **7 specialized AI agents** for:
 
-- **Compliance**: NIST 800-53 assessments, FedRAMP, remediation, and ATO documentation
+- **Security**: Security posture assessment, Defender for Cloud integration, vulnerability scanning
 - **Infrastructure**: Bicep/Terraform generation, Azure provisioning, scaling analysis
 - **Cost Management**: Cost analysis, optimization, budgets, and forecasting
 - **Discovery**: Resource inventory, health monitoring, dependency mapping
 - **Environments**: Platform Engineering templates, lifecycle management, drift detection
-- **Knowledge Base**: Compliance education, NIST controls, STIG, RMF guidance
+- **Knowledge Base**: Platform knowledge shell — future MCP integration
 - **Configuration**: Azure subscription and settings management
 
 ---
@@ -106,12 +106,12 @@ curl http://localhost:5100/health
 │  └─────────────────────────────────────────────────────────────┘│
 │                                                                  │
 │  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐       │
-│  │Compliance │ │Infrastructure│ │   Cost  │ │ Discovery │       │
-│  │  12 tools │ │   6 tools  │ │  6 tools │ │  9 tools  │       │
+│  │ Security  │ │Infrastructure│ │   Cost  │ │ Discovery │       │
+│  │  6 tools  │ │   6 tools  │ │  6 tools │ │  9 tools  │       │
 │  └───────────┘ └───────────┘ └───────────┘ └───────────┘       │
 │  ┌───────────┐ ┌───────────┐ ┌───────────┐                     │
 │  │Environment│ │KnowledgeBase│ │  Config  │                     │
-│  │  10 tools │ │   8 tools  │ │  1 tool  │                     │
+│  │  10 tools │ │   0 tools  │ │  1 tool  │                     │
 │  └───────────┘ └───────────┘ └───────────┘                     │
 └─────────────────────────────────────────────────────────────────┘
                               │
@@ -127,11 +127,11 @@ curl http://localhost:5100/health
 
 ## Example Queries
 
-**Compliance:**
+**Security:**
 ```
-"Run NIST 800-53 compliance scan"
-"Start remediation for high-priority findings"
-"Generate SSP document for my subscription"
+"What's my security posture?"
+"Run a vulnerability scan"
+"Show Defender for Cloud recommendations"
 ```
 
 **Infrastructure:**
@@ -164,12 +164,12 @@ All configuration is in `appsettings.json` at the repository root:
 ```json
 {
   "AgentConfiguration": {
-    "ComplianceAgent": { "Enabled": true, "Temperature": 0.2 },
     "InfrastructureAgent": { "Enabled": true, "Temperature": 0.4 },
     "CostManagementAgent": { "Enabled": true, "Temperature": 0.3 },
     "DiscoveryAgent": { "Enabled": true, "Temperature": 0.3 },
     "EnvironmentAgent": { "Enabled": true, "Temperature": 0.3 },
-    "KnowledgeBaseAgent": { "Enabled": true, "Temperature": 0.2 }
+    "KnowledgeBaseAgent": { "Enabled": true, "Temperature": 0.2 },
+    "SecurityAgent": { "Enabled": true, "Temperature": 0.3 }
   }
 }
 ```

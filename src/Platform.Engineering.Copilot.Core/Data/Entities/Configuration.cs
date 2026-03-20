@@ -22,12 +22,6 @@ public class Configuration
 
     public CloudEnvironment CloudEnvironment { get; set; } = CloudEnvironment.AzureUSGovernment;
 
-    public ComplianceFramework DefaultFramework { get; set; } = ComplianceFramework.Nist80053Rev5;
-
-    public BaselineLevel Baseline { get; set; } = BaselineLevel.High;
-
-    public ScanType DefaultScanType { get; set; } = ScanType.Combined;
-
     [MaxLength(50)]
     public string DefaultRegion { get; set; } = "usgovvirginia";
 

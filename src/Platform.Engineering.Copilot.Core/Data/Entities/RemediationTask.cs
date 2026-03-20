@@ -64,7 +64,6 @@ public class RemediationTask
 
     // Navigation
     public RemediationBoard Board { get; set; } = null!;
-    public ComplianceFinding Finding { get; set; } = null!;
     public User? Assignee { get; set; }
     public ICollection<TaskComment> Comments { get; set; } = new List<TaskComment>();
 

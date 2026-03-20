@@ -271,12 +271,6 @@ vi appsettings.json
       "MaxTokens": 4000,
       "DefaultRegion": "usgovvirginia"
     },
-    "ComplianceAgent": {
-      "Enabled": true,
-      "Temperature": 0.2,
-      "MaxTokens": 4000,
-      "DefaultFramework": "NIST80053"
-    },
     "CostManagementAgent": {
       "Enabled": true,
       "Temperature": 0.3,
@@ -738,29 +732,27 @@ Each specialized agent has different LLM requirements:
 ```bash
 # Infrastructure Agent Functions:
 - generate_infrastructure_template         # Bicep/Terraform generation
-- generate_compliant_infrastructure_template  # FedRAMP/NIST templates
-- generate_il_compliant_template           # DoD Impact Level templates
+- generate_secure_infrastructure_template   # Security-hardened templates
 - design_network_topology                  # Network architecture
 - set_azure_subscription                   # Context configuration
 - search_azure_documentation               # Live Azure docs
 ```
 
-#### 3. **Compliance Agent** 🛡️
+#### 3. **Security Agent** 🛡️
 - **Model**: GPT-4o or GPT-4 Turbo
-- **Context Window**: 128K tokens (for NIST 800-53 control mappings)
-- **Temperature**: 0.0 (strict compliance assessment)
-- **Function Calling**: Required (10+ kernel functions)
-- **Why**: Analyzes compliance gaps, maps NIST controls, validates configurations
+- **Context Window**: 128K tokens
+- **Temperature**: 0.0 (strict security assessment)
+- **Function Calling**: Required (6+ kernel functions)
+- **Why**: Assesses security posture, integrates Defender for Cloud, scans vulnerabilities
 - **Token Usage**: Medium (1000-5000 tokens per scan)
-- **Knowledge Base**: 1000+ NIST controls, 500+ STIG rules
 
 ```bash
-# Compliance Agent Functions:
-- assess_nist_compliance                   # NIST 800-53 gap analysis
-- scan_code_for_compliance                 # IaC compliance scanning
-- generate_ato_documentation               # ATO package generation
-- query_knowledge_base                     # DoD/Navy requirements
-- review_pull_request                      # PR compliance review
+# Security Agent Functions:
+- get_security_posture                     # Security posture assessment
+- run_vulnerability_scan                   # Vulnerability scanning
+- get_policy_compliance                    # Azure Policy status
+- get_security_recommendations             # Defender recommendations
+- get_threat_alerts                        # Active threat alerts
 ```
 
 #### 4. **Cost Management Agent** 💰
@@ -822,7 +814,6 @@ Each specialized agent has different LLM requirements:
 ```bash
 # Document Agent Functions:
 - generate_architecture_diagram            # Mermaid diagrams
-- generate_ssp_document                    # System Security Plan
 - generate_runbook                         # Operations runbook
 - search_documentation                     # Doc search
 ```
@@ -835,8 +826,7 @@ Each specialized agent has different LLM requirements:
 |-----------|----------------|-----------------|---------------------|
 | Simple query | 100-500 | 50-200 | ~$0.002 |
 | Template generation | 2000-5000 | 2000-6000 | ~$0.04-$0.08 |
-| Compliance scan | 3000-8000 | 1000-4000 | ~$0.05-$0.10 |
-| ATO documentation | 5000-15000 | 8000-20000 | ~$0.15-$0.30 |
+| Security scan | 3000-8000 | 1000-4000 | ~$0.05-$0.10 |
 | Multi-agent workflow | 8000-20000 | 5000-15000 | ~$0.15-$0.30 |
 
 **Cost Optimization Tips:**
@@ -855,7 +845,7 @@ Each specialized agent has different LLM requirements:
 |-------|-------------|-----------|
 | Orchestrator | 0.0 | Deterministic routing decisions |
 | Infrastructure | 0.2 | Balance creativity and accuracy for code generation |
-| Compliance | 0.0 | Strict, deterministic compliance assessment |
+| Security | 0.0 | Strict, deterministic security assessment |
 | Cost Management | 0.1 | Precise analysis with slight flexibility |
 | Discovery | 0.0 | Accurate resource queries and inventory |
 | Security | 0.0 | Precise security scanning and threat detection |
@@ -884,7 +874,7 @@ Each specialized agent has different LLM requirements:
 #### Azure Government vs Commercial
 - **Azure Government**: GPT-4o, GPT-4 Turbo available in `usgovvirginia`, `usgovarizona`
 - **Endpoint**: Use `.azure.us` domain (e.g., `https://your-resource.openai.azure.us/`)
-- **Compliance**: FedRAMP High authorized, IL4/IL5 compatible
+- **Security**: FedRAMP High authorized, IL4/IL5 compatible
 - **Latency**: Slightly higher than commercial (50-100ms additional)
 
 ### Environment Variables Reference
@@ -902,7 +892,7 @@ AZURE_OPENAI_USE_MANAGED_IDENTITY=true
 
 # Optional - Model overrides per agent
 INFRASTRUCTURE_AGENT_MODEL=gpt-4o
-COMPLIANCE_AGENT_MODEL=gpt-4o
+SECURITY_AGENT_MODEL=gpt-4o
 COST_AGENT_MODEL=gpt-4-turbo
 ```
 
@@ -1001,7 +991,7 @@ curl -X POST http://localhost:5100/mcp/chat \
 # Try these queries:
 # - "Show me all VMs in my subscription"
 # - "Analyze costs for resource group rg-prod"
-# - "Check compliance status for AKS clusters"
+# - "Check security posture for my subscription"
 # - "Generate a Bicep template for a web app"
 ```
 
@@ -1116,29 +1106,17 @@ dotnet test Platform.Engineering.Copilot.sln
 
 ---
 
-### Compliance & Security
+### Security
 
-**RMF/STIG Compliance Check**
+**Security Posture Check**
 ```bash
-"Check NIST 800-53 compliance for AKS cluster aks-prod"
+"Check security posture for my subscription"
 
 # Returns:
-# - Control family assessment (AC, AU, CM, IA, etc.)
-# - Gap analysis
-# - Non-compliant configurations
+# - Defender for Cloud secure score
+# - Security recommendations
+# - Vulnerability findings
 # - Remediation steps
-# - STIG checklist status
-```
-
-**NIST Control Lookup**
-```bash
-"Show me all NIST 800-53 controls for Azure SQL Database"
-
-# Returns:
-# - Applicable controls (AC-2, AC-3, AU-2, etc.)
-# - Implementation guidance
-# - Azure Policy mappings
-# - DoD STIG mappings
 ```
 
 **Vulnerability Scan**
@@ -1154,21 +1132,9 @@ dotnet test Platform.Engineering.Copilot.sln
 # - Severity ratings (Critical, High, Medium, Low)
 ```
 
-**ATO Documentation Generation**
-```bash
-"Generate ATO documentation package for subscription xyz including:
-- System Security Plan (SSP)
-- Security Assessment Report (SAR)
-- Plan of Action & Milestones (POA&M)
-- Control Implementation Summary"
-
-# Generates complete ATO package with NIST/STIG mappings
-```
-
 **📖 Learn more:** 
-- [KNOWLEDGE-BASE.md](./KNOWLEDGE-BASE.md) - Complete RMF/STIG compliance guide
-- [PHASE1.md](./PHASE1.md) - Current compliance status (98%)
-- [KNOWLEDGE-BASE-INTEGRATION-GUIDE.md](./KNOWLEDGE-BASE-INTEGRATION-GUIDE.md) - Integration patterns
+- [AGENTS.md](./AGENTS.md) - Complete agent reference
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
 
 ---
 
@@ -1292,16 +1258,14 @@ dotnet test Platform.Engineering.Copilot.sln
 # Generates complete workspace ready to clone
 ```
 
-**DoD Compliant Template**
+**Secure Template**
 ```bash
-"Generate IL5-compliant workspace template including:
-- RMF/STIG baseline configuration
+"Generate secure workspace template including:
+- Security baseline configuration
 - Azure Policy assignments
-- NIST 800-53 control mappings
-- Security documentation templates
-- Compliance checklist"
+- Security documentation templates"
 
-# Creates DoD-ready workspace with compliance baked in
+# Creates security-hardened workspace template
 ```
 
 **Custom Template**
@@ -1385,12 +1349,10 @@ dotnet test Platform.Engineering.Copilot.sln
    - Budget tracking: "Create budget alerts for subscription xyz"
    - Forecasting: "Predict costs for next quarter"
 
-   **Compliance & Security**
-   - RMF/STIG checks: "Check compliance for AKS cluster"
-   - NIST controls: "Show me NIST 800-53 controls for Azure SQL"
+   **Security**
+   - Security posture: "Check security posture for my subscription"
    - Vulnerability scanning: "Scan resource group for security issues"
-   - ATO preparation: "Generate ATO documentation for my environment"
-   - [KNOWLEDGE-BASE.md](./KNOWLEDGE-BASE.md) - Complete compliance guide
+   - [AGENTS.md](./AGENTS.md#security-agent) - Security agent reference
 
    **Resource Discovery**
    - Inventory: "List all VMs in my subscription"
@@ -1407,7 +1369,7 @@ dotnet test Platform.Engineering.Copilot.sln
    **Workspace Creation**
    - One-click templates: "Create workspace for microservice with CI/CD"
    - Custom templates: "Generate workspace with Terraform and GitHub Actions"
-   - DoD compliance: "Create IL5-compliant workspace template"
+   - DoD security: "Create secure workspace template"
    - [WORKSPACE-CREATION.md](./WORKSPACE-CREATION.md)
 
    **Environment Management**
@@ -1431,15 +1393,14 @@ dotnet test Platform.Engineering.Copilot.sln
 3. **Security**
    - [DEPLOYMENT.md](./DEPLOYMENT.md#security-considerations) - HTTPS, secrets management
 
-### For Compliance Teams
+### For Security Teams
 
-1. **Compliance Status**
-   - [PHASE1.md](./PHASE1.md) - Phase 1 status (98% complete)
-   - [PHASE2.md](./PHASE2.md) - Phase 2 roadmap
+1. **Security Status**
+   - [AGENTS.md](./AGENTS.md#security-agent) - Security agent capabilities
 
-2. **RMF/STIG Knowledge Base**
-   - [KNOWLEDGE-BASE.md](./KNOWLEDGE-BASE.md) - Complete compliance guide
-   - [KNOWLEDGE-BASE-INTEGRATION-GUIDE.md](./KNOWLEDGE-BASE-INTEGRATION-GUIDE.md) - Integration patterns
+2. **Platform Knowledge Base**
+   - [AGENTS.md](./AGENTS.md#knowledge-base-agent) - Knowledge base agent
+   - [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
 
 ### For Architects
 
@@ -1569,9 +1530,8 @@ cat src/Platform.Engineering.Copilot.Mcp/appsettings.json | grep AgentConfigurat
 | **[ARCHITECTURE.md](./ARCHITECTURE.md)** | System architecture |
 | **[INTEGRATIONS.md](./INTEGRATIONS.md)** | GitHub Copilot, M365, MCP API |
 | **[AGENT-ORCHESTRATION.md](./AGENT-ORCHESTRATION.md)** | Agent configuration |
-| **[KNOWLEDGE-BASE.md](./KNOWLEDGE-BASE.md)** | RMF/STIG compliance |
+| **[AGENTS.md](./AGENTS.md)** | Agent reference |
 | **[WORKSPACE-CREATION.md](./WORKSPACE-CREATION.md)** | Workspace templates |
-| **[PHASE1.md](./PHASE1.md)** | Compliance status (98%) |
 
 ---
 

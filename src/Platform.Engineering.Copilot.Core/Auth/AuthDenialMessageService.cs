@@ -14,7 +14,6 @@ public static class AuthDenialMessageService
     /// </summary>
     public static readonly UserRole[] RemediationAllowedRoles =
     [
-        UserRole.ComplianceOfficer,
         UserRole.PlatformEngineer
     ];
 

@@ -30,60 +30,6 @@ public class UserTests
     }
 }
 
-public class ComplianceAssessmentTests
-{
-    [Fact]
-    public void Assessment_DefaultStatus_IsRunning()
-    {
-        var assessment = new ComplianceAssessment();
-        assessment.Status.Should().Be(AssessmentStatus.Running);
-    }
-
-    [Fact]
-    public void Assessment_StatusTransition_RunningToCompleted()
-    {
-        var assessment = new ComplianceAssessment { Status = AssessmentStatus.Running };
-        assessment.Status = AssessmentStatus.Completed;
-        assessment.Status.Should().Be(AssessmentStatus.Completed);
-    }
-
-    [Fact]
-    public void Assessment_StatusTransition_RunningToFailed()
-    {
-        var assessment = new ComplianceAssessment { Status = AssessmentStatus.Running };
-        assessment.Status = AssessmentStatus.Failed;
-        assessment.Status.Should().Be(AssessmentStatus.Failed);
-    }
-
-    [Fact]
-    public void Assessment_StatusTransition_RunningToCancelled()
-    {
-        var assessment = new ComplianceAssessment { Status = AssessmentStatus.Running };
-        assessment.Status = AssessmentStatus.Cancelled;
-        assessment.Status.Should().Be(AssessmentStatus.Cancelled);
-    }
-
-    [Fact]
-    public void Assessment_RetentionExpiresAt_Default3Years()
-    {
-        var now = DateTimeOffset.UtcNow;
-        var assessment = new ComplianceAssessment
-        {
-            CreatedAt = now,
-            RetentionExpiresAt = now.AddYears(3)
-        };
-
-        assessment.RetentionExpiresAt.Should().BeCloseTo(now.AddYears(3), TimeSpan.FromSeconds(1));
-    }
-
-    [Fact]
-    public void Assessment_SoftDelete_DefaultFalse()
-    {
-        var assessment = new ComplianceAssessment();
-        assessment.IsDeleted.Should().BeFalse();
-    }
-}
-
 public class RemediationTaskTests
 {
     [Fact]
@@ -281,21 +227,5 @@ public class AuditLogEntryTests
     {
         var entry = new AuditLogEntry();
         entry.IsArchived.Should().BeFalse();
-    }
-}
-
-public class ConfigurationTests
-{
-    [Fact]
-    public void Configuration_DefaultValues_AreCorrect()
-    {
-        var config = new Configuration();
-
-        config.CloudEnvironment.Should().Be(CloudEnvironment.AzureUSGovernment);
-        config.DefaultFramework.Should().Be(ComplianceFramework.Nist80053Rev5);
-        config.Baseline.Should().Be(BaselineLevel.High);
-        config.DefaultScanType.Should().Be(ScanType.Combined);
-        config.DefaultRegion.Should().Be("usgovvirginia");
-        config.DryRunDefault.Should().BeTrue();
     }
 }

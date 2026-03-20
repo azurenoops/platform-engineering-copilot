@@ -58,7 +58,7 @@ public class ChatHubAIIntegrationTests
         _orchestrator = new PlatformOrchestrator(new Mock<ILogger<PlatformOrchestrator>>().Object);
 
         // Register an AI-enabled agent with a mock IChatClient
-        var mockChatClient = new AITestChatClient("Your compliance score is 85%. Everything looks good.");
+        var mockChatClient = new AITestChatClient("Your security score is 85%. Everything looks good.");
         var aiOptions = Options.Create(new AzureOpenAIOptions { AgentAIEnabled = true });
         var aiAgent = new AITestAgent(NullLogger.Instance, mockChatClient, aiOptions);
         _orchestrator.RegisterAgent(aiAgent);
@@ -79,7 +79,7 @@ public class ChatHubAIIntegrationTests
         var correlationId = await _hub.SendMessage(new HubChatMessage
         {
             ConversationId = "ai-test-1",
-            Content = "compliance check"
+            Content = "security check"
         });
 
         correlationId.Should().NotBeNullOrEmpty();
@@ -97,7 +97,7 @@ public class ChatHubAIIntegrationTests
         await _hub.SendMessage(new HubChatMessage
         {
             ConversationId = "ai-text-check",
-            Content = "compliance assessment"
+            Content = "security assessment"
         });
 
         // The ReceiveMessage should include the AI-generated text
@@ -120,14 +120,14 @@ public class ChatHubAIIntegrationTests
         await _hub.SendMessage(new HubChatMessage
         {
             ConversationId = conversationId,
-            Content = "compliance check"
+            Content = "security check"
         });
 
         // Second message to same conversation — proves session stored the first
         var secondCorrelationId = await _hub.SendMessage(new HubChatMessage
         {
             ConversationId = conversationId,
-            Content = "compliance follow-up question"
+            Content = "security follow-up question"
         });
 
         secondCorrelationId.Should().NotBeNullOrEmpty();
@@ -149,7 +149,7 @@ public class ChatHubAIIntegrationTests
         await _hub.SendMessage(new HubChatMessage
         {
             ConversationId = "stream-order-ai",
-            Content = "compliance analysis"
+            Content = "security analysis"
         });
 
         var streamIndices = _sentMessages
@@ -177,7 +177,7 @@ public class ChatHubAIIntegrationTests
         await _hub.SendMessage(new HubChatMessage
         {
             ConversationId = "stream-complete-ai",
-            Content = "compliance report"
+            Content = "security report"
         });
 
         var tokens = _sentMessages
@@ -203,7 +203,7 @@ public class ChatHubAIIntegrationTests
         await _hub.SendMessage(new HubChatMessage
         {
             ConversationId = conversationId,
-            Content = "What is our compliance score?"
+            Content = "What is our security score?"
         });
 
         // First response should be stored
@@ -216,7 +216,7 @@ public class ChatHubAIIntegrationTests
         await _hub.SendMessage(new HubChatMessage
         {
             ConversationId = conversationId,
-            Content = "Can you explain the compliance findings in more detail?"
+            Content = "Can you explain the security findings in more detail?"
         });
 
         // Should now have 2 ReceiveMessage events
@@ -237,7 +237,7 @@ public class ChatHubAIIntegrationTests
             await _hub.SendMessage(new HubChatMessage
             {
                 ConversationId = conversationId,
-                Content = $"compliance question {i}"
+                Content = $"security question {i}"
             });
         }
 
@@ -273,39 +273,39 @@ public class ChatHubAIIntegrationTests
 /// </summary>
 internal class AITestAgent : BaseAgent
 {
-    public override string AgentId => "compliance";
-    public override string AgentName => "AI Compliance Agent";
-    public override string Description => "AI-enabled compliance agent for integration tests.";
-    public override IReadOnlyList<string> Keywords => new[] { "compliance", "nist", "fedramp", "assessment", "audit" };
+    public override string AgentId => "security";
+    public override string AgentName => "AI Security Agent";
+    public override string Description => "AI-enabled security agent for integration tests.";
+    public override IReadOnlyList<string> Keywords => new[] { "security", "defender", "vulnerability", "assessment", "threat" };
     public override PimTier RequiredPimTier => PimTier.Read;
 
     public AITestAgent(ILogger logger, IChatClient? chatClient, IOptions<AzureOpenAIOptions>? aiOptions)
         : base(logger, chatClient, aiOptions)
     {
-        RegisterTool(new AITestComplianceTool());
+        RegisterTool(new AITestSecurityTool());
     }
 
     public override string GetSystemPrompt() =>
-        "You are a compliance agent. Use the compliance_check tool to assess compliance posture.";
+        "You are a security agent. Use the security_check tool to assess security posture.";
 }
 
 /// <summary>
 /// Test tool for AI integration tests.
 /// </summary>
-internal class AITestComplianceTool : BaseTool
+internal class AITestSecurityTool : BaseTool
 {
-    public AITestComplianceTool() : base(NullLogger.Instance) { }
+    public AITestSecurityTool() : base(NullLogger.Instance) { }
 
-    public override string Name => "compliance_check";
-    public override string Description => "Check compliance posture for an environment";
-    public override string Parameters => """{"type":"object","properties":{"query":{"type":"string","description":"Compliance query"}}}""";
+    public override string Name => "security_check";
+    public override string Description => "Check security posture for an environment";
+    public override string Parameters => """{"type":"object","properties":{"query":{"type":"string","description":"Security query"}}}""";
 
     public override Task<string> ExecuteAsync(
         Dictionary<string, object?> parameters,
         IProgress<ProgressUpdate>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult("""{"status":"success","complianceScore":85,"framework":"NIST 800-53 Rev5","findings":[{"severity":"High","description":"MFA not enabled"}]}""");
+        return Task.FromResult("""{"status":"success","securityScore":85,"threats":[{"severity":"High","description":"MFA not enabled"}]}""");
     }
 }
 

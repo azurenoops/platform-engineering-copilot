@@ -7,14 +7,14 @@
 
 ## Overview
 
-The Platform Engineering Copilot is an AI-powered infrastructure and compliance platform built on .NET 9.0. The system uses a **BaseAgent/BaseTool pattern** with specialized AI agents coordinated through a Model Context Protocol (MCP) server.
+The Platform Engineering Copilot is an AI-powered infrastructure and platform management system built on .NET 9.0. The system uses a **BaseAgent/BaseTool pattern** with specialized AI agents coordinated through a Model Context Protocol (MCP) server.
 
 ### Key Characteristics
 
 - **BaseAgent/BaseTool Pattern**: All agents extend `BaseAgent`, all tools extend `BaseTool`
 - **MCP Server**: Dual-mode operation (HTTP:5100 + stdio for AI clients)
-- **Multi-Agent Orchestration**: 7 specialized agents with 52 tools
-- **Azure Government**: Primary target with NIST 800-53 compliance
+- **Multi-Agent Orchestration**: 7 specialized agents
+- **Azure Government**: Primary target for government cloud workloads
 
 ---
 
@@ -44,12 +44,12 @@ The Platform Engineering Copilot is an AI-powered infrastructure and compliance 
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │                 SPECIALIZED AGENTS (7)                      │ │
 │  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │ │
-│  │  │Infrastructure│ │ Compliance │ │    Cost     │           │ │
-│  │  │   Agent (6) │ │ Agent (12) │ │  Agent (6)  │           │ │
+│  │  │Infrastructure│ │  Security   │ │    Cost     │           │ │
+│  │  │   Agent (6) │ │  Agent (6)  │ │  Agent (6)  │           │ │
 │  │  └─────────────┘ └─────────────┘ └─────────────┘           │ │
 │  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │ │
 │  │  │  Discovery  │ │ Environment│ │ Knowledge   │           │ │
-│  │  │   Agent (9) │ │ Agent (10) │ │ Base (8)    │           │ │
+│  │  │   Agent (9) │ │ Agent (10) │ │ Base (0)    │           │ │
 │  │  └─────────────┘ └─────────────┘ └─────────────┘           │ │
 │  │  ┌─────────────┐                                           │ │
 │  │  │Configuration│                                           │ │
@@ -88,7 +88,7 @@ The framework provides two base classes that all agents and tools must extend:
 │    └─ GetSystemPrompt() → string (loaded from embedded resource)  │
 ├──────────────────────────────────────────────────────────────────┤
 │  BaseTool (abstract)                                              │
-│    ├─ Name: string (e.g., "run_compliance_assessment")            │
+│    ├─ Name: string (e.g., "list_azure_resources")            │
 │    ├─ Description: string (shown to LLM for selection)            │
 │    ├─ Parameters: List<ToolParameter>                             │
 │    ├─ ExecuteAsync(arguments) → string (JSON result)              │
@@ -99,28 +99,28 @@ The framework provides two base classes that all agents and tools must extend:
 ### BaseAgent Implementation
 
 ```csharp
-public class ComplianceAgent : BaseAgent
+public class InfrastructureAgent : BaseAgent
 {
-    public override string AgentId => "compliance";
-    public override string AgentName => "Compliance Agent";
-    public override string Description => "NIST 800-53 compliance scanning and remediation";
+    public override string AgentId => "infrastructure";
+    public override string AgentName => "Infrastructure Agent";
+    public override string Description => "Azure provisioning, IaC generation (Bicep/Terraform)";
 
-    public ComplianceAgent(
+    public InfrastructureAgent(
         IChatClient chatClient,
-        ILogger<ComplianceAgent> logger,
-        ComplianceAssessmentTool assessmentTool,
-        BatchRemediationTool remediationTool,
-        DefenderForCloudTool dfcTool
+        ILogger<InfrastructureAgent> logger,
+        GenerateBicepTool bicepTool,
+        GenerateTerraformTool terraformTool,
+        DeployResourceTool deployTool
     ) : base(chatClient, logger)
     {
-        RegisterTool(assessmentTool);
-        RegisterTool(remediationTool);
-        RegisterTool(dfcTool);
+        RegisterTool(bicepTool);
+        RegisterTool(terraformTool);
+        RegisterTool(deployTool);
     }
 
     protected override string GetSystemPrompt()
     {
-        var template = SystemPromptLoader.LoadFromType<ComplianceAgent>("ComplianceAgent.prompt.txt");
+        var template = SystemPromptLoader.LoadFromType<InfrastructureAgent>("InfrastructureAgent.prompt.txt");
         return SystemPromptLoader.ApplyVariables(template ?? "", new Dictionary<string, string>
         {
             ["agentName"] = AgentName,
@@ -133,32 +133,29 @@ public class ComplianceAgent : BaseAgent
 ### BaseTool Implementation
 
 ```csharp
-public class ComplianceAssessmentTool : BaseTool
+public class GenerateBicepTool : BaseTool
 {
-    public override string Name => "run_compliance_assessment";
+    public override string Name => "generate_bicep_template";
     
     public override string Description =>
-        "Run NIST 800-53 compliance assessment against Azure subscription. " +
-        "Use when user asks: 'check compliance', 'run assessment', 'NIST scan'";
+        "Generate Bicep infrastructure-as-code template for Azure resources. " +
+        "Use when user asks: 'create template', 'generate bicep', 'provision resources'";
 
-    public ComplianceAssessmentTool(
-        ILogger<ComplianceAssessmentTool> logger,
-        IAtoComplianceEngine complianceEngine) : base(logger)
+    public GenerateBicepTool(
+        ILogger<GenerateBicepTool> logger) : base(logger)
     {
-        _complianceEngine = complianceEngine;
-        
-        Parameters.Add(new ToolParameter("subscription_id", "Azure subscription ID", false));
-        Parameters.Add(new ToolParameter("resource_group", "Scope to resource group", false));
-        Parameters.Add(new ToolParameter("control_families", "Filter: AC,AU,SC", false));
+        Parameters.Add(new ToolParameter("resource_type", "Azure resource type", true));
+        Parameters.Add(new ToolParameter("region", "Azure region", false));
+        Parameters.Add(new ToolParameter("resource_group", "Target resource group", false));
     }
 
     public override async Task<string> ExecuteAsync(
         IDictionary<string, object?> arguments,
         CancellationToken cancellationToken = default)
     {
-        var subscriptionId = GetRequiredString(arguments, "subscription_id");
-        var result = await _complianceEngine.RunAssessmentAsync(subscriptionId);
-        return ToJson(new { success = true, assessment = result });
+        var resourceType = GetRequiredString(arguments, "resource_type");
+        var template = await GenerateTemplate(resourceType);
+        return ToJson(new { success = true, template });
     }
 }
 ```
@@ -182,7 +179,6 @@ src/
 │   │   └── SystemPromptLoader.cs               # External prompt loader
 │   │
 │   ├── Prompts/                                # Externalized agent prompts
-│   │   ├── ComplianceAgent.prompt.txt
 │   │   ├── InfrastructureAgent.prompt.txt
 │   │   ├── CostManagementAgent.prompt.txt
 │   │   ├── DiscoveryAgent.prompt.txt
@@ -190,16 +186,12 @@ src/
 │   │   ├── KnowledgeBaseAgent.prompt.txt
 │   │   └── ConfigurationAgent.prompt.txt
 │   │
-│   ├── Compliance/                             # Compliance Agent (12 tools)
-│   │   ├── Agents/ComplianceAgent.cs
-│   │   ├── Tools/
-│   │   └── Services/Engines/
-│   │
 │   ├── Infrastructure/                         # Infrastructure Agent (6 tools)
 │   ├── CostManagement/                         # Cost Agent (6 tools)
+│   ├── Security/                               # Security Agent
 │   ├── Discovery/                              # Discovery Agent (9 tools)
 │   ├── Environment/                            # Environment Agent (10 tools)
-│   ├── KnowledgeBase/                          # Knowledge Base Agent (8 tools)
+│   ├── KnowledgeBase/                          # Knowledge Base Agent (shell — no tools)
 │   └── Configuration/                          # Configuration Agent (1 tool)
 │
 ├── Platform.Engineering.Copilot.Core/          # Shared models, interfaces
@@ -217,12 +209,12 @@ src/
 
 | Agent | ID | Tools | Primary Capability |
 |-------|-----|-------|-------------------|
-| **Compliance** | `compliance` | 12 | NIST 800-53 scanning, remediation, DFC integration |
 | **Infrastructure** | `infrastructure` | 6 | Azure provisioning, IaC generation (Bicep/Terraform) |
+| **Security** | `security` | 6 | Security posture management, Defender for Cloud |
 | **Cost** | `cost-management` | 6 | Cost analysis, optimization, budget tracking |
 | **Discovery** | `discovery` | 9 | Resource inventory, health monitoring |
 | **Environment** | `environment` | 10 | Environment lifecycle, drift detection |
-| **Knowledge Base** | `knowledgebase` | 8 | NIST/STIG/RMF compliance education |
+| **Knowledge Base** | `knowledgebase` | 0 | Platform knowledge and documentation (shell — future MCP integration) |
 | **Configuration** | `configuration` | 1 | Subscription configuration |
 
 See [AGENTS.md](./AGENTS.md) for complete tool reference.
@@ -232,32 +224,31 @@ See [AGENTS.md](./AGENTS.md) for complete tool reference.
 ## Request Flow
 
 ```
-User: "Check NIST compliance for my subscription"
+User: "Generate a Bicep template for my storage account"
                     ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │ PlatformAgentGroupChat.InvokeAsync()                            │
 │   └─ PlatformSelectionStrategy.SelectAgentAsync()               │
-│       └─ Fast-path: "compliance" + "NIST" → Compliance Agent    │
+│       └─ Fast-path: "bicep" + "template" → Infrastructure Agent    │
 └─────────────────────────────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│ ComplianceAgent.ProcessAsync(context)                           │
-│   ├─ Load prompt from ComplianceAgent.prompt.txt                │
+│ InfrastructureAgent.ProcessAsync(context)                      │
+│   ├─ Load prompt from InfrastructureAgent.prompt.txt             │
 │   ├─ Include RegisteredTools as AITools                         │
 │   └─ ChatClient.GetResponseAsync(messages, tools)               │
 └─────────────────────────────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│ LLM selects: run_compliance_assessment                          │
-│   Arguments: { subscription_id: "..." }                         │
+│ LLM selects: generate_bicep_template                            │
+│   Arguments: { resource_type: "storage", region: "usgovva" }    │
 └─────────────────────────────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│ ComplianceAssessmentTool.ExecuteAsync()                         │
-│   ├─ Call AtoComplianceEngine.RunAssessmentAsync()              │
-│   ├─ Scan Azure resources via Resource Graph                    │
-│   ├─ Integrate DFC findings for RA/CA families                  │
-│   └─ Return JSON with findings, scores, recommendations         │
+│ GenerateBicepTool.ExecuteAsync()                                │
+│   ├─ Generate Bicep template for requested resource             │
+│   ├─ Apply region and resource group settings                   │
+│   └─ Return JSON with template content                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -268,13 +259,13 @@ User: "Check NIST compliance for my subscription"
 The `PlatformSelectionStrategy` uses keyword matching for instant routing:
 
 ```csharp
-// Compliance patterns
-if (message.ContainsAny("compliance", "nist", "fedramp", "assessment", "remediation"))
-    return ComplianceAgent;
-
 // Infrastructure patterns
 if (message.ContainsAny("create", "deploy", "provision", "terraform", "bicep"))
     return InfrastructureAgent;
+
+// Security patterns
+if (message.ContainsAny("secure", "score", "defender", "security", "vulnerability"))
+    return SecurityAgent;
 
 // Cost patterns
 if (message.ContainsAny("cost", "spending", "budget", "forecast", "optimization"))
@@ -289,7 +280,7 @@ if (message.ContainsAny("environment", "template", "clone", "scale", "drift"))
     return EnvironmentAgent;
 
 // Knowledge patterns
-if (message.ContainsAny("explain", "what is", "stig", "rmf", "impact level"))
+if (message.ContainsAny("knowledge", "documentation", "platform", "help", "guide"))
     return KnowledgeBaseAgent;
 ```
 
@@ -302,20 +293,14 @@ All configuration in `appsettings.json`:
 ```json
 {
   "AgentConfiguration": {
-    "ComplianceAgent": {
-      "Enabled": true,
-      "Temperature": 0.2,
-      "MaxTokens": 4000,
-      "DefenderForCloud": {
-        "Enabled": true,
-        "IncludeSecureScore": true,
-        "MapToNistControls": true
-      }
-    },
     "InfrastructureAgent": {
       "Enabled": true,
       "Temperature": 0.4,
       "DefaultRegion": "usgovvirginia"
+    },
+    "SecurityAgent": {
+      "Enabled": true,
+      "Temperature": 0.3
     },
     "CostManagementAgent": {
       "Enabled": true,

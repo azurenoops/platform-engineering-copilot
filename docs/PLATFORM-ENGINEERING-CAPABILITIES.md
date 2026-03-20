@@ -29,40 +29,24 @@ This document maps Platform Engineering Copilot capabilities to recommended plat
 
 ---
 
-### 2. Governance & Compliance
+### 2. Governance & Security
 
 | Capability | Current State | Implementation | Gap Analysis |
 |------------|---------------|----------------|--------------|
-| **NIST 800-53 Scanning** | ✅ Complete | `run_compliance_assessment` (12 control families) | Real Azure scanning via Resource Graph |
-| **FedRAMP Baselines** | ✅ Complete | Configurable baselines (Low/Moderate/High) | Includes control inheritance |
-| **STIG Mapping** | ✅ Complete | KnowledgeBase: `explain_stig`, `search_stigs` | 50+ STIG controls indexed |
-| **RMF Process Guidance** | ✅ Complete | `explain_rmf` with 7-step process | Navy-specific workflows included |
-| **Impact Level Guidance** | ✅ Complete | `explain_impact_level` (IL2-IL6) | DoD IL requirements documented |
-| **Automated Remediation** | ✅ Complete | `execute_remediation`, `batch_remediation` | Dry-run mode, rollback support |
+| **Security Posture Scanning** | ✅ Complete | `scan_subscription_security`, `get_security_recommendations` | Azure Security Center integration |
+| **Network Security Analysis** | ✅ Complete | `check_network_security` | NSG, firewall, and endpoint analysis |
+| **Security Alerts** | ✅ Complete | `get_security_alerts` | Microsoft Defender for Cloud |
+| **Arc Security Scanning** | ✅ Complete | `scan_arc_machine_security`, `get_arc_security_summary` | Hybrid infrastructure security |
 | **Policy Enforcement** | ⚠️ Partial | Governance options exist but not runtime enforced | Need: Pre-deployment policy gates |
 | **Guardrails** | ⚠️ Partial | Config-based restrictions (`ApprovedRegions`) | Need: Runtime enforcement in provisioning |
 
-**Agents Involved:** Compliance, KnowledgeBase
+**Agents Involved:** Security, Configuration
+
+> **Note:** ATO documentation, NIST 800-53 scanning, and RMF/STIG guidance have been moved to the dedicated ATO Copilot.
 
 ---
 
-### 3. ATO Documentation & Evidence
-
-| Capability | Current State | Implementation | Gap Analysis |
-|------------|---------------|----------------|--------------|
-| **SSP Generation** | ✅ Complete | `generate_compliance_document` type="SSP" | Uses AI + FedRAMP templates |
-| **SAR Generation** | ✅ Complete | `generate_compliance_document` type="SAR" | Includes control assessment narratives |
-| **POA&M Generation** | ✅ Complete | `generate_compliance_document` type="POAM" | Links findings to remediation plans |
-| **Evidence Collection** | ✅ Complete | `collect_evidence` tool | Storage account integration |
-| **Control Narratives** | ✅ Complete | AI-generated from templates | FedRAMP template library |
-| **Architecture Diagrams** | ❌ Missing | No diagram generation | Need: Mermaid/Visio diagram tool |
-| **SAP Generation** | ❌ Missing | Not implemented | Need: Security Assessment Plan generator |
-
-**Agents Involved:** Compliance, (Document sub-agent internal)
-
----
-
-### 4. Code Quality & Security
+### 3. Code Quality & Security
 
 | Capability | Current State | Implementation | Gap Analysis |
 |------------|---------------|----------------|--------------|
@@ -70,14 +54,13 @@ This document maps Platform Engineering Copilot capabilities to recommended plat
 | **Secrets Detection** | ✅ Complete | Pattern-based scanning | Configurable patterns |
 | **Dependency Scanning** | ⚠️ Partial | Config flag exists | Engine stubbed but not full implementation |
 | **PR Review Integration** | ❌ Missing | GitHub extension exists, no PR webhook | Need: GitHub PR review bot |
-| **STIG Checks** | ⚠️ Partial | Config flag exists | Engine stubbed |
 | **Repository Scanning** | ⚠️ Partial | `ScanRepositoryAsync` method exists | Needs remote repo access enhancement |
 
-**Agents Involved:** Compliance (CodeScanningAgent sub-agent)
+**Agents Involved:** Security
 
 ---
 
-### 5. FinOps & Cost Management
+### 4. FinOps & Cost Management
 
 | Capability | Current State | Implementation | Gap Analysis |
 |------------|---------------|----------------|--------------|
@@ -93,7 +76,7 @@ This document maps Platform Engineering Copilot capabilities to recommended plat
 
 ---
 
-### 6. Observability & Discovery
+### 5. Observability & Discovery
 
 | Capability | Current State | Implementation | Gap Analysis |
 |------------|---------------|----------------|--------------|
@@ -108,11 +91,11 @@ This document maps Platform Engineering Copilot capabilities to recommended plat
 
 ---
 
-### 7. Access Control & Security Operations
+### 6. Access Control & Security Operations
 
 | Capability | Current State | Implementation | Gap Analysis |
 |------------|---------------|----------------|--------------|
-| **Comprehensive Audit Logging** | ✅ Complete | `AuditLogs` table, `get_assessment_audit_log` | AU-2/AU-3 compliant |
+| **Comprehensive Audit Logging** | ✅ Complete | `AuditLogs` table, `get_assessment_audit_log` | Full audit trail |
 | **RBAC Awareness** | ⚠️ Partial | Tools mention RBAC requirements | Need: Runtime RBAC enforcement |
 | **Role Restrictions** | ⚠️ Partial | Documentation mentions role requirements | Need: `[Authorize(Roles=...)]` enforcement |
 | **IL Restrictions** | ❌ Missing | IL levels documented but not enforced | Need: IL-based access control |
@@ -124,7 +107,7 @@ This document maps Platform Engineering Copilot capabilities to recommended plat
 
 ---
 
-### 8. Platform Operations
+### 7. Platform Operations
 
 | Capability | Current State | Implementation | Gap Analysis |
 |------------|---------------|----------------|--------------|
@@ -143,23 +126,23 @@ This document maps Platform Engineering Copilot capabilities to recommended plat
 
 ### Phase 1: Security & Governance Hardening (High Priority)
 
-| Enhancement | Effort | Impact | NIST Controls |
-|-------------|--------|--------|---------------|
-| **RBAC Enforcement** - Add `[RequireRole]` attributes to sensitive tools | 2-3 days | High | AC-2, AC-3 |
-| **IL-Based Access Control** - Restrict tool access by impact level | 3-5 days | High | AC-3, AC-4 |
-| **Pre-Deployment Policy Gates** - Block non-compliant provisioning | 3-5 days | High | CM-3, CM-4 |
-| **Runtime Guardrails** - Enforce `ApprovedRegions`, naming conventions | 2-3 days | Medium | CM-7 |
+| Enhancement | Effort | Impact |
+|-------------|--------|--------|
+| **RBAC Enforcement** - Add `[RequireRole]` attributes to sensitive tools | 2-3 days | High |
+| **IL-Based Access Control** - Restrict tool access by impact level | 3-5 days | High |
+| **Pre-Deployment Policy Gates** - Block non-compliant provisioning | 3-5 days | High |
+| **Runtime Guardrails** - Enforce `ApprovedRegions`, naming conventions | 2-3 days | Medium |
 
 ---
 
-### Phase 2: Approval Workflows (High Priority - NIST AC-5, AC-6)
+### Phase 2: Approval Workflows (High Priority)
 
-| Enhancement | Effort | Impact | NIST Controls |
-|-------------|--------|--------|---------------|
-| **2-Person Integrity Approval** - Require approval for destructive ops | 5-7 days | Critical | AC-5, CM-5 |
-| **Auto-Expiring Privileges** - Time-boxed elevation for sensitive ops | 3-5 days | High | AC-2(2), AC-6 |
-| **PIM Integration** - Connect to Azure AD PIM for JIT access | 5-7 days | High | AC-2(5), AC-6(1) |
-| **Approval Audit Trail** - Log all approval decisions | 2-3 days | Medium | AU-2, AU-3 |
+| Enhancement | Effort | Impact |
+|-------------|--------|--------|
+| **2-Person Integrity Approval** - Require approval for destructive ops | 5-7 days | Critical |
+| **Auto-Expiring Privileges** - Time-boxed elevation for sensitive ops | 3-5 days | High |
+| **PIM Integration** - Connect to Azure AD PIM for JIT access | 5-7 days | High |
+| **Approval Audit Trail** - Log all approval decisions | 2-3 days | Medium |
 
 ---
 
@@ -168,7 +151,7 @@ This document maps Platform Engineering Copilot capabilities to recommended plat
 | Enhancement | Effort | Impact | Status |
 |-------------|--------|--------|--------|
 | **8-Step Interactive Wizard** - Guided new service onboarding | 7-10 days | High | 🔲 Planned |
-| **DoD Metadata Collection** - Mission, IL, ATO timeline, POC | 3-5 days | Medium | 🔲 Planned |
+| **DoD Metadata Collection** - Mission, IL, POC | 3-5 days | Medium | 🔲 Planned |
 | **Repository Scaffolding** - Auto-create GitHub/ADO repos | 3-5 days | Medium | ✅ Complete |
 | **Template Selection AI** - Recommend templates based on requirements | 2-3 days | Medium | 🔲 Planned |
 
@@ -191,7 +174,6 @@ This document maps Platform Engineering Copilot capabilities to recommended plat
 
 | Enhancement | Effort | Impact | Value |
 |-------------|--------|--------|-------|
-| **SAP Generation** - Security Assessment Plan document | 3-5 days | Medium | ATO readiness |
 | **Architecture Diagram Generation** - Mermaid/Visio output | 5-7 days | Medium | Documentation |
 | **Showback Reports** - Team/mission cost allocation | 3-5 days | Low | FinOps maturity |
 | **Orphan Resource Detection** - Dedicated discovery tool | 2-3 days | Low | Cost optimization |
@@ -202,15 +184,14 @@ This document maps Platform Engineering Copilot capabilities to recommended plat
 
 | Agent | Tools | Status |
 |-------|-------|--------|
-| Compliance | 12 | ✅ Complete |
-| Discovery | 9 | ✅ Complete |
 | Environment | 11 | ✅ Complete (+1 repo scaffolding) |
-| KnowledgeBase | 8 | ✅ Complete |
+| Discovery | 9 | ✅ Complete |
 | Infrastructure | 6 | ✅ Complete |
 | Cost Management | 6 | ✅ Complete |
+| Security | 6 | ✅ Complete |
 | Configuration | 1 | ✅ Complete |
-| Security | 5 | ⚠️ Config only (stubbed) |
-| **Total** | **58** | |
+| Knowledge Base | 0 | ⚠️ Shell (future MCP integration) |
+| **Total** | **39** | |
 
 ---
 
@@ -220,11 +201,9 @@ This document maps Platform Engineering Copilot capabilities to recommended plat
 
 | Principle | Score | Evidence |
 |-----------|-------|----------|
-| **Compliant Code Generation** | 95% | Bicep, Terraform, K8s with NIST controls |
-| **Governance Explanations** | 95% | NIST 800-53, RMF, STIG, IL mappings |
-| **Documentation Assistant** | 85% | SSP, SAR, POA&M generation |
-| **Knowledge & Guidance** | 90% | Template generation, compliance education |
-| **Comprehensive Audit Logging** | 90% | AU-2/AU-3 compliant logging |
+| **Secure Code Generation** | 95% | Bicep, Terraform, K8s with security best practices |
+| **Security Posture Assessment** | 85% | Subscription scanning, network analysis, security alerts |
+| **Comprehensive Audit Logging** | 90% | Full audit trail logging |
 | **Pre-approved Operations** | 80% | Template-based provisioning |
 
 ### Partial Implementation
@@ -271,9 +250,8 @@ grep -r "GovernanceOptions" src/ | wc -l
 | Platform Engineering Principle | Primary Agent | Supporting Agents |
 |-------------------------------|---------------|-------------------|
 | Developer Self-Service | Environment | Infrastructure, Configuration |
-| Governance & Compliance | Compliance | KnowledgeBase |
-| ATO Documentation | Compliance | (DocumentAgent sub-agent) |
-| Code Security | Compliance | (CodeScanningAgent sub-agent) |
+| Governance & Security | Security | Configuration |
+| Code Security | Security | — |
 | FinOps | Cost Management | Discovery |
 | Observability | Discovery | Environment |
 | Access Control | Security | Configuration |
@@ -283,7 +261,7 @@ grep -r "GovernanceOptions" src/ | wc -l
 
 ## Next Steps
 
-1. **Prioritize Phase 1 & 2** - Security hardening and approval workflows address critical NIST controls
+1. **Prioritize Phase 1 & 2** - Security hardening and approval workflows address critical access control requirements
 2. **Design Golden Path Wizard** - Define the 8-step wizard flow and DoD metadata schema
 3. **Evaluate PR Integration** - Determine GitHub App vs webhook approach
 4. **Plan PIM Integration** - Design Azure AD PIM connector for JIT access

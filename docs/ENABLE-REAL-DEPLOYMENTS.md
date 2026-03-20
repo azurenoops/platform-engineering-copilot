@@ -255,5 +255,4 @@ az group delete --name rg-test-deployment --yes --no-wait
 ## Next Steps
 
 - [Service Template Creation](../docs/SERVICE-TEMPLATES.md)
-- [Compliance Controls](../docs/COMPLIANCE.md)
 - [Drift Detection](../docs/DRIFT-DETECTION.md)

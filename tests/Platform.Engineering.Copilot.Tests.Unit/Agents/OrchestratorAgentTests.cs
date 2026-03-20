@@ -67,22 +67,22 @@ public class OrchestratorAgentTests
     [Fact]
     public async Task Routing_DirectTarget_RoutesToCorrectAgent()
     {
-        var orchestrator = CreateOrchestratorWithComplianceAgent();
-        var result = await orchestrator.RouteAsync("@compliance run assessment");
+        var orchestrator = CreateOrchestratorWithKnowledgeAgent();
+        var result = await orchestrator.RouteAsync("@knowledge find documentation");
 
         result.IsMatch.Should().BeTrue();
-        result.Agent!.AgentId.Should().Be("compliance");
+        result.Agent!.AgentId.Should().Be("knowledge");
         result.Method.Should().Be(RoutingMethod.DirectTarget);
     }
 
     [Fact]
     public async Task Routing_KeywordMatch_RoutesToCorrectAgent()
     {
-        var orchestrator = CreateOrchestratorWithComplianceAgent();
-        var result = await orchestrator.RouteAsync("run a nist compliance assessment");
+        var orchestrator = CreateOrchestratorWithKnowledgeAgent();
+        var result = await orchestrator.RouteAsync("find platform documentation and help");
 
         result.IsMatch.Should().BeTrue();
-        result.Agent!.AgentId.Should().Be("compliance");
+        result.Agent!.AgentId.Should().Be("knowledge");
         result.Method.Should().Be(RoutingMethod.KeywordMatch);
     }
 
@@ -90,17 +90,17 @@ public class OrchestratorAgentTests
     public async Task Routing_MultipleKeywordHits_PicksBestMatch()
     {
         var orchestrator = CreateOrchestratorWithMultipleAgents();
-        // "compliance assessment nist fedramp" has 4 compliance keywords
-        var result = await orchestrator.RouteAsync("run compliance assessment for nist fedramp");
+        // "knowledge documentation platform help" has 4 knowledge keywords
+        var result = await orchestrator.RouteAsync("find knowledge documentation for platform help");
 
         result.IsMatch.Should().BeTrue();
-        result.Agent!.AgentId.Should().Be("compliance");
+        result.Agent!.AgentId.Should().Be("knowledge");
     }
 
     [Fact]
     public async Task Routing_UnrecognizedIntent_NoMatch()
     {
-        var orchestrator = CreateOrchestratorWithComplianceAgent();
+        var orchestrator = CreateOrchestratorWithKnowledgeAgent();
         var result = await orchestrator.RouteAsync("what is the weather today");
 
         result.IsMatch.Should().BeFalse();
@@ -115,14 +115,14 @@ public class OrchestratorAgentTests
         var result = await orchestrator.RouteAsync("xyz random unrelated text");
 
         result.IsMatch.Should().BeFalse();
-        result.Explanation.Should().Contain("Compliance");
+        result.Explanation.Should().Contain("Knowledge");
         result.Explanation.Should().Contain("@");
     }
 
     [Fact]
     public async Task Routing_EmptyMessage_NoMatch()
     {
-        var orchestrator = CreateOrchestratorWithComplianceAgent();
+        var orchestrator = CreateOrchestratorWithKnowledgeAgent();
         var result = await orchestrator.RouteAsync("");
 
         result.IsMatch.Should().BeFalse();
@@ -131,21 +131,21 @@ public class OrchestratorAgentTests
     [Fact]
     public async Task Routing_DirectTarget_CaseInsensitive()
     {
-        var orchestrator = CreateOrchestratorWithComplianceAgent();
-        var result = await orchestrator.RouteAsync("@Compliance check status");
+        var orchestrator = CreateOrchestratorWithKnowledgeAgent();
+        var result = await orchestrator.RouteAsync("@Knowledge check docs");
 
         result.IsMatch.Should().BeTrue();
-        result.Agent!.AgentId.Should().Be("compliance");
+        result.Agent!.AgentId.Should().Be("knowledge");
     }
 
     [Fact]
     public async Task Routing_ExplanationIsTransparent()
     {
-        var orchestrator = CreateOrchestratorWithComplianceAgent();
-        var result = await orchestrator.RouteAsync("run compliance assessment");
+        var orchestrator = CreateOrchestratorWithKnowledgeAgent();
+        var result = await orchestrator.RouteAsync("find knowledge documentation");
 
         result.Explanation.Should().NotBeNullOrWhiteSpace();
-        result.Explanation.Should().Contain("Compliance");
+        result.Explanation.Should().Contain("Knowledge");
     }
 
     [Fact]
@@ -168,13 +168,13 @@ public class OrchestratorAgentTests
         result.Agent!.AgentId.Should().Be("cost");
     }
 
-    private PlatformOrchestrator CreateOrchestratorWithComplianceAgent()
+    private PlatformOrchestrator CreateOrchestratorWithKnowledgeAgent()
     {
         var orchestrator = new PlatformOrchestrator(_orchLoggerMock.Object);
         var agent = BaseAgentTestHelper.CreateAgent(
-            "compliance", "Compliance Agent", "Compliance management",
-            ["compliance", "nist", "fedramp", "assessment", "finding", "control", "remediate", "audit"],
-            PimTier.Read);
+            "knowledge", "Knowledge Base Agent", "Platform knowledge and documentation",
+            ["knowledge", "documentation", "platform", "help", "info", "guide"],
+            PimTier.None);
         orchestrator.RegisterAgent(agent);
         return orchestrator;
     }
@@ -184,9 +184,9 @@ public class OrchestratorAgentTests
         var orchestrator = new PlatformOrchestrator(_orchLoggerMock.Object);
 
         orchestrator.RegisterAgent(BaseAgentTestHelper.CreateAgent(
-            "compliance", "Compliance Agent", "Compliance management",
-            ["compliance", "nist", "fedramp", "assessment", "finding", "control"],
-            PimTier.Read));
+            "knowledge", "Knowledge Base Agent", "Platform knowledge and documentation",
+            ["knowledge", "documentation", "platform", "help", "info", "guide"],
+            PimTier.None));
 
         orchestrator.RegisterAgent(BaseAgentTestHelper.CreateAgent(
             "security", "Security Agent", "Security posture management",

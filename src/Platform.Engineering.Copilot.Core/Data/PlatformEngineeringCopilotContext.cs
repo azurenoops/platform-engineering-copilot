@@ -5,8 +5,8 @@ using Platform.Engineering.Copilot.Core.Data.Enumerations;
 namespace Platform.Engineering.Copilot.Core.Data;
 
 /// <summary>
-/// Main DbContext for all platform operational entities (16 entities).
-/// Compliance, infrastructure, remediation, audit, configuration data.
+/// Main DbContext for all platform operational entities.
+/// Infrastructure, remediation, audit, configuration data.
 /// </summary>
 public class PlatformEngineeringCopilotContext : DbContext
 {
@@ -15,13 +15,9 @@ public class PlatformEngineeringCopilotContext : DbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<Entities.Configuration> Configurations => Set<Entities.Configuration>();
-    public DbSet<ComplianceAssessment> ComplianceAssessments => Set<ComplianceAssessment>();
-    public DbSet<ComplianceFinding> ComplianceFindings => Set<ComplianceFinding>();
     public DbSet<RemediationBoard> RemediationBoards => Set<RemediationBoard>();
     public DbSet<RemediationTask> RemediationTasks => Set<RemediationTask>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();
-    public DbSet<EvidencePackage> EvidencePackages => Set<EvidencePackage>();
-    public DbSet<ComplianceDocument> ComplianceDocuments => Set<ComplianceDocument>();
     public DbSet<IaCTemplate> IaCTemplates => Set<IaCTemplate>();
     public DbSet<ServiceTemplate> ServiceTemplates => Set<ServiceTemplate>();
     public DbSet<ProvisionedEnvironment> ProvisionedEnvironments => Set<ProvisionedEnvironment>();
@@ -72,64 +68,12 @@ public class PlatformEngineeringCopilotContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.Property(e => e.CloudEnvironment).HasConversion<string>();
-            entity.Property(e => e.DefaultFramework).HasConversion<string>();
-            entity.Property(e => e.Baseline).HasConversion<string>();
-            entity.Property(e => e.DefaultScanType).HasConversion<string>();
-        });
-
-        // ── ComplianceAssessment ──
-        modelBuilder.Entity<ComplianceAssessment>(entity =>
-        {
-            entity.HasKey(e => e.AssessmentId);
-
-            entity.HasIndex(e => new { e.UserId, e.CreatedAt })
-                .IsDescending(false, true)
-                .HasDatabaseName("IX_Assessment_UserId_CreatedAt");
-
-            entity.HasIndex(e => e.SubscriptionId)
-                .HasDatabaseName("IX_Assessment_SubscriptionId");
-
-            entity.HasOne(e => e.User)
-                .WithMany(u => u.Assessments)
-                .HasForeignKey(e => e.UserId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.Property(e => e.ScanType).HasConversion<string>();
-            entity.Property(e => e.Framework).HasConversion<string>();
-            entity.Property(e => e.Status).HasConversion<string>();
-
-            entity.HasQueryFilter(e => !e.IsDeleted);
-        });
-
-        // ── ComplianceFinding ──
-        modelBuilder.Entity<ComplianceFinding>(entity =>
-        {
-            entity.HasKey(e => e.FindingId);
-
-            entity.HasIndex(e => e.AssessmentId)
-                .HasDatabaseName("IX_Finding_AssessmentId");
-
-            entity.HasIndex(e => new { e.ControlFamily, e.Severity })
-                .HasDatabaseName("IX_Finding_ControlFamily_Severity");
-
-            entity.HasOne(e => e.Assessment)
-                .WithMany(a => a.Findings)
-                .HasForeignKey(e => e.AssessmentId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            entity.Property(e => e.Severity).HasConversion<string>();
-            entity.Property(e => e.Status).HasConversion<string>();
         });
 
         // ── RemediationBoard ──
         modelBuilder.Entity<RemediationBoard>(entity =>
         {
             entity.HasKey(e => e.BoardId);
-
-            entity.HasOne(e => e.Assessment)
-                .WithOne(a => a.Board)
-                .HasForeignKey<RemediationBoard>(e => e.AssessmentId)
-                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.User)
                 .WithMany()
@@ -156,11 +100,6 @@ public class PlatformEngineeringCopilotContext : DbContext
                 .WithMany(b => b.Tasks)
                 .HasForeignKey(e => e.BoardId)
                 .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne(e => e.Finding)
-                .WithOne(f => f.RemediationTask)
-                .HasForeignKey<RemediationTask>(e => e.FindingId)
-                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.Assignee)
                 .WithMany()
@@ -192,48 +131,6 @@ public class PlatformEngineeringCopilotContext : DbContext
             entity.HasQueryFilter(e => !e.IsDeleted);
         });
 
-        // ── EvidencePackage ──
-        modelBuilder.Entity<EvidencePackage>(entity =>
-        {
-            entity.HasKey(e => e.PackageId);
-
-            entity.HasIndex(e => e.ControlId)
-                .HasDatabaseName("IX_Evidence_ControlId");
-
-            entity.HasOne(e => e.Assessment)
-                .WithMany(a => a.EvidencePackages)
-                .HasForeignKey(e => e.AssessmentId)
-                .OnDelete(DeleteBehavior.SetNull);
-
-            entity.HasOne(e => e.User)
-                .WithMany(u => u.EvidencePackages)
-                .HasForeignKey(e => e.UserId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasQueryFilter(e => !e.IsDeleted);
-        });
-
-        // ── ComplianceDocument ──
-        modelBuilder.Entity<ComplianceDocument>(entity =>
-        {
-            entity.HasKey(e => e.DocumentId);
-
-            entity.HasOne(e => e.Assessment)
-                .WithMany(a => a.Documents)
-                .HasForeignKey(e => e.AssessmentId)
-                .OnDelete(DeleteBehavior.SetNull);
-
-            entity.HasOne(e => e.User)
-                .WithMany(u => u.Documents)
-                .HasForeignKey(e => e.UserId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.Property(e => e.DocumentType).HasConversion<string>();
-            entity.Property(e => e.Framework).HasConversion<string>();
-
-            entity.HasQueryFilter(e => !e.IsDeleted);
-        });
-
         // ── IaCTemplate ──
         modelBuilder.Entity<IaCTemplate>(entity =>
         {
@@ -245,7 +142,6 @@ public class PlatformEngineeringCopilotContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.Property(e => e.GenerationMethod).HasConversion<string>();
-            entity.Property(e => e.Framework).HasConversion<string>();
 
             // IsExpired is computed — ignore for EF
             entity.Ignore(e => e.IsExpired);

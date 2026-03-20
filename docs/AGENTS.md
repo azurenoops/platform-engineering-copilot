@@ -7,20 +7,19 @@
 
 ## Overview
 
-The Platform Engineering Copilot uses **8 specialized AI agents** built on the BaseAgent/BaseTool pattern. Each agent extends `BaseAgent` and registers domain-specific tools that extend `BaseTool`.
+The Platform Engineering Copilot uses **7 specialized AI agents** built on the BaseAgent/BaseTool pattern. Each agent extends `BaseAgent` and registers domain-specific tools that extend `BaseTool`.
 
 ### Agent Summary
 
 | Agent | ID | Tools | Domain |
 |-------|-----|-------|--------|
-| [Compliance](#compliance-agent) | `compliance` | 12 | NIST 800-53, FedRAMP, remediation |
 | [Infrastructure](#infrastructure-agent) | `infrastructure` | 6 | Azure provisioning, IaC generation |
 | [Cost Management](#cost-management-agent) | `cost-management` | 6 | Cost analysis, optimization |
 | [Discovery](#discovery-agent) | `discovery` | 9 | Resource inventory, health |
 | [Environment](#environment-agent) | `environment` | 10 | Template lifecycle, drift detection |
-| [Knowledge Base](#knowledge-base-agent) | `knowledgebase` | 8 | Compliance education, NIST/STIG |
+| [Knowledge Base](#knowledge-base-agent) | `knowledgebase` | 0 | Shell — future MCP integration |
 | [Configuration](#configuration-agent) | `configuration` | 1 | Subscription settings |
-| [Security](#security-agent) | `security` | 3 | Defender scores, security posture |
+| [Security](#security-agent) | `security` | 6 | Defender scores, security posture |
 
 ### BaseAgent Pattern
 
@@ -67,70 +66,14 @@ When AI is disabled (default) or unavailable, agents fall back to direct tool ex
 ```csharp
 // AI-enabled: natural-language response
 var result = await agent.ProcessMessageAsync(
-    "Run a compliance assessment",
+    "List all Azure resources in my subscription",
     conversationHistory,
     progress,
     cancellationToken);
-// Returns: "I've completed the NIST 800-53 assessment. Your compliance score is 85%..."
+// Returns: "I found 42 resources across 5 resource groups..."
 
 // Fallback (no AI): raw JSON
-// Returns: {"status":"success","complianceScore":85,"findings":[...]}
-```
-
----
-
-## Compliance Agent
-
-**ID:** `compliance`  
-**Purpose:** NIST 800-53 compliance assessment, automated remediation, and ATO documentation generation.
-
-### Tools (12)
-
-| Tool | Name | Description |
-|------|------|-------------|
-| Assessment | `run_compliance_assessment` | Run NIST 800-53 scan against subscription/resource group |
-| Batch Remediation | `batch_remediation` | Fix multiple findings filtered by severity |
-| Execute Remediation | `execute_remediation` | Fix single finding by finding ID |
-| Remediation Plan | `generate_remediation_plan` | Create prioritized remediation plan |
-| Validate Remediation | `validate_remediation` | Verify remediation was successful |
-| Defender Findings | `get_defender_findings` | Fetch Microsoft Defender for Cloud findings |
-| Control Details | `get_control_family_details` | Get NIST control family information |
-| Evidence Collection | `collect_evidence` | Gather compliance evidence artifacts |
-| Document Generation | `generate_compliance_document` | Generate SSP, SAR, or POA&M documents |
-| Compliance Status | `get_compliance_status` | Current compliance summary |
-| Compliance History | `get_compliance_history` | Compliance trends over time |
-| Audit Log | `get_assessment_audit_log` | Assessment audit trail |
-
-### Example Queries
-
-```
-"Run NIST 800-53 compliance scan"
-"Check compliance for subscription xyz"
-"Start remediation for high-priority issues"
-"Generate SSP document"
-"What's my secure score?"
-"Show Defender for Cloud findings"
-"Collect evidence for AC-2 control"
-```
-
-### Configuration
-
-```json
-{
-  "ComplianceAgent": {
-    "Enabled": true,
-    "Temperature": 0.2,
-    "MaxTokens": 4000,
-    "DefaultFramework": "NIST80053",
-    "DefaultBaseline": "FedRAMPHigh",
-    "EnableAutomatedRemediation": true,
-    "DefenderForCloud": {
-      "Enabled": true,
-      "IncludeSecureScore": true,
-      "MapToNistControls": true
-    }
-  }
-}
+// Returns: {"status":"success","resources":[...]}
 ```
 
 ---
@@ -171,8 +114,6 @@ var result = await agent.ProcessMessageAsync(
     "Temperature": 0.4,
     "MaxTokens": 4000,
     "DefaultRegion": "usgovvirginia",
-    "EnableComplianceEnhancement": true,
-    "DefaultComplianceFramework": "NIST80053",
     "EnablePredictiveScaling": true,
     "EnableAzureArc": true
   }
@@ -327,30 +268,18 @@ var result = await agent.ProcessMessageAsync(
 ## Knowledge Base Agent
 
 **ID:** `knowledgebase`  
-**Purpose:** Compliance education and guidance for NIST 800-53, STIG, RMF, and FedRAMP.
+**Purpose:** Platform knowledge and documentation assistance. Shell agent — no tools currently registered. Reserved for future MCP integration.
 
-### Tools (8)
+### Tools (0)
 
-| Tool | Name | Description |
-|------|------|-------------|
-| NIST Control Explainer | `explain_nist_control` | Explain NIST control requirements |
-| NIST Control Search | `search_nist_controls` | Find controls by keyword |
-| STIG Explainer | `explain_stig` | Explain STIG control requirements |
-| STIG Search | `search_stigs` | Search STIG controls |
-| RMF Explainer | `explain_rmf` | Explain RMF process and steps |
-| Impact Level | `explain_impact_level` | Explain DoD IL2-IL6 levels |
-| FedRAMP Templates | `get_fedramp_template_guidance` | FedRAMP template requirements |
+No tools currently registered. This agent serves as a shell for future MCP tool integration.
 
 ### Example Queries
 
 ```
-"Explain NIST control AC-2"
-"What are the requirements for SC-7?"
-"Search for controls related to encryption"
-"Explain the STIG for Windows Server 2022"
-"What are the RMF steps?"
-"What's the difference between IL4 and IL5?"
-"What templates do I need for FedRAMP High?"
+"What is the platform engineering copilot?"
+"Help me understand the agent architecture"
+"What documentation is available?"
 ```
 
 ### Configuration
@@ -359,10 +288,7 @@ var result = await agent.ProcessMessageAsync(
 {
   "KnowledgeBaseAgent": {
     "Enabled": true,
-    "Temperature": 0.2,
-    "MaxTokens": 4000,
-    "EnableRag": true,
-    "EnableSemanticSearch": true
+    "Temperature": 0.2
   }
 }
 ```
@@ -408,13 +334,13 @@ The `PlatformSelectionStrategy` routes user requests to the appropriate agent ba
 
 | Keywords/Intent | Routed To |
 |-----------------|-----------|
-| compliance, NIST, FedRAMP, remediation, assessment, SSP, POA&M | Compliance Agent |
 | create, deploy, Bicep, Terraform, provision, Arc, template | Infrastructure Agent |
 | cost, spend, budget, forecast, optimization, savings | Cost Management Agent |
 | list, discover, inventory, health, resources, subscriptions | Discovery Agent |
 | environment, template, clone, scale, drift | Environment Agent |
-| explain, what is, STIG, RMF, impact level, FedRAMP guidance | Knowledge Base Agent |
+| knowledge, documentation, platform, help, guide | Knowledge Base Agent |
 | configure, subscription, settings | Configuration Agent |
+| secure, score, defender, security, vulnerability | Security Agent |
 
 ---
 
@@ -519,12 +445,12 @@ The `PlatformSelectionStrategy` routes requests to agents based on keywords:
 
 | Keywords | Agent |
 |----------|-------|
-| compliance, nist, fedramp, stig, assessment, remediation | Compliance |
 | create, deploy, provision, terraform, bicep, kubernetes | Infrastructure |
 | cost, spending, budget, savings, optimization | Cost |
 | list, resources, inventory, health, discover | Discovery |
 | environment, clone, scale, lifecycle | Environment |
 | security, vulnerability, threat, policy | Security |
+| knowledge, documentation, platform, help, guide | Knowledge Base |
 
 ---
 
@@ -540,7 +466,7 @@ Agents coordinate through `PlatformAgentGroupChat` with shared context:
 ### Example Multi-Turn Workflow
 
 ```
-Turn 1: "Check compliance" → Compliance Agent runs assessment
+Turn 1: "Check security posture" → Security Agent runs assessment
 Turn 2: "Start remediation" → Uses cached findings (no re-scan)
 Turn 3: "Show cost impact" → Cost Agent analyzes affected resources
 ```

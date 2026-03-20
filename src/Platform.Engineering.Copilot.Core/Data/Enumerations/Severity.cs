@@ -9,5 +9,7 @@ public enum Severity
     Critical,
     High,
     Medium,
-    Low
+    Low,
+    /// <summary>Informational — risk weight = 0 (excluded from risk score formula FR-025).</summary>
+    Informational
 }

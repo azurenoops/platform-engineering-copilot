@@ -4,23 +4,23 @@
 
 ## Overview
 
-Platform Engineering Copilot provides **full lifecycle management for Azure Arc-connected hybrid machines**. This enables organizations to extend Azure management, compliance, and security capabilities to on-premises servers, edge devices, and multi-cloud infrastructure.
+Platform Engineering Copilot provides **full lifecycle management for Azure Arc-connected hybrid machines**. This enables organizations to extend Azure management and security capabilities to on-premises servers, edge devices, and multi-cloud infrastructure.
 
 ### What is Azure Arc?
 
 Azure Arc extends Azure management and services to any infrastructure, enabling:
 - **Unified Management**: Manage Windows and Linux servers across on-premises, edge, and multi-cloud from Azure
-- **Azure Policy**: Apply governance and compliance policies to hybrid resources
+- **Azure Policy**: Apply governance and security policies to hybrid resources
 - **Security**: Enable Microsoft Defender for Servers on non-Azure machines
 - **Monitoring**: Use Azure Monitor for logs, metrics, and alerting
-- **Configuration**: Apply Guest Configuration baselines (STIG, CIS, custom)
+- **Configuration**: Apply Guest Configuration baselines (CIS, custom)
 
 ### Arc Capabilities by Agent
 
 | Agent | Capabilities | Functions |
 |-------|-------------|-----------|
 | 🔍 **Discovery** | Inventory, health monitoring, extension tracking | 4 functions |
-| 🛡️ **Compliance** | STIG/CIS/Azure compliance scanning, Guest Configuration, security posture | 6 functions |
+| 🛡️ **Security** | CIS/Azure security scanning, Guest Configuration, security posture | 6 functions |
 | 🏗️ **Infrastructure** | Onboarding scripts, extension deployment at scale | 3 functions |
 
 ---
@@ -103,68 +103,66 @@ Check the connection health of Arc-connected machines.
 
 ---
 
-## 🛡️ Compliance Agent - Arc Functions
+## 🛡️ Security Agent - Arc Functions
 
-The Compliance Agent assesses hybrid machine compliance against security baselines.
+The Security Agent assesses hybrid machine security against baselines.
 
 ### Functions
 
-#### `scan_arc_machine_compliance`
-Scan Arc-connected machines for compliance against security baselines.
+#### `scan_arc_machine_security`
+Scan Arc-connected machines for security against baselines.
 
 **Example Prompts:**
 ```
-"Scan Arc machines for STIG compliance"
-"Check CIS benchmark compliance on my hybrid servers"
-"Run compliance assessment on Arc machine webserver01"
+"Scan Arc machines for security baseline"
+"Check CIS benchmark on my hybrid servers"
+"Run security assessment on Arc machine webserver01"
 ```
 
 **Parameters:**
 - `machineName`: Specific machine to scan (optional)
-- `baseline`: STIG, CIS, Azure, or all (default)
+- `baseline`: CIS, Azure, or all (default)
 - `resourceGroup`: Filter by resource group
 
 **Response includes:**
-- Compliance score percentage
+- Security score percentage
 - Findings by severity (Critical/High/Medium/Low)
-- NIST 800-53 control family mapping
 - Remediation recommendations
 
 ---
 
 #### `get_arc_guest_configuration_status`
-Check Guest Configuration (Azure Policy) compliance status for Arc machines.
+Check Guest Configuration (Azure Policy) status for Arc machines.
 
 **Example Prompts:**
 ```
 "Show guest configuration status for my Arc servers"
-"Which Arc machines failed policy compliance?"
+"Which Arc machines failed policy checks?"
 "Get Azure Policy status for hybrid infrastructure"
 ```
 
 **Response includes:**
 - Policy assignment status per machine
-- Compliance state (Compliant/NonCompliant/Pending)
+- Security state (Compliant/NonCompliant/Pending)
 - Last evaluation timestamp
 - Policy assignment summary
 
 ---
 
-#### `get_arc_compliance_summary`
-Get high-level compliance summary across all Arc machines.
+#### `get_arc_security_summary`
+Get high-level security summary across all Arc machines.
 
 **Example Prompts:**
 ```
-"Give me an Arc compliance summary"
-"What's our hybrid server compliance status?"
-"Show executive compliance dashboard for Arc"
+"Give me an Arc security summary"
+"What's our hybrid server security status?"
+"Show executive security dashboard for Arc"
 ```
 
 **Response includes:**
-- Overall compliance score
+- Overall security score
 - Control family coverage (AC, AU, CM, IA, SC, SI)
 - Risk areas with remediation guidance
-- Suitable for ATO documentation
 
 ---
 
@@ -216,7 +214,7 @@ Deploy extensions to Arc-connected machines at scale.
 | `LogAnalytics` | Legacy Log Analytics Agent (MMA) |
 | `Defender` | Microsoft Defender for Servers |
 | `DependencyAgent` | Service Map dependencies |
-| `GuestConfiguration` | Azure Policy compliance |
+| `GuestConfiguration` | Azure Policy security |
 | `CustomScript` | Run custom scripts |
 | `All` | Deploy core monitoring stack |
 
@@ -246,9 +244,9 @@ Check the onboarding and connection status of Arc machines.
 
 ---
 
-## 🔐 Compliance Agent - Arc Security Functions
+## 🔐 Security Agent - Arc Security Functions
 
-The Compliance Agent assesses security posture and manages threat protection for Arc machines.
+The Security Agent assesses security posture and manages threat protection for Arc machines.
 
 ### Functions
 
@@ -328,7 +326,7 @@ graph TD
     B --> C[Run script]
     C --> D[Verify connection]
     D --> E[Deploy extensions]
-    E --> F[Run compliance scan]
+    E --> F[Run security scan]
 ```
 
 **Steps:**
@@ -336,7 +334,7 @@ graph TD
 2. Copy script to target server and run as Administrator
 3. `"Check Arc onboarding status"` → Verify connection
 4. `"Deploy Arc extensions All"` → Install monitoring/security
-5. `"Scan Arc machine compliance"` → Assess baseline compliance
+5. `"Scan Arc machine security"` → Assess baseline security
 
 ### 2. Security Assessment Workflow
 
@@ -355,11 +353,11 @@ graph TD
 3. `"Deploy Arc extensions Defender"` → Enable threat protection
 4. `"Check Arc Defender status"` → Verify deployment
 
-### 3. Compliance Remediation Workflow
+### 3. Security Remediation Workflow
 
 ```mermaid
 graph TD
-    A[Scan compliance] --> B{Compliant?}
+    A[Scan security] --> B{Secure?}
     B -->|Yes| C[Generate evidence]
     B -->|No| D[Review findings]
     D --> E[Generate remediation plan]
@@ -368,11 +366,11 @@ graph TD
 ```
 
 **Steps:**
-1. `"Scan Arc machine compliance with STIG baseline"` → Get findings
+1. `"Scan Arc machine security with CIS baseline"` → Get findings
 2. `"Get Arc guest configuration status"` → Policy details
 3. `"Generate remediation plan for Arc machines"` → Fix guidance
 4. Apply remediation
-5. Re-scan to verify compliance
+5. Re-scan to verify security
 
 ---
 
@@ -401,10 +399,10 @@ For air-gapped environments, see [Azure Arc Private Link](https://docs.microsoft
 - Administrator/root privileges
 - Azure subscription with Contributor access
 
-### For Compliance Scanning
+### For Security Scanning
 - Arc machine in Connected state
 - Guest Configuration extension (recommended)
-- Azure Policy assignments for baseline compliance
+- Azure Policy assignments for baseline security
 
 ### For Security Features
 - Microsoft Defender for Cloud enabled
@@ -441,7 +439,7 @@ Get-Content "C:\ProgramData\AzureConnectedMachineAgent\Log\ExtensionManager.log"
 sudo tail -50 /var/lib/GuestConfig/ext_mgr_logs/gc_ext.log
 ```
 
-### Compliance Scan Not Reporting
+### Security Scan Not Reporting
 
 1. Verify Guest Configuration extension is installed
 2. Check extension provisioning state is "Succeeded"
@@ -454,7 +452,7 @@ sudo tail -50 /var/lib/GuestConfig/ext_mgr_logs/gc_ext.log
 
 - [Agent Guide](AGENTS.md) - Full agent documentation
 - [Agent Coordination Workflows](AGENT-COORDINATION-WORKFLOWS.md) - How agents work together
-- [Compliance Agent](Compliance%20Agent/README.md) - Detailed compliance capabilities
+- [Security Agent](AGENTS.md#security-agent) - Detailed security capabilities
 - [Leadership Demo Script](LEADERSHIP-DEMO-SCRIPT.md) - Executive demo including Arc
 
 ---
